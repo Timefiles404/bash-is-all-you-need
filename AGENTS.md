@@ -19,6 +19,10 @@ that would break the thing this repo is for.
 - **No dependencies** beyond the standard library and `golang.org/x/sys`, which
   is pinned at v0.41.0 because v0.42+ declares `go 1.25.0`. No SDKs, no TUI
   framework, no JSON library, no test framework.
+  Stage 08 is the single exception (`mvdan.cc/sh/v3`, pinned at v3.12.0 with
+  `golang.org/x/term` at v0.33.0 to keep the module floor at go 1.24.0). Before
+  adding anything, read the new `go.mod` — a dependency's `go` directive is part
+  of its cost, and it is the part nothing announces.
 - **Every teaching claim rests on `docs/wire-notes.md`**, which records what one
   real gateway actually sends, byte by byte. Where the protocol documentation
   and the observed behaviour disagree, the observation wins and the disagreement

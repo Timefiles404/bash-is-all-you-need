@@ -56,7 +56,7 @@ beats DRY in a teaching repo.
 | [05 Live Forever](docs/05-live-forever.md) | compaction, context injection, memory — and what compaction really costs | ✅ built |
 | [06 The Composer](docs/06-the-composer.md) | a TUI in the standard library: God view vs Model view of the same session | ✅ built |
 | [07 Multiply](docs/07-multiply.md) | subagents by recursion, skills, and what PTC really is | ✅ built |
-| 08 Sandbox *(optional)* | embedded shell interpreter, per-process interception | planned |
+| [08 Sandbox](docs/08-sandbox.md) *(optional)* | embedded shell interpreter, and why you cannot secure a shell by reading the command | ✅ built |
 
 **Appendix: [Wire notes](docs/wire-notes.md)** — what one real gateway actually
 sends, probed byte by byte: how each protocol reports a truncated tool call
@@ -90,6 +90,8 @@ rather than on protocol documentation, because the two do not agree.
   context, and knowing which one you are short of is the whole decision.
 - Skills that are a directory and one paragraph, with the index cost printed so
   you can see the tax you are paying on every request forever.
+- An embedded shell that sees every command *after* expansion, and a measured
+  table of the fourteen ways a regexp and a parser both lose.
 - No vendor lock: any OpenAI- or Anthropic-compatible endpoint, including local
   models, configured by URL + key + protocol.
 
@@ -135,10 +137,14 @@ stops is part of the teaching:
 - **No MCP, no plan mode, no multi-model routing.** Each doc notes the layer
   where you would add them.
 - **No agent framework, and no TUI framework.** No LangChain, no vector
-  database, no orchestration layer, no vendor SDK, no Bubble Tea. The dependency
-  list is the standard library, a shell, and `golang.org/x/sys` — for Windows Job
-  Objects in stage 01 and terminal control in stage 06, and that is all. Stage 06 is
-  where this stops being an aesthetic: a TUI framework hides raw-mode
+  database, no orchestration layer, no vendor SDK, no Bubble Tea. Stages 00-07
+  are the standard library plus `golang.org/x/sys` — for Windows Job Objects in
+  stage 01 and terminal control in stage 06 — and that is all. Stage 08 is the
+  single exception: it embeds `mvdan.cc/sh/v3`, and its chapter is largely an
+  argument about when a dependency earns its place, with a measured account of
+  what that one cost (it moved the Go floor twice before being pinned back).
+  Stage 06 is where the no-framework rule stops being an aesthetic: a TUI
+  framework hides raw-mode
   restoration, the Escape-key ambiguity, and display width versus byte length,
   which are the three things that chapter is about.
 - **Not a benchmark chaser.** If you want SWE-bench numbers from a minimal

@@ -49,7 +49,7 @@ beats DRY in a teaching repo.
 | Stage | Idea | Status |
 |---|---|---|
 | [00 The Loop](docs/00-loop.md) | request → tool call → execute → repeat. One file, no SDK. | ✅ built |
-| 01 Don't Die | truncation, timeouts, process-tree kill, `finish_reason`, permission gate | planned |
+| [01 Don't Die](docs/01-dont-die.md) | truncation, timeouts, process-tree kill, `finish_reason`, permission gate | ✅ built |
 | 02 See Everything | event bus, streaming, full instrumentation, JSONL trace, replay | planned |
 | 03 Babel | one agent, many protocols: OpenAI + Anthropic behind a neutral core | planned |
 | 04 The Cache | prompt caching as *discipline*, and what it is worth in dollars | planned |
@@ -57,6 +57,13 @@ beats DRY in a teaching repo.
 | 06 The Composer | TUI: God view vs Model view of the conversation | planned |
 | 07 Multiply | subagents by recursion, skills, and what PTC really is | planned |
 | 08 Sandbox *(optional)* | embedded shell interpreter, per-process interception | planned |
+
+**Appendix: [Wire notes](docs/wire-notes.md)** — what one real gateway actually
+sends, probed byte by byte: how each protocol reports a truncated tool call
+(badly, and differently), where streaming usage lies, which error you get for an
+unknown model (401, not 404), and proof that prompt caching works. Every claim
+carries its raw evidence. The teaching material in `docs/` is built on this file
+rather than on protocol documentation, because the two do not agree.
 
 ## What you get by the end
 
@@ -104,7 +111,8 @@ stops is part of the teaching:
 - **No MCP, no plan mode, no multi-model routing.** Each doc notes the layer
   where you would add them.
 - **No agent framework.** No LangChain, no vector database, no orchestration
-  layer. Standard library plus a shell.
+  layer, no vendor SDK. The dependency list is the standard library, a shell,
+  and `golang.org/x/sys` — needed for Windows Job Objects, and that is all.
 - **Not a benchmark chaser.** If you want SWE-bench numbers from a minimal
   agent, see `mini-swe-agent` below.
 

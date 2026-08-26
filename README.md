@@ -52,7 +52,7 @@ beats DRY in a teaching repo.
 | [01 Don't Die](docs/01-dont-die.md) | truncation, timeouts, process-tree kill, `finish_reason`, permission gate | ✅ built |
 | [02 See Everything](docs/02-see-everything.md) | event bus, streaming, full instrumentation, JSONL trace, replay | ✅ built |
 | [03 Babel](docs/03-babel.md) | one agent, many protocols: OpenAI + Anthropic behind a neutral core | ✅ built |
-| 04 The Cache | prompt caching as *discipline*, and what it is worth in dollars | planned |
+| [04 The Cache](docs/04-the-cache.md) | prompt caching as *discipline*, and what it is worth in dollars | ✅ built |
 | 05 Live Forever | compaction, context injection, file-based memory | planned |
 | 06 The Composer | TUI: God view vs Model view of the conversation | planned |
 | 07 Multiply | subagents by recursion, skills, and what PTC really is | planned |

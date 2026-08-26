@@ -15,6 +15,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -108,7 +109,7 @@ func (w *TraceWriter) writeEvent(e Event) {
 		return
 	}
 
-	line, err := json.Marshal(e)
+	line, err := marshalEvent(e)
 	if err != nil {
 		// In practice this means Request holds bytes that are not valid JSON —
 		// a provider body captured verbatim, say. Drop the payload and keep the
@@ -117,7 +118,7 @@ func (w *TraceWriter) writeEvent(e Event) {
 		// later.
 		degraded := e
 		degraded.Request = json.RawMessage(`{"trace_error":"request body was not valid JSON and was dropped"}`)
-		line, err = json.Marshal(degraded)
+		line, err = marshalEvent(degraded)
 		if err != nil {
 			w.failLocked(fmt.Errorf("encode event %d (%s): %w", e.Seq, e.Kind, err))
 			return
@@ -196,4 +197,39 @@ func (w *TraceWriter) Close() error {
 			w.path, w.dropped, w.err)
 	}
 	return cerr
+}
+
+// marshalEvent encodes one event with HTML escaping OFF.
+//
+// json.Marshal escapes <, > and & into <, > and &, and — this
+// is the part that bites — encoding/json applies that *inside a
+// json.RawMessage* too, while compacting it. Event.Request is a RawMessage
+// holding the exact bytes the adapter posted, and both adapters go out of their
+// way to encode with SetEscapeHTML(false) precisely because a shell agent's
+// requests are mostly `2>&1`, `>/tmp/out` and `<<EOF`.
+//
+// So without this, everything the adapters were careful about is undone one
+// layer later, in the file:
+//
+//	posted:  {"command":"ls 2>&1 <in"}
+//	traced:  {"command":"ls 2>&1 <in"}
+//
+// Nothing errors, the JSON is equivalent, and every consumer that decodes it
+// gets the right string back. What breaks is the claim: events.go calls
+// Request "the exact bytes about to be sent", stage 06's wire view promises
+// "byte for byte", and a byte-level comparison between a live run and a
+// replayed one shows a diff that is entirely this. A trace is evidence; the
+// moment it is not byte-identical it stops being evidence about bytes.
+//
+// Found in a real trace, where all 24 recorded requests carried the escapes.
+func marshalEvent(e Event) ([]byte, error) {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(e); err != nil {
+		return nil, err
+	}
+	// Encoder.Encode appends a newline that Marshal does not; the caller adds
+	// its own, and two would be a blank line in the middle of a JSONL file.
+	return bytes.TrimRight(buf.Bytes(), "\n"), nil
 }

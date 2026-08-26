@@ -55,7 +55,7 @@ beats DRY in a teaching repo.
 | [04 The Cache](docs/04-the-cache.md) | prompt caching as *discipline*, and what it is worth in dollars | ✅ built |
 | [05 Live Forever](docs/05-live-forever.md) | compaction, context injection, memory — and what compaction really costs | ✅ built |
 | [06 The Composer](docs/06-the-composer.md) | a TUI in the standard library: God view vs Model view of the same session | ✅ built |
-| 07 Multiply | subagents by recursion, skills, and what PTC really is | planned |
+| [07 Multiply](docs/07-multiply.md) | subagents by recursion, skills, and what PTC really is | ✅ built |
 | 08 Sandbox *(optional)* | embedded shell interpreter, per-process interception | planned |
 
 **Appendix: [Wire notes](docs/wire-notes.md)** — what one real gateway actually
@@ -84,6 +84,12 @@ rather than on protocol documentation, because the two do not agree.
 - Long-term memory that is a file the agent appends to with `>>`, and a rule for
   where injected context may live so that knowing the time does not cost you
   your cache.
+- Subagents that are the same loop called again, running concurrently into a
+  single ordered trace — with the measurement that matters: **20% more tokens
+  for a parent context 9.6x smaller.** A subagent does not save tokens, it saves
+  context, and knowing which one you are short of is the whole decision.
+- Skills that are a directory and one paragraph, with the index cost printed so
+  you can see the tax you are paying on every request forever.
 - No vendor lock: any OpenAI- or Anthropic-compatible endpoint, including local
   models, configured by URL + key + protocol.
 

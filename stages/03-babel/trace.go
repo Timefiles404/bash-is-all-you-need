@@ -201,7 +201,7 @@ func (w *TraceWriter) Close() error {
 
 // marshalEvent encodes one event with HTML escaping OFF.
 //
-// json.Marshal escapes <, > and & into <, > and &, and — this
+// json.Marshal escapes <, > and & into \u003c, \u003e and \u0026, and — this
 // is the part that bites — encoding/json applies that *inside a
 // json.RawMessage* too, while compacting it. Event.Request is a RawMessage
 // holding the exact bytes the adapter posted, and both adapters go out of their
@@ -212,7 +212,7 @@ func (w *TraceWriter) Close() error {
 // layer later, in the file:
 //
 //	posted:  {"command":"ls 2>&1 <in"}
-//	traced:  {"command":"ls 2>&1 <in"}
+//	traced:  {"command":"ls 2\u003e\u00261 \u003cin"}
 //
 // Nothing errors, the JSON is equivalent, and every consumer that decodes it
 // gets the right string back. What breaks is the claim: events.go calls

@@ -217,12 +217,12 @@ func (p *openaiProvider) BuildRequest(system string, msgs []Msg, tools []Tool, m
 
 	// Encode with HTML escaping OFF, matching anthropic.go.
 	//
-	// Go's json.Marshal escapes <, > and & into <, > and & — a
+	// Go's json.Marshal escapes <, > and & into \u003c, \u003e and \u0026 — a
 	// browser-safety default that is actively hostile to a shell agent, where
 	// those three characters are `2>&1`, `>/tmp/out` and `<<EOF`. One real
 	// command becomes:
 	//
-	//	{"command":"grep -rn 'x' . 2>&1 | head -5 >/tmp/out"}
+	//	{"command":"grep -rn 'x' . 2\u003e\u00261 | head -5 \u003e/tmp/out"}
 	//
 	// The server decodes it, so the model reads the same string either way.
 	// Two things are still worth the four lines. The request inspector is meant

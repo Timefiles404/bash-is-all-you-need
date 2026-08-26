@@ -251,12 +251,12 @@ the field.
 Found while reconciling the two adapters, and worth knowing whatever you are
 building.
 
-Go's `json.Marshal` escapes `<`, `>` and `&` into `<`, `>` and
-`&`. It is a browser-safety default, and it is actively hostile to a shell
+Go's `json.Marshal` escapes `<`, `>` and `&` into `\u003c`, `\u003e` and
+`\u0026`. It is a browser-safety default, and it is actively hostile to a shell
 agent, where those three characters are `2>&1`, `>/tmp/out` and `<<EOF`:
 
 ```
-json.Marshal        : {"command":"grep -rn 'x' . 2>&1 | head -5 >/tmp/out"}
+json.Marshal        : {"command":"grep -rn 'x' . 2\u003e\u00261 | head -5 \u003e/tmp/out"}
 SetEscapeHTML(false): {"command":"grep -rn 'x' . 2>&1 | head -5 >/tmp/out"}
 ```
 

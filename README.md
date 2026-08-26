@@ -50,7 +50,7 @@ beats DRY in a teaching repo.
 |---|---|---|
 | [00 The Loop](docs/00-loop.md) | request → tool call → execute → repeat. One file, no SDK. | ✅ built |
 | [01 Don't Die](docs/01-dont-die.md) | truncation, timeouts, process-tree kill, `finish_reason`, permission gate | ✅ built |
-| 02 See Everything | event bus, streaming, full instrumentation, JSONL trace, replay | planned |
+| [02 See Everything](docs/02-see-everything.md) | event bus, streaming, full instrumentation, JSONL trace, replay | ✅ built |
 | 03 Babel | one agent, many protocols: OpenAI + Anthropic behind a neutral core | planned |
 | 04 The Cache | prompt caching as *discipline*, and what it is worth in dollars | planned |
 | 05 Live Forever | compaction, context injection, file-based memory | planned |

@@ -54,7 +54,7 @@ beats DRY in a teaching repo.
 | [03 Babel](docs/03-babel.md) | one agent, many protocols: OpenAI + Anthropic behind a neutral core | ✅ built |
 | [04 The Cache](docs/04-the-cache.md) | prompt caching as *discipline*, and what it is worth in dollars | ✅ built |
 | [05 Live Forever](docs/05-live-forever.md) | compaction, context injection, memory — and what compaction really costs | ✅ built |
-| 06 The Composer | TUI: God view vs Model view of the conversation | planned |
+| [06 The Composer](docs/06-the-composer.md) | a TUI in the standard library: God view vs Model view of the same session | ✅ built |
 | 07 Multiply | subagents by recursion, skills, and what PTC really is | planned |
 | 08 Sandbox *(optional)* | embedded shell interpreter, per-process interception | planned |
 
@@ -77,6 +77,10 @@ rather than on protocol documentation, because the two do not agree.
   summarized, why, and what it cost you in tokens *and* in cache invalidation —
   measured at **+25% in full-price tokens on identical work**, which is why
   stage 05 argues compaction is a survival mechanism and not an optimisation.
+- A three-view TUI over any trace — **what happened**, **what the model saw**,
+  and **the raw bytes** — written on the standard library, because the
+  interesting parts of a terminal UI (raw-mode restoration, the Escape
+  ambiguity, display width vs byte length) are exactly what a framework hides.
 - Long-term memory that is a file the agent appends to with `>>`, and a rule for
   where injected context may live so that knowing the time does not cost you
   your cache.
@@ -101,6 +105,15 @@ set -a && . ../.env && set +a
 > find the bug in this directory, fix it, and verify the fix
 ```
 
+Then look at what it did — no key required, and it works on somebody else's
+trace just as well as your own:
+
+```sh
+go build -o composer ./stages/06-the-composer
+./composer --composer session.jsonl                  # TUI: g / m / w switch views
+./composer --composer-dump session.jsonl --view model --call 12   # the same, greppable
+```
+
 Any OpenAI-compatible endpoint works — OpenRouter, DeepSeek, Kimi, GLM, or a
 local Ollama / vLLM / LM Studio. Stage 03 adds the Anthropic protocol alongside
 it.
@@ -115,9 +128,13 @@ stops is part of the teaching:
 - **Not a Claude Code replacement.** Use Claude Code. This explains one.
 - **No MCP, no plan mode, no multi-model routing.** Each doc notes the layer
   where you would add them.
-- **No agent framework.** No LangChain, no vector database, no orchestration
-  layer, no vendor SDK. The dependency list is the standard library, a shell,
-  and `golang.org/x/sys` — needed for Windows Job Objects, and that is all.
+- **No agent framework, and no TUI framework.** No LangChain, no vector
+  database, no orchestration layer, no vendor SDK, no Bubble Tea. The dependency
+  list is the standard library, a shell, and `golang.org/x/sys` — for Windows Job
+  Objects in stage 01 and terminal control in stage 06, and that is all. Stage 06 is
+  where this stops being an aesthetic: a TUI framework hides raw-mode
+  restoration, the Escape-key ambiguity, and display width versus byte length,
+  which are the three things that chapter is about.
 - **Not a benchmark chaser.** If you want SWE-bench numbers from a minimal
   agent, see `mini-swe-agent` below.
 

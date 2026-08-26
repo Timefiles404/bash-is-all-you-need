@@ -19,3 +19,6 @@ providers.json
 
 # scratch space for experiments and subagent work
 .work/
+
+# stray stage binaries from `go build ./stages/...`
+*.exe

@@ -53,7 +53,7 @@ beats DRY in a teaching repo.
 | [02 See Everything](docs/02-see-everything.md) | event bus, streaming, full instrumentation, JSONL trace, replay | ✅ built |
 | [03 Babel](docs/03-babel.md) | one agent, many protocols: OpenAI + Anthropic behind a neutral core | ✅ built |
 | [04 The Cache](docs/04-the-cache.md) | prompt caching as *discipline*, and what it is worth in dollars | ✅ built |
-| 05 Live Forever | compaction, context injection, file-based memory | planned |
+| [05 Live Forever](docs/05-live-forever.md) | compaction, context injection, memory — and what compaction really costs | ✅ built |
 | 06 The Composer | TUI: God view vs Model view of the conversation | planned |
 | 07 Multiply | subagents by recursion, skills, and what PTC really is | planned |
 | 08 Sandbox *(optional)* | embedded shell interpreter, per-process interception | planned |
@@ -74,7 +74,12 @@ rather than on protocol documentation, because the two do not agree.
 - A JSONL trace of every session, and `replay` to step through one **without an
   API key** (which is also how you can study a session you never paid for).
 - A conversation view that shows compaction as a first-class event: what was
-  summarized, why, and what it cost you in tokens *and* in cache invalidation.
+  summarized, why, and what it cost you in tokens *and* in cache invalidation —
+  measured at **+25% in full-price tokens on identical work**, which is why
+  stage 05 argues compaction is a survival mechanism and not an optimisation.
+- Long-term memory that is a file the agent appends to with `>>`, and a rule for
+  where injected context may live so that knowing the time does not cost you
+  your cache.
 - No vendor lock: any OpenAI- or Anthropic-compatible endpoint, including local
   models, configured by URL + key + protocol.
 
@@ -92,7 +97,7 @@ go build -o agent ./stages/00-loop
 
 mkdir sandbox && cd sandbox    # it runs what the model says. use a scratch dir.
 set -a && . ../.env && set +a
-../agent
+../agent --trace session.jsonl
 > find the bug in this directory, fix it, and verify the fix
 ```
 

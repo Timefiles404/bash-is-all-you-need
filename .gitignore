@@ -16,3 +16,6 @@ sandbox/
 
 # local provider config (may name real endpoints)
 providers.json
+
+# scratch space for experiments and subagent work
+.work/

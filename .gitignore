@@ -1,0 +1,15 @@
+# secrets — never commit a key
+.env
+*.local
+
+# build output
+/agent
+/agent.exe
+bin/
+
+# session traces (stage 02+)
+*.jsonl
+traces/
+
+# scratch dirs used while testing the agent
+sandbox/

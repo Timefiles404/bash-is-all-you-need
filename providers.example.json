@@ -1,0 +1,28 @@
+{
+  "default": "opencode-oai",
+  "providers": {
+    "opencode-oai": {
+      "protocol": "openai",
+      "base_url": "https://opencode.ai/zen/go/v1",
+      "api_key_env": "AGENT_API_KEY",
+      "model": "mimo-v2.5",
+      "window": 131072,
+      "prices": { "in": 0.30, "out": 1.20, "cache_read": 0.03 }
+    },
+    "opencode-ant": {
+      "protocol": "anthropic",
+      "base_url": "https://opencode.ai/zen/go/v1",
+      "api_key_env": "AGENT_API_KEY",
+      "model": "qwen3.7-plus",
+      "window": 262144,
+      "prices": { "in": 0.40, "out": 1.60, "cache_read": 0.04, "cache_write": 0.50 }
+    },
+    "ollama": {
+      "protocol": "openai",
+      "base_url": "http://localhost:11434/v1",
+      "api_key_env": "OLLAMA_KEY",
+      "model": "qwen2.5-coder:7b",
+      "window": 32768
+    }
+  }
+}

@@ -13,3 +13,6 @@ traces/
 
 # scratch dirs used while testing the agent
 sandbox/
+
+# local provider config (may name real endpoints)
+providers.json

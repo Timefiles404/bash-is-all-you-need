@@ -148,11 +148,20 @@ func main() {
 		return
 	}
 
-	pcfg, pname, err := pf.resolve(*providerName)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
+	// resolveErr is deliberately NOT fatal here.
+	//
+	// Replay needs no key, no shell, no network and no provider — that promise
+	// is stage 02's, it is in the README, and from stage 03 until this line was
+	// written it was false: resolve() moved above the replay branch and took
+	// its os.Exit(1) with it. On a machine with the env vars set (which is
+	// every machine the author tested on) nothing looked wrong. On a machine
+	// with a trace file and nothing else — which is exactly the machine the
+	// feature exists for — `--replay` printed "no provider configured".
+	//
+	// So the error is carried rather than raised, and checked below, on the one
+	// path that actually needs a provider. A config error should be fatal to the
+	// code that depends on the config and to nothing else.
+	pcfg, pname, resolveErr := pf.resolve(*providerName)
 
 	view := newRenderer(os.Stdout, colorEnabled(os.Stdout),
 		prices{in: pcfg.Prices.In, out: pcfg.Prices.Out,
@@ -176,6 +185,10 @@ func main() {
 		return
 	}
 
+	if resolveErr != nil {
+		fmt.Fprintln(os.Stderr, resolveErr)
+		os.Exit(1)
+	}
 	provider, err := pcfg.build()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)

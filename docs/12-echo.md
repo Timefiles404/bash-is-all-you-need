@@ -44,7 +44,7 @@ func (a *agent) runCommand(ctx context.Context, turn int, callID, command string
     a.bus.Emit(Event{Kind: KindCommandStart, Turn: turn, ToolID: callID, Command: command})
     r := runBash(ctx, a.cfg.shell, command, a.cfg.timeout)
     rendered, truncated := r.render(a.cfg.maxOutput)
-    a.bus.Emit(Event{Kind: KindCommandEnd, /* ... */})
+    a.bus.Emit(Event{Kind: KindCommandEnd, Truncated: truncated /* ... */})
     return rendered
 }
 ```
@@ -139,8 +139,8 @@ measuring a session that has had its repeats removed.
 
 ## What a command actually costs
 
-401 milliseconds is only meaningless if you know what to compare it to. The
-same sixteen traces:
+401 milliseconds means nothing until you know what to compare it to. The same
+sixteen traces:
 
 | | |
 |---|---|
@@ -153,7 +153,7 @@ same sixteen traces:
 | total model time | 864,374 ms |
 
 **Ten seconds of shell against fourteen minutes of model.** Commands are 1.2%
-of the wall clock in these sessions. A cache that eliminated *every single
+of the two added together. A cache that eliminated *every single
 command* would make them 1.2% faster; the one you can actually build eliminates
 3.7% of that 1.2%, which is four hundredths of one percent.
 
@@ -184,6 +184,7 @@ turn   2   sed -n '1,150p' wire-notes.md
 turn   4   sed -n '151,300p' wire-notes.md
 turn   6   sed -n '301,450p' wire-notes.md
            << compacted >>
+turns  7-10  four more reads, none of them a repeat
 turn  11   sed -n '601,731p' wire-notes.md
            << compacted >>
 turn  12   sed -n '1,150p' wire-notes.md        <- repeat of turn 2
@@ -369,8 +370,8 @@ refused, by reason:
 Nine refusals, and **not one of them is about the program**. Every command the
 model ran in sixteen sessions was `sed`, `wc`, `cat`, `ls`, `find` or `grep` —
 six programs, all readers, five of them on the list. What the rule actually
-spends its refusals on is shell syntax: four globs, three `2>&1` redirections,
-and two `find ... -exec ... {} +`.
+spends its refusals on is shell syntax: four globs, three redirections (two
+`2>&1` and one `2>/dev/null`), and two `find ... -exec ... {} +`.
 
 The sixth is `find`, which is deliberately *not* on the list, and the reason it
 does not appear in the tally is a coincidence worth knowing about: all three of
@@ -428,7 +429,14 @@ P2 same-length rewrite, back to back
    the bytes differ every time: "route2:x" -> "route3:y"
 ```
 
-**Three quarters of them.** The reason is in the probe above it:
+**Three quarters of them**, in the run printed above. The figure is stable
+enough to build on and not stable enough to quote to three digits: five
+consecutive runs of the same two thousand trials gave 1440, 1442, 1449, 1456 and
+1457 — about 72% — and one taken while the machine was busy with something else
+gave 1087, or 54%. The number moves with how fast this process is being allowed
+to run, which is itself a hint about what is being measured.
+
+The reason is in the probe above it:
 
 ```text
 P1 mtime granularity
@@ -638,6 +646,29 @@ can carry both. That header is from a real session: the model was asked to read
 a file and then check its own reading twice, so it issued three identical tool
 calls, and two of them never became a process.
 
+### The one place the trace and the model are told different things
+
+The rule above has an exception, and it is deliberate rather than overlooked.
+What the cache stores is the *rendered* result, and every rendered result ends
+with a footer the model reads:
+
+```text
+[exit 0 · 92ms]
+```
+
+Serve that from the cache and the model is told a call took 92 milliseconds
+when it took microseconds. By the argument two paragraphs up, that is a
+description of something that did not happen.
+
+The reason it stays is that the model is not the trace. The trace's job is to
+record what occurred, and it does: it says a cache hit occurred and no command
+ran. The tool result's job is to answer the model's question, and the answer to
+"what does this file contain" does not change because the bytes came from
+memory. Rewriting the footer would mean the model sees two different answers to
+one question and has to work out which of them to believe — a much worse
+problem than a duration it has no use for. Where a number really would matter to
+the model, the honest fix is a different one: do not cache that command.
+
 ---
 
 ## Where it does pay
@@ -699,14 +730,15 @@ ceiling rather than the average:
 | command time actually spent | 3,789 ms |
 | command time not spent, thanks to the cache | 1,107 ms |
 
-The cache removed 12 of 56 commands and 22.6% of the command time. That is
-**0.3% of the session.**
+The cache removed 12 of 56 commands and 22.6% of the command time. Set against
+the model time in the row above it, that is **0.3%**; against the wall clock,
+0.4%. Pick either — the point is which column both of them are in.
 
 The same task was run again with the cache off, and the comparison is worth
 showing precisely because it proves nothing. That run did 47 commands to the
 cached run's 44, made three fewer model calls, produced 2,300 more output
 tokens, hit a 500 that cost it a retry, and finished in 4 m 50 s against
-4 m 22 s. Two runs of a nondeterministic agent cannot measure a 1.1-second
+4 m 23 s. Two runs of a nondeterministic agent cannot measure a 1.1-second
 difference; the noise between them is two orders of magnitude larger than the
 effect. **The number that is a measurement is the one from inside a single
 run** — twelve commands did not happen, and the cache says so itself. When the
@@ -781,10 +813,10 @@ overhead is not why this cache does not pay.
 ## Exercises
 
 1. **Audit your own traces.** Run `--cache-audit` over every trace you have
-   from earlier stages. If your hit rate is also under 5%, you have just
-   avoided building this in a project where it matters. If it is 30%, you have
-   learned something about your workload that no amount of reasoning would have
-   told you.
+   from earlier stages. If your hit rate is also under 5%, you have just saved
+   yourself the week it would have taken to find that out the expensive way. If
+   it is 30%, you have learned something about your workload that no amount of
+   reasoning would have told you.
 2. **Make the witness lie.** Cache `cat notes.md`, then use `touch -r` or
    `os.Chtimes` to give the file its old modification time after editing it.
    The content hash catches it. Now switch `digestOf` to return

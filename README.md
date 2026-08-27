@@ -71,7 +71,7 @@ Agent 只有一个工具，就是 `bash`。这样引擎才小到能一口气读�
 |---|---|---|
 | [09 Triage](docs/09-triage.md) | 错误是决策，不是字符串：两套协议共用一张分类表、`Retry-After`、重试预算、降级梯子 | ✅ built |
 | [10 Deadlock](docs/10-deadlock.md) | 不返回的工具和卡住的流：每一次等待都有期限，也有归属 | ✅ built |
-| 11 Malformed | 工具调用不是合法 JSON——每套协议实际递给你的是什么，拿到之后怎么办 | 🚧 planned |
+| [11 Malformed](docs/11-malformed.md) | 工具调用不是合法 JSON——每套协议递给你的是什么、为什么修它才是陷阱，以及一道校验边界 | ✅ built |
 | 12 Echo | 最便宜的工具调用是没发出去的那次：结果按内容寻址、LRU 淘汰、用 `mtime` 判过期 | 🚧 planned |
 | 13 Rewind | 会话和工作区都是状态，都得能倒回去——从 trace 续跑，改动前先打检查点 | 🚧 planned |
 | 14 Amnesia | 压缩必然有损，那就把损失量出来：探针集、召回率、保护区 | 🚧 planned |

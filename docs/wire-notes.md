@@ -28,7 +28,7 @@
 
 | # | 偏差 | 小节 |
 |---|---|---|
-| 1 | OpenAI 工具调用被截断时返回 `tool_calls: []`，再把原始的 `<tool_call><function=…>` 宿主标记倒进 `message.content`——`arguments` 永远不会是半截的 | A2 |
+| 1 | OpenAI 工具调用被截断时——**非流式**——返回 `tool_calls: []`，再把原始的 `<tool_call><function=…>` 宿主标记倒进 `message.content` | A2 |
 | 2 | Anthropic `tool_use` 被截断时，`input` 换成协议里没有的 `{"raw_arguments": "<invalid JSON>"}`——而 `stop_reason` 照旧写 `"tool_use"` | A3c |
 | 3 | Anthropic 的 `max_tokens` 只管可见文本；thinking 在预算之外生成，也在预算之外计费（`max_tokens:10` 返回了 `output_tokens:4403`） | A3a |
 | 4 | 网关把裸的 `</think>` 闭合标签当成用户可见的 `text` 内容块漏了出来 | A3b, B6 |
@@ -46,6 +46,12 @@
 | 16 | 少了必填字段的那个 400 根本没有错误信封，只回一句 `{"model":"qwen3.7-plus"}` | D11 |
 | 17 | `anthropic-version` 不是必需的；不带它调用照样成功 | D11 |
 | 18 | `parallel_tool_calls:false` 收下了，然后忽略；随便编个参数也一样。什么都不校验 | D12 |
+| 19 | 两边都不拿请求里给出的 `input_schema`/`parameters` 去校验回来的工具调用：违反 `enum` 的取值、被 `additionalProperties:false` 禁掉的属性，都原样送了回来 | E13 |
+| 20 | 类型对不上的值会被悄悄*序列化进*声明的那个类型——要 `command` 是数组，回来的是字符串 `"[\"echo\",\"hi\"]"`，schema 挑不出毛病，语义上是错的 | E13 |
+| 21 | 重发历史时，OpenAI 那条对 `arguments` 的要求就是**能解析成 JSON，此外再无别的**：`{}` 和键名它不认识的对象都收，而 `""`——零参数调用最自然的写法——是 **400** | E14 |
+| 22 | 那个 400 带着 `error.type: "server_error"` 回来。这一次说真话的是状态码，撒谎的是 `error.type` | E14 |
+| 23 | 重发回去的 `input` 对象，Anthropic 那条来者不拒：`{}`、类型不对的属性、网关自己造的 `{"raw_arguments":…}`，全收——它同样从不拿 `input_schema` 去查 `input` | E14 |
+| 24 | 同一个截断换成**流式**，交到你手上的是真正残缺的 `arguments`——一个没闭合的字符串，全程不见任何标记。A2 那句"`arguments` 永远不会是半截的"只在 `stream:false` 下成立，而真实的 Agent 全都在流式 | E15 |
 
 确认和文档一致的部分：文本截断时的 `finish_reason:"length"` /
 `stop_reason:"max_tokens"`（A1、A3a）、Anthropic 的显式 prompt 缓存（C8）、
@@ -145,6 +151,12 @@ max_tokens=70  "content":"<tool_call>\n<function=bash>\n<parameter=command>find 
 
 还要注意：给了工具时 `tool_calls` 是 `[]`（空数组），没给工具时是 `null`
 ——同一件事有两种空值。
+
+> **订正，来自 §E15。** 下面那句"你永远不用去修补写了一半的参数 JSON"，在
+> `"stream": false` 下是对的，在 `"stream": true` 下是错的——而真实的 Agent
+> 跑的正是后一种。流式下，同一个截断只把切断之前解析出来的参数片段发给你，
+> 别的什么都没有，客户端手里剩下的就是一个没闭合的字符串。这条要点余下的
+> 部分依然成立；请连着 E15 一起读。
 
 要点：在这个端点上你永远不用去修补写了一半的参数 JSON——但你得应付更难看
 的情况。`finish_reason:"length"` 加上 `tool_calls` 为空、`content` 里装着
@@ -738,6 +750,203 @@ bash tool to do three separate things: list /a, list /b, and list /c."
 了——这个网关从不校验请求参数，所以想知道某样东西到底有没有用，唯一的办法
 就是去看响应，而这正是这份记录存在的全部理由。
 
+## E13. 两边会不会拿发出去的那份 schema 校验工具调用？
+
+A1–A3 讲的是*被截断的*工具调用长什么样。这一节问的是更前面一个问题：调用
+完完整整回来了，它就一定合请求里那份 schema 吗？工具声明的还是一个必填的
+字符串 `command`，每次探测在它上面多加一条约束，再让 prompt 去要求模型把这
+条约束破坏掉。
+
+### `enum`——取值跑到允许的集合之外
+
+schema 是
+`{"command":{"type":"string"},"shell":{"type":"string","enum":["bash","sh"]}}`，
+两个属性都必填。Prompt：*"Call bash with command 'echo hi' and shell set to
+'powershell'. Use exactly that shell value."*
+
+```
+OpenAI     finish_reason:"tool_calls"   arguments: {"command": "echo hi", "shell": "powershell"}
+Anthropic  stop_reason:"tool_use"       input:     {"command": "echo hi", "shell": "sh"}
+```
+
+OpenAI 那条把 `"powershell"` 原样送了回来——schema 明令禁止的值——HTTP 200，
+`finish_reason` 也一切正常。Anthropic 那条碰巧回的是 `"sh"`，可那是*模型*
+自己愿意守规矩，不是网关拦下了什么；§E14 就会看到，同一条路上客户端塞一个
+不合 schema 的 `input` 进去，它照收不误。
+
+### `additionalProperties: false`——schema 明确禁掉的属性
+
+schema 同上，再加一个 `"additionalProperties": false`。Prompt 要求多带一个
+`timeout_ms` 字段，值是数字 5000。
+
+```
+OpenAI     arguments: {"command": "echo hi", "timeout_ms": "5000"}
+Anthropic  input:     {"command": "echo hi"}      (twice — two near-duplicate tool_use blocks)
+```
+
+`additionalProperties:false` 在 OpenAI 这条路上一分钱没买到。再看类型：要的
+是数字 5000，回来的是字符串 `"5000"`。
+
+### 声明的类型对不上
+
+`command` 声明的是 `"type":"string"`。Prompt：*"The command field must be
+the JSON array `["echo","hi"]` — an array, not a string. Do it exactly."*
+
+```
+OpenAI     arguments: "{\"command\": \"[\\\"echo\\\",\\\"hi\\\"]\"}"
+Anthropic  input:     {"command": "[\"echo\",\"hi\"]"}
+```
+
+两边都没有去违反声明的类型，而是**把数组序列化进了那个类型**。结果完全合
+schema：`command` 是字符串。它同时也彻底错了——这个字符串的内容是
+`["echo","hi"]`，把它丢给 shell，跑起来的是一条名叫 `[echo,hi]` 的命令。
+
+**答案：不会。你发出去的 schema 只是建议。**它影响模型倾向于产出什么，约束
+不了任何东西。两个后果，真正要你付代价的是第二个：
+
+1. 校验只能落在你自己的客户端里，因为上游没有任何一环在做这件事。
+2. 光有校验还不够。上面那次类型探测能通过你写的任何一条 JSON Schema 检查
+   ——要字符串，它给的就是字符串。schema 校验看得见参数的形状，至于这个值
+   有没有意义，它一个字都说不出来。一条语法上完全合法、内容却是胡话的
+   `command`，在真跑起来之前，和一条好命令长得一模一样。
+
+---
+## E14. 把工具调用**放回历史里重发**，两条路各自收什么？
+
+§A3c 留下的那个问题。截断的调用到手了；Agent 想让模型重来一次，就得先往消息
+数组里放*点什么*，而放进去的东西，会在这个会话余下的每一个回合里被重发一遍。
+那么：这个端点认哪几种写法？
+
+OpenAI 那条发了六个请求体，除 `arguments` 外完全相同，每个都是三条消息的
+历史（user → 带一个 `tool_calls` 条目的 assistant → `role:"tool"` 结果）：
+
+| `arguments` | HTTP |
+|---|---|
+| `{"command": "echo hi"}` | 200 |
+| `""` | **400** |
+| `{}` | 200 |
+| `{"raw_arguments": "{\"command\": \"find"}` | 200 |
+| `{"command": "find /srv/app -name ` （未闭合） | **400** |
+| `I will run: echo hi` （是散文，不是 JSON） | **400** |
+
+**规矩就是"能解析成 JSON"，再无别的。** `command` 明明是必填，`{}` 照收。
+唯一那个键 schema 根本不认识的对象，也收。被拒的只有那三个压根不是 JSON 的
+请求体。
+
+拒绝的响应体，逐字抄下来，三次一模一样：
+
+```json
+{"error":{"param":"","type":"server_error","message":"Error from provider (Console Go): Upstream request failed: [400] Invalid request parameters"}}
+```
+
+就这一个响应体里埋了两个坑。**明明白白是客户端犯的错，`error.type` 却写成
+`server_error`**——§D11 那个套路的第二次现身，而这一回说真话的是 HTTP
+状态码，撒谎的是 `error.type`。另一个坑是 **`arguments: ""` 会换来 400**，
+这一条要紧，因为空字符串正是零参数工具调用最自然的写法：§B4 里流式的第一个
+`tool_calls` delta 送来的就是 `"arguments":""`，于是任何一个"攒片段、再把攒
+到的东西重发"的 Agent，碰上模型不带参数调用的工具，发出去的就是 `""`。能用
+的写法是 `{}`。
+
+同一套探测在 Anthropic 那条上做了五次。那边的 `input` 本身就是 JSON 对象，
+语法上不可能不合法——只可能不合 schema：
+
+| `input` | HTTP |
+|---|---|
+| `{"command": "echo hi"}` | 200 |
+| `{}` | 200 |
+| `{"raw_arguments": "{\"command\": \"find"}` | 200 |
+| `{"command": ["echo","hi"]}` | 200 |
+| `{"timeout_ms": 5000}` | 200 |
+
+**全收。包括网关自己造出来的那个截断形状，也包括一个连 schema 声明过的属性
+都不含的 `input`。** 这条路从来不拿 `input` 和 `input_schema` 对照：出去的
+方向不查（§E13），回来的方向也不查。
+
+### 一个 Agent 把坏调用留在历史里，会怎么样
+
+同一个成因，两条路朝相反的方向坏掉：
+
+- **Anthropic**：坏调用被永远地收下。模型被要求接着往下聊，而在这段对话里，
+  它看上去用一组自己从没写过的参数调用了工具。会话就这么一路劣化，没有任何
+  东西报告这件事。
+- **OpenAI**：坏调用要是解析不成 JSON，**这个会话之后的每一个请求都是 400**
+  ——而 400 会被正确地判成致命错误（重试它，正是客户端的 bug 变成线上事故的
+  那条路，§D11）。历史里有一个没校验过的工具调用，这个会话就永久废了。
+
+两条路指向同一条规矩，也就是阶段 11 的那条：往消息数组里放东西之前先问一句
+——这个东西你愿不愿意再发一千遍？因为你就是要再发一千遍。
+
+---
+## E15. 同一个截断，换成流式——以及它逼 A2 做出的订正
+
+§A2 扫 `max_tokens`，扫的是**非流式**的工具调用，结论是：
+
+> **不会。`tool_calls[].function.arguments` 永远不会以被截断的形态返回，因为
+> 工具调用一旦被截断，`tool_calls` 根本就没填。**
+
+这句话是对的，而且只在 `"stream": false` 下对。同一个请求加上
+`"stream": true`，出来的形状正好相反。
+
+请求：A2 那个请求体原封不动，再加 `"stream": true`、
+`"reasoning_effort": "none"`、`"tool_choice": "required"`、
+`max_tokens: 40`。
+
+26 帧 `data:`。第 0 帧还是那个空的开场。第 1 帧宣布这次调用：
+
+```json
+{"index":0,"finish_reason":null,"delta":{"role":null,"content":null,"reasoning_content":null,
+ "tool_calls":[{"index":0,"id":"call_b410bbd862194a9a9ac8c2a4","type":"function",
+                "function":{"name":"bash","arguments":""}}]}}
+```
+
+第 2–21 帧只带 `arguments` 片段，别的什么都没有。取值按顺序逐字抄下来：
+
+```
+""  "{\""  "\""  "find"  " /srv/app -"  "type"  " f -name "  "\\\""  "*."  "go"  "\\\""
+" -not"  " -path "  "\\\""  "*/"  "vendor/*"  "\\\""  " -"  "not -path "  "\\\""  "*/testdata"
+```
+
+第 22 帧收尾：
+
+```json
+{"index":0,"finish_reason":"length","delta":{"role":null,"content":null,"reasoning_content":null,"tool_calls":null}}
+```
+
+接着是 usage 帧、`[DONE]`，以及哨兵之后那一帧 `cost`（§B4、§B5，都没变）。
+
+把这些片段接起来，就是客户端手里最后攥着的东西：
+
+```
+{"command": "find /srv/app -type f -name \"*.go\" -not -path \"*/vendor/*\" -not -path \"*/testdata
+```
+
+**字符串没闭合，JSON 不合法。** 整条流上找不到一处 `<tool_call>` 标记，
+`content` 自始至终是 `null`。
+
+**答案：在流式端点上，被截断的工具调用确实会把写了一半的参数 JSON 交到你
+手里。**两种形状的分野，在于网关那套服务端解析——把模型的宿主标记解出来——
+是在响应的哪个位置上跑的：
+
+- 非流式：解析跑在已经生成完的文本上，碰到被切断的标记就失败，网关于是退回
+  去，把原始标记塞进 `content`，配上 `tool_calls: []`（§A2）。
+- 流式：解析是增量跑的，解出一块就往下发一块，所以切断之前解析出来的东西
+  早就发出去了。这时候没有退路可退。
+
+这件事的分量远不止一条脚注，因为**真实的 Agent 全都在流式**。§A2 那条要点
+——在这条路上你永远不用处理残缺的参数 JSON——放进 Agent 真正跑的那个模式里，
+正好说反了；真信了它的 Agent，会把那二十个片段接起来，直接丢给
+`json.Unmarshal`。
+
+同一份抓包里还有两个细节：
+
+- **开场那一帧的 `arguments` 是 `""`。** 流要是断在第 1 帧和第 2 帧之间，
+  累加器里留下的就是空字符串——而 §E14 量过，把它重发回去是 HTTP **400**。
+  两条发现在这里撞上了：攒起来最自然的那个形状，正是端点不收的那个。
+- `finish_reason: "length"` 是会来的，就在第 22 帧上，所以这条路的信封对
+  截断这件事说了真话。Anthropic 那条不说（§A3c：`stop_reason` 照旧写着
+  `"tool_use"`）。同一件事，两个协议里只有一个肯认。
+
+---
 ---
 ## 出处
 
@@ -753,3 +962,19 @@ bash tool to do three separate things: list /a, list /b, and list /c."
 
 想复现任何一节，把文中给出的请求体重建出来、再 POST 一次就行。用的那个
 key 是临时的，预计已经被吊销。
+
+传输层还有一条，是抓 E13 和 E14 时吃了亏才学到的：这个网关蹲在 Cloudflare
+后面，而 Cloudflare 对一个朴素的 Python `urllib` 请求回的是 **HTTP 403，外加
+17 字节的响应体 `error code: 1010`**——一次冲着客户端指纹去的封禁；同一台
+机器、同一组请求头，换成 `curl` 发过去，它就痛痛快快地办了。这个错误里没有
+一个字提到"你的 HTTP 库"，E13 第一次跑的时候，有二十分钟大家都以为是鉴权
+出了问题。这里每一份抓包用的都是 `curl`。
+
+A2 和 A3c 跟着 E13/E14 在同一轮里重跑过一遍，两个都复现了，新一批数字和当初
+对得上：Anthropic 这边 `max_tokens` 超发的输出 token 量到
+`30 → 110`、`60 → 141`、`120 → 158`，对照早先的
+`30 → 113`、`60 → 140`、`100 → 157`。A2 只有在 `reasoning_effort:"none"` 下
+才复现得出来；留在默认值上，整个预算会被 `reasoning_content` 吃光（§A1），
+生成根本走不到工具调用那一步，回来的是 `tool_calls: null` 加一个空的
+`content`——这是*第三*种形状，也是你不想清楚预算花到哪儿去、上手就扫
+`max_tokens` 时会拿到的那一种。

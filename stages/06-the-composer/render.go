@@ -337,7 +337,7 @@ func (r *renderer) renderPanel(e Event) {
 			pad(fmt.Sprintf("%.6f", r.prices.cost(*u)), 10),
 			r.c(cDim, fmt.Sprintf("session $%.6f over %d calls", r.sessionCost, r.calls)))
 	} else {
-		r.p("  %s %s\n", r.c(cDim, "│"), r.c(cDim, "cost — (set --price-in/--price-out to price this run)"))
+		r.p("  %s %s\n", r.c(cDim, "│"), r.c(cDim, "cost — (no prices configured for this provider; see providers.json)"))
 	}
 
 	// Line 4 — how full the context is. This is the number that decides when

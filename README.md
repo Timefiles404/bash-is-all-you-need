@@ -46,6 +46,8 @@ Each stage introduces exactly one idea and ships a complete, runnable snapshot
 under `stages/`. Duplication between snapshots is intentional — a readable diff
 beats DRY in a teaching repo.
 
+### Phase 1 — the instrument panel (00–08)
+
 | Stage | Idea | Status |
 |---|---|---|
 | [00 The Loop](docs/00-loop.md) | request → tool call → execute → repeat. One file, no SDK. | ✅ built |
@@ -57,6 +59,27 @@ beats DRY in a teaching repo.
 | [06 The Composer](docs/06-the-composer.md) | a TUI in the standard library: God view vs Model view of the same session | ✅ built |
 | [07 Multiply](docs/07-multiply.md) | subagents by recursion, skills, and what PTC really is | ✅ built |
 | [08 Sandbox](docs/08-sandbox.md) *(optional)* | embedded shell interpreter, and why you cannot secure a shell by reading the command | ✅ built |
+
+### Phase 2 — production (09–19)
+
+Phase 1 builds an agent you can *see*. Phase 2 is about the week after you let
+someone else use it: the call that fails, the tool that never returns, the JSON
+that is not JSON, the note that went stale, the P95 nobody measured. Same rules
+— one idea per stage, and no claim without a number behind it.
+
+| Stage | Idea | Status |
+|---|---|---|
+| 09 Triage | an error is a decision, not a string: one taxonomy over two protocols, `Retry-After`, a retry budget, the fallback ladder | 🚧 planned |
+| 10 Deadlock | the tool that never returns and the stream that stalls: every wait gets a deadline and an owner | 🚧 planned |
+| 11 Malformed | the tool call is not valid JSON — what each protocol actually hands you, and what to do with it | 🚧 planned |
+| 12 Echo | the cheapest tool call is the one you do not make: content-addressed results, an LRU, staleness by `mtime` | 🚧 planned |
+| 13 Rewind | the session and the workspace are both state, and both need a rewind — resume from the trace, checkpoint before mutation | 🚧 planned |
+| 14 Amnesia | compaction is lossy, so measure the loss: a probe set, a recall number, protected regions | 🚧 planned |
+| 15 Rot | a memory needs an expiry and a witness: stale versus wrong, supersede versus contradict, self-evolving skills that disagree | 🚧 planned |
+| 16 The Briefing | context sharing is a budget, not a boolean — and the question a subagent is allowed to ask back | 🚧 planned |
+| 17 Two Seconds | the P95, not the mean: parallel calls, prompt diet, cache alignment, semantic cache, model tiering | 🚧 planned |
+| 18 The Scoreboard | four metrics off the trace, and a bad case that becomes a regression test | 🚧 planned |
+| 19 Borrowed Tools | MCP written from scratch over stdio JSON-RPC, and the schema tax measured in tokens | 🚧 planned |
 
 **Appendix: [Wire notes](docs/wire-notes.md)** — what one real gateway actually
 sends, probed byte by byte: how each protocol reports a truncated tool call
@@ -134,8 +157,10 @@ Stated so the boundaries are visible, since knowing where a teaching project
 stops is part of the teaching:
 
 - **Not a Claude Code replacement.** Use Claude Code. This explains one.
-- **No MCP, no plan mode, no multi-model routing.** Each doc notes the layer
-  where you would add them.
+- **No plan mode.** Each doc notes the layer where you would add it. MCP and
+  multi-model routing were non-goals through stage 08 and arrive in phase 2 —
+  stage 19 and stage 17 — each with its bill attached rather than as a feature
+  bullet.
 - **No agent framework, and no TUI framework.** No LangChain, no vector
   database, no orchestration layer, no vendor SDK, no Bubble Tea. Stages 00-07
   are the standard library plus `golang.org/x/sys` — for Windows Job Objects in

@@ -1275,7 +1275,7 @@ func TestDispatchAnswersDeniedCallsToo(t *testing.T) {
 // sendable afterwards.
 func TestDispatchStillAnswersEveryCallAfterAnAbort(t *testing.T) {
 	// An input stream that is already at EOF makes ask() return abort.
-	g := &gate{available: true, in: bufio.NewScanner(strings.NewReader("")), out: io.Discard}
+	g := &gate{available: true, read: lineReader(bufio.NewScanner(strings.NewReader(""))), out: io.Discard}
 	a, rec := mulAgent(g, "")
 
 	calls := []Block{
@@ -1665,7 +1665,7 @@ func TestGateQuestionNamesItsCommand(t *testing.T) {
 		g := &gate{
 			available: true,
 			out:       &out,
-			in:        bufio.NewScanner(strings.NewReader("n\n")),
+			read:      lineReader(bufio.NewScanner(strings.NewReader("n\n"))),
 		}
 		if v, _ := g.ask(command); v != deny {
 			t.Fatalf("answering n gave verdict %q, want deny", v)

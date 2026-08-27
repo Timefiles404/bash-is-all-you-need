@@ -20,6 +20,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"flag"
 	"fmt"
 	"io"
@@ -28,6 +29,9 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"bash-is-all-you-need/tui"
+	"bash-is-all-you-need/tui/settings"
 )
 
 const basePrompt = `You are a coding agent working in a terminal on the user's machine.
@@ -112,9 +116,18 @@ type config struct {
 
 type gate struct {
 	yolo, always bool
-	in           *bufio.Scanner
 	available    bool
 	out          io.Writer
+
+	// read is where the answer comes from.
+	//
+	// A function rather than the *bufio.Scanner this held from stage 01 until
+	// the interactive shell in tui/ arrived. That shell puts the terminal in raw
+	// mode and owns stdin; a Scanner reading the same descriptor would take
+	// keystrokes out of the line the user is typing, and the two readers would
+	// each get half the answer. So the reader is supplied, and a nil one is the
+	// same case as `available: false` — there is nothing to ask on.
+	read func() (string, bool)
 
 	// One question at a time, and it genuinely contends.
 	//
@@ -151,7 +164,7 @@ func (g *gate) ask(command string) (verdict, string) {
 	if g.yolo || g.always {
 		return allow, ""
 	}
-	if !g.available {
+	if !g.available || g.read == nil {
 		return deny, "no terminal to ask on — rerun with --yolo to allow commands"
 	}
 	// The question names the command it is about.
@@ -176,10 +189,11 @@ func (g *gate) ask(command string) (verdict, string) {
 	// --yolo. The choice stays; the prompt stops hiding it.
 	fmt.Fprintf(g.out, "  run? %s\n  [y / n / a = all, this session, every agent / q = stop] ",
 		oneLineDim(command, 72))
-	if !g.in.Scan() {
+	line, ok := g.read()
+	if !ok {
 		return abort, "input closed"
 	}
-	switch strings.ToLower(strings.TrimSpace(g.in.Text())) {
+	switch strings.ToLower(strings.TrimSpace(line)) {
 	case "y", "yes":
 		return allow, ""
 	case "a", "all":
@@ -189,6 +203,17 @@ func (g *gate) ask(command string) (verdict, string) {
 		return abort, "the user stopped the session"
 	default:
 		return deny, "the user denied this command"
+	}
+}
+
+// lineReader is the gate's reader for the plain prompt: one line off the same
+// Scanner the user types their messages on.
+func lineReader(in *bufio.Scanner) func() (string, bool) {
+	return func() (string, bool) {
+		if !in.Scan() {
+			return "", false
+		}
+		return in.Text(), true
 	}
 }
 
@@ -221,6 +246,13 @@ type agent struct {
 	depth    int // 0 is the agent the human is talking to
 	maxDepth int
 	subTurns int
+
+	// out is where this file's own writing goes — the slash commands below, and
+	// nothing else. Stdout for the plain prompt, and the shell's output pane
+	// under the interactive one. It exists because a bare fmt.Println inside an
+	// alternate screen lands underneath the frame, where it corrupts the layout
+	// and is never seen.
+	out io.Writer
 
 	mu        sync.Mutex
 	children  int
@@ -277,6 +309,11 @@ func main() {
 		// why `agent --subagent "..."` run from bash is a working subagent
 		// mechanism with no task tool involved at all.
 		subagentAt = flag.String("subagent", "", "run one subagent task, print its report, and exit")
+
+		// The interactive shell, in tui/. Not part of the course; see shell.go.
+		printOnly  = flag.String("p", "", "run one prompt without a UI, print the reply, and exit")
+		noTUI      = flag.Bool("no-tui", false, "use the plain line prompt instead of the interactive shell")
+		settingsAt = flag.String("settings", "", "path to the saved settings file; empty means the one under your user config directory")
 	)
 	cfg := config{}
 	flag.DurationVar(&cfg.timeout, "timeout", 30*time.Second, "kill a command after this long")
@@ -292,23 +329,38 @@ func main() {
 	// trace on.
 	if *dumpAt != "" {
 		if err := dumpComposer(*dumpAt, *dumpView, *dumpCall, *dumpW, os.Stdout); err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
+			tui.Die(err)
 		}
 		return
 	}
 	if *composerAt != "" {
 		if err := runComposer(*composerAt); err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
+			tui.Die(err)
 		}
 		return
 	}
 
+	// Saved settings, read into the environment before anything looks at it.
+	//
+	// They lose to anything already set, which is the rule that keeps `.env`,
+	// CI and `set -a` behaving exactly as they did before this file existed —
+	// see settings.ExportMissing. A file that cannot be parsed is reported and
+	// then left completely alone: the settings commands turn themselves off
+	// rather than risk writing over a key that is in there somewhere.
+	store, storeErr := settings.Load(*settingsAt)
+	if storeErr != nil {
+		// Reported later, not here. Printing at the point of failure puts the
+		// message on the screen a fraction of a second before the alternate
+		// screen goes up on top of it, so under the shell the settings commands
+		// vanish and the only explanation was displayed and then covered over.
+		store = nil
+	} else {
+		store.ExportMissing()
+	}
+
 	pf, err := loadProviders(*providersAt)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		tui.Die(err)
 	}
 	if *listProv {
 		for name, p := range pf.Providers {
@@ -348,42 +400,65 @@ func main() {
 	if *replayPath != "" {
 		events, err := ReadTrace(*replayPath)
 		if err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
+			tui.Die(err)
 		}
 		if err := Replay(events, view, ReplayOpts{Speed: *speed, Step: *step}, os.Stdin, os.Stdout); err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
+			tui.Die(err)
 		}
 		return
 	}
 
-	if resolveErr != nil {
-		fmt.Fprintln(os.Stderr, resolveErr)
-		os.Exit(1)
+	// The provider is built if it can be — and it is NOT fatal if it cannot, as
+	// long as there is a UI that can fix it.
+	//
+	// This is the one startup behaviour the interactive shell changed, and it is
+	// the whole of the flash-and-close fix. A binary started from a file manager
+	// has no environment: no AGENT_BASE_URL, no key, nothing `set -a && . ./.env`
+	// would have put there. Every version of this program before the shell
+	// printed one line to stderr and exited — and on Windows the console it was
+	// given is destroyed a few microseconds later, so the message was correct
+	// and unreadable, and the bug report is "it just flashes".
+	//
+	// So the failure is carried to the UI, which starts anyway, says what is
+	// missing, and offers the commands that fix it. With no UI — piped stdin,
+	// -p, --no-tui — it stays fatal, because there is nobody to fix it.
+	shellMode := useShell(*noTUI, *printOnly)
+
+	var provider Provider
+	provErr := resolveErr
+	if provErr == nil {
+		p, err := pcfg.build(!*noCache)
+		if err != nil {
+			provErr = err
+		} else {
+			provider = p
+		}
 	}
-	provider, err := pcfg.build(!*noCache)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+	if provider == nil && !shellMode {
+		tui.Die(provErr)
 	}
+
 	shell, err := findBash()
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		// Fatal in every mode, including the shell, and one of very few that
+		// are. No shell means the one tool this agent has does not exist, and no
+		// slash command can install one.
+		tui.Die(err)
 	}
 	cfg.shell = shell
 
 	bus := NewBus(view)
+
+	// The trace sits behind a switch so /trace can move it mid-session. See
+	// traceSink in shell.go for why the bus has no Unsubscribe instead.
+	traces := &traceSink{}
+	bus.Subscribe(traces)
 	if *tracePath != "" {
-		tw, err := NewTraceWriter(*tracePath)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
+		if err := traces.open(*tracePath); err != nil {
+			tui.Die(err)
 		}
-		defer tw.Close()
-		bus.Subscribe(tw)
 	}
+	defer traces.close()
 
 	stdin := bufio.NewScanner(os.Stdin)
 	stdin.Buffer(make([]byte, 0, 64*1024), 1024*1024)
@@ -393,46 +468,37 @@ func main() {
 	}
 
 	wd, _ := os.Getwd()
-	fmt.Printf("stage 07 · provider=%s (%s) · model=%s\ncwd=%s\n",
-		pname, provider.Protocol(), provider.Model(), wd)
 
-	// ---- the system prompt, assembled once ------------------------------
+	// The banner carries this under the shell; stderr is for the paths that
+	// have no banner to carry it.
+	if storeErr != nil && !shellMode {
+		fmt.Fprintf(os.Stderr, "note: %v\nnote: the settings commands are off until that file is fixed or deleted\n", storeErr)
+	}
+
+	sh := &shellSession{
+		storeErr: storeErr,
+		pf:       pf, view: view, bus: bus, store: store, trace: traces,
+		pname: pname, pcfg: pcfg, wd: wd,
+		opts: shellOpts{
+			provider: *providerName, cacheBP: !*noCache,
+			window: *window, noMemory: *noMemory, noSkills: *noSkills,
+			breakCache: *breakCache, tracePath: *tracePath,
+		},
+	}
+
+	// ---- the system prompt ----------------------------------------------
 	//
-	// Everything here is stable for the whole session, which is what earns it a
-	// place before the cache breakpoint. Anything that moves goes into the
+	// Everything in it is stable for the whole session, which is what earns it a
+	// place before the cache breakpoint; anything that moves goes into the
 	// message stream instead — see memory.go's placement rule.
-	memory := ""
-	if !*noMemory {
-		memory, _ = loadMemory(wd, bus)
-	}
-
-	// Skills: name and description only. The bodies stay on disk until the model
-	// decides one applies and reads it with cat — which is the whole of
-	// progressive disclosure, and the reason forty skills cost what one costs.
-	var skills []skill
-	if !*noSkills {
-		skills = loadSkills(wd)
-	}
-	if len(skills) > 0 {
-		idx, bodies := skillsCost(skills)
-		bus.Emit(Event{Kind: KindSkillsIndexed, Bytes: idx, TokensBefore: bodies,
-			Text: fmt.Sprintf("%d skills", len(skills))})
-	}
-
-	// stable is everything that cannot change while the process runs, and it is
-	// shared verbatim with every subagent. Assembled once — see stage 05.
-	stable := stableContext(shell, wd) + memoryPrompt
-	if memory != "" {
-		stable += para + memory
-	}
-	stable += skillsPrompt(skills)
-
-	full := basePrompt + para + stable
-	sys := func() string { return full }
-	if *breakCache {
-		sys = func() string {
-			return "Current time: " + time.Now().Format(time.RFC3339Nano) + "\n\n" + full
-		}
+	//
+	// It was assembled inline here, once, until the shell arrived. It is a
+	// function now for one reason: /open changes the working directory, and the
+	// memory files and the skills index are read out of that directory. Moving
+	// three of the four things that depend on the directory is worse than moving
+	// none of them.
+	sys, stable := sh.assemble(shell, wd)
+	if *breakCache && !shellMode {
 		fmt.Println("--break-cache: a fresh timestamp goes into the system prompt on every request")
 	}
 
@@ -440,16 +506,17 @@ func main() {
 	if *noCompact {
 		comp.threshold = 0
 	}
-	if pcfg.Window <= 0 && !*noCompact {
+	if pcfg.Window <= 0 && !*noCompact && provider != nil && !shellMode {
 		fmt.Println("note: this provider has no `window` configured, so compaction can never fire. Set it, or pass --window.")
 	}
 
 	a := &agent{
 		p: provider, httpc: &http.Client{Timeout: 10 * time.Minute},
-		g:   &gate{yolo: cfg.yolo, in: stdin, available: interactive, out: os.Stdout},
+		g:   &gate{yolo: cfg.yolo, read: lineReader(stdin), available: interactive, out: os.Stdout},
 		bus: bus, cfg: cfg, comp: comp, system: sys, memoryDir: wd,
-		stable: stable, maxDepth: *maxDepth,
+		stable: stable, maxDepth: *maxDepth, out: os.Stdout,
 	}
+	sh.a = a
 
 	// --subagent: one task, one report, no conversation.
 	//
@@ -465,6 +532,41 @@ func main() {
 		fmt.Println(lastAssistantText(msgs))
 		return
 	}
+
+	// -p: one prompt, the panel, no UI, exit.
+	//
+	// The non-interactive contract written down as a flag rather than left to
+	// depend on whether stdin happens to be a pipe. Everything the shell can do
+	// this can do through flags; the one thing it cannot do is ask, so the gate
+	// is closed explicitly and a command that needs approval is denied with a
+	// reason — rather than hanging on a terminal nobody is watching.
+	if *printOnly != "" {
+		a.g.available = false
+		bus.Emit(Event{Kind: KindUserMessage, Text: *printOnly})
+		msgs := a.runTurn([]Msg{userTurn(*printOnly, volatileContext(shell, time.Now()))})
+		fmt.Println()
+		fmt.Println(lastAssistantText(msgs))
+		view.SessionSummary(a.lastPrompt)
+		return
+	}
+
+	if shellMode {
+		if err := sh.run(context.Background()); err == nil {
+			return
+		} else {
+			// The shell could not take the terminal. Not fatal: fall through to
+			// the plain prompt, which is what --no-tui would have given anyway.
+			// A tool that refuses to run because it could not draw a status bar
+			// is worse than one that draws nothing.
+			fmt.Fprintf(os.Stderr, "the interactive shell could not start (%v); using the plain prompt\n", err)
+			if provider == nil {
+				tui.Die(provErr)
+			}
+		}
+	}
+
+	fmt.Printf("stage 07 · provider=%s (%s) · model=%s\ncwd=%s\n",
+		pname, pcfg.Protocol, pcfg.Model, wd)
 
 	var msgs []Msg
 	for {
@@ -494,15 +596,41 @@ func main() {
 	view.SessionSummary(a.lastPrompt)
 }
 
+// useShell decides whether to draw a UI.
+//
+// Four ways to end up with the plain prompt instead, and each is somebody's real
+// situation: --no-tui for a reader who wants the loop the chapters describe, -p
+// for a script, a piped stdin because `echo hi | agent` has worked since stage
+// 00 and a full-screen UI would break every script that does it, and TERM=dumb
+// because a terminal saying it cannot do this is telling the truth.
+//
+// Stdout is checked as well as stdin. Redirecting output to a file with the
+// terminal still attached is how you get a log full of escape sequences and a
+// screen that repaints over the top of your shell.
+func useShell(noTUI bool, printOnly string) bool {
+	if noTUI || printOnly != "" {
+		return false
+	}
+	if strings.EqualFold(os.Getenv("TERM"), "dumb") {
+		return false
+	}
+	fi, err := os.Stdin.Stat()
+	if err != nil || fi.Mode()&os.ModeCharDevice == 0 {
+		return false
+	}
+	fo, err := os.Stdout.Stat()
+	return err == nil && fo.Mode()&os.ModeCharDevice != 0
+}
+
 // command handles the slash commands. They exist for the experiments in
 // docs/05-live-forever.md: compaction that only fires when the window is nearly
 // full is hard to demonstrate and harder to test.
 func (a *agent) command(line string, msgs []Msg) (bool, []Msg) {
 	switch {
 	case line == "/help":
-		fmt.Println("  /compact          compact the conversation now")
-		fmt.Println("  /remember <note>  append a line to " + memoryFileForWriting)
-		fmt.Println("  /context          show what the conversation currently costs")
+		fmt.Fprintln(a.out, "  /compact          compact the conversation now")
+		fmt.Fprintln(a.out, "  /remember <note>  append a line to "+memoryFileForWriting)
+		fmt.Fprintln(a.out, "  /context          show what the conversation currently costs")
 		return true, msgs
 
 	case line == "/compact":
@@ -520,15 +648,15 @@ func (a *agent) command(line string, msgs []Msg) (bool, []Msg) {
 
 	case line == "/context":
 		base := len(a.system()) + toolChars()
-		fmt.Printf("  %d messages · %d chars of history + %d chars of system/tools\n",
+		fmt.Fprintf(a.out, "  %d messages · %d chars of history + %d chars of system/tools\n",
 			len(msgs), convChars(msgs), base)
-		fmt.Printf("  estimated prompt: ~%d tokens at %.2f chars/token (%d calibration samples)\n",
+		fmt.Fprintf(a.out, "  estimated prompt: ~%d tokens at %.2f chars/token (%d calibration samples)\n",
 			a.comp.estimate(msgs, base), a.comp.est.ratio, a.comp.est.obs)
 		if a.lastPrompt > 0 {
-			fmt.Printf("  last call actually billed: %d prompt tokens\n", a.lastPrompt)
+			fmt.Fprintf(a.out, "  last call actually billed: %d prompt tokens\n", a.lastPrompt)
 		}
 		if problem := validConversation(msgs); problem != "" {
-			fmt.Printf("  MALFORMED: %s\n", problem)
+			fmt.Fprintf(a.out, "  MALFORMED: %s\n", problem)
 		}
 		return true, msgs
 

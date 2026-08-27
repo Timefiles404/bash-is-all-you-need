@@ -852,3 +852,21 @@ func partialUsage(ce *CallError) *Usage {
 	u := ce.Partial.Usage
 	return &u
 }
+
+// names lists the ladder in order, for a status report.
+//
+// A snapshot, and deliberately not what the fallback logic reads — that goes
+// through pos() and advance() under the lock, because a caller acting on a stale
+// index is the failure this file was written to prevent.
+func (l *ladder) names() []string {
+	if l == nil {
+		return nil
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	out := make([]string, 0, len(l.rungs))
+	for _, r := range l.rungs {
+		out = append(out, r.info.Name)
+	}
+	return out
+}

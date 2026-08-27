@@ -40,6 +40,9 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"bash-is-all-you-need/tui"
+	"bash-is-all-you-need/tui/settings"
 )
 
 const basePrompt = `You are a coding agent working in a terminal on the user's machine.
@@ -123,9 +126,17 @@ type config struct {
 
 type gate struct {
 	yolo, always bool
-	in           *bufio.Scanner
 	available    bool
 	out          io.Writer
+
+	// read 是答案的来路。
+	//
+	// 一个函数，而不是从阶段 01 一直放到 tui/ 里那个交互式外壳出现之前的
+	// *bufio.Scanner。那个外壳把终端切进原始模式，并且占着 stdin；同一个描述
+	// 符上再挂一个 Scanner，会把用户正在敲的那一行里的按键抢走，两个读者各拿
+	// 到半个答案。所以读法由外面递进来；而递进来一个 nil，跟
+	// `available: false` 是同一种情况——没有地方可问。
+	read func() (string, bool)
 
 	// 一次只问一个问题，而且它是真的会争。
 	//
@@ -160,7 +171,7 @@ func (g *gate) ask(command string) (verdict, string) {
 	if g.yolo || g.always {
 		return allow, ""
 	}
-	if !g.available {
+	if !g.available || g.read == nil {
 		return deny, "no terminal to ask on — rerun with --yolo to allow commands"
 	}
 	// 问题会点名它问的是哪条命令。
@@ -182,10 +193,11 @@ func (g *gate) ask(command string) (verdict, string) {
 	// 么最后跑上 --yolo 的。这个选择不改；只是提示不再瞒着它了。
 	fmt.Fprintf(g.out, "  run? %s\n  [y / n / a = all, this session, every agent / q = stop] ",
 		oneLineDim(command, 72))
-	if !g.in.Scan() {
+	line, ok := g.read()
+	if !ok {
 		return abort, "input closed"
 	}
-	switch strings.ToLower(strings.TrimSpace(g.in.Text())) {
+	switch strings.ToLower(strings.TrimSpace(line)) {
 	case "y", "yes":
 		return allow, ""
 	case "a", "all":
@@ -195,6 +207,17 @@ func (g *gate) ask(command string) (verdict, string) {
 		return abort, "the user stopped the session"
 	default:
 		return deny, "the user denied this command"
+	}
+}
+
+// lineReader 是朴素行提示符下权限闸用的那个读法：从用户敲自己消息用的同一个
+// Scanner 上读一行。
+func lineReader(in *bufio.Scanner) func() (string, bool) {
+	return func() (string, bool) {
+		if !in.Scan() {
+			return "", false
+		}
+		return in.Text(), true
 	}
 }
 
@@ -245,6 +268,11 @@ type agent struct {
 	// cutStreak 数的是连续多少个回合里，每一次工具调用都被判成截断而拒掉。见
 	// maxCutStreak。
 	cutStreak int
+
+	// out 是这个文件自己往外写的去处——只有下面那些斜杠命令，别无其他。朴素行
+	// 提示符下是 stdout，交互式外壳下是外壳的输出区。它存在，是因为在备用屏里
+	// 光秃秃一句 fmt.Println 会落到帧的底下，把版面弄坏，而且永远不会被看见。
+	out io.Writer
 
 	mu        sync.Mutex
 	children  int
@@ -315,6 +343,11 @@ func main() {
 		connectFor = flag.Duration("connect-timeout", 30*time.Second, "response headers must arrive within this")
 		idleFor    = flag.Duration("stall-timeout", 45*time.Second, "longest tolerated gap between bytes of a stream")
 		callFor    = flag.Duration("call-timeout", 15*time.Minute, "backstop on one whole model call, retries excluded")
+
+		// 交互式外壳，在 tui/ 里。不是课程的一部分；见 shell.go。
+		printOnly  = flag.String("p", "", "run one prompt without a UI, print the reply, and exit")
+		noTUI      = flag.Bool("no-tui", false, "use the plain line prompt instead of the interactive shell")
+		settingsAt = flag.String("settings", "", "path to the saved settings file; empty means the one under your user config directory")
 	)
 	cfg := config{}
 	flag.DurationVar(&cfg.timeout, "timeout", 30*time.Second, "kill a command after this long")
@@ -333,23 +366,36 @@ func main() {
 	// 种。
 	if *dumpAt != "" {
 		if err := dumpComposer(*dumpAt, *dumpView, *dumpCall, *dumpW, os.Stdout); err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
+			tui.Die(err)
 		}
 		return
 	}
 	if *composerAt != "" {
 		if err := runComposer(*composerAt); err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
+			tui.Die(err)
 		}
 		return
 	}
 
+	// 存下来的设置，在任何东西去看环境之前就先读进环境里。
+	//
+	// 它们输给任何已经设过的值，而这条规矩正是让 `.env`、CI 和 `set -a` 的行为
+	// 跟这个文件出现之前一模一样的东西——见 settings.ExportMissing。一份解析不
+	// 了的文件会被报出来，然后就彻底不碰它：设置类命令宁可把自己关掉，也不去
+	// 赌覆盖掉那里头某处的一个 key。
+	store, storeErr := settings.Load(*settingsAt)
+	if storeErr != nil {
+		// 留到后面报，不在这里报。在出错的当场打印，那条消息会在备用屏盖上来
+		// 的前一瞬间出现在屏幕上——于是外壳底下设置类命令没了，而唯一的解释显
+		// 示过一下，随即被盖住。
+		store = nil
+	} else {
+		store.ExportMissing()
+	}
+
 	pf, err := loadProviders(*providersAt)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		tui.Die(err)
 	}
 	if *listProv {
 		for name, p := range pf.Providers {
@@ -387,48 +433,65 @@ func main() {
 	if *replayPath != "" {
 		events, err := ReadTrace(*replayPath)
 		if err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
+			tui.Die(err)
 		}
 		if err := Replay(events, view, ReplayOpts{Speed: *speed, Step: *step}, os.Stdin, os.Stdout); err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
+			tui.Die(err)
 		}
 		return
 	}
 
-	if resolveErr != nil {
-		fmt.Fprintln(os.Stderr, resolveErr)
-		os.Exit(1)
+	// 供应商能建就建——而**建不起来不致命**，只要有一个界面能把它修好。
+	//
+	// 这是交互式外壳唯一动过的启动行为，也是"一闪就没"这个修法的全部。从文件
+	// 管理器里打开的二进制没有环境：没有 AGENT_BASE_URL，没有 key，
+	// `set -a && . ./.env` 会放进去的东西一样都没有。外壳之前的每一版程序都是
+	// 往 stderr 打一行然后退出——而在 Windows 上，发给它的那个控制台几微秒后就
+	// 被销毁了，于是消息既正确又没人读得到，报上来的 bug 是"它就闪一下"。
+	//
+	// 所以失败被带到界面那边：界面照样起来，说清少了什么，再把能修好它的命令
+	// 摆出来。没有界面的时候——管道喂进来的 stdin、-p、--no-tui——它仍然致命，
+	// 因为没有人在那儿修。
+	shellMode := useShell(*noTUI, *printOnly)
+
+	var lad *ladder
+	provErr := resolveErr
+	if provErr == nil {
+		provider, err := pcfg.build(!*noCache)
+		if err != nil {
+			provErr = err
+		} else if l, err := buildLadder(pf, pname, pcfg, provider, *fallbackTo, !*noCache); err != nil {
+			provErr = err
+		} else {
+			lad = l
+		}
 	}
-	provider, err := pcfg.build(!*noCache)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+	if lad == nil && !shellMode {
+		tui.Die(provErr)
 	}
-	lad, err := buildLadder(pf, pname, pcfg, provider, *fallbackTo, !*noCache)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
+
 	pol := retryPolicy{attempts: *retries, base: 500 * time.Millisecond, max: 8 * time.Second, budget: *retryBudget}
 	shell, err := findBash()
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		// 在每种模式下都致命，外壳里也一样，而这样的东西极少。没有 shell 就意
+		// 味着这个 Agent 唯一那件工具不存在，而没有任何一条斜杠命令能装一个出
+		// 来。
+		tui.Die(err)
 	}
 	cfg.shell = shell
 
 	bus := NewBus(view)
+
+	// trace 蹲在一个开关后面，这样 /trace 才能在会话中途把它挪走。至于为什么不
+	// 是给总线加一个 Unsubscribe，见 shell.go 里的 traceSink。
+	traces := &traceSink{}
+	bus.Subscribe(traces)
 	if *tracePath != "" {
-		tw, err := NewTraceWriter(*tracePath)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
+		if err := traces.open(*tracePath); err != nil {
+			tui.Die(err)
 		}
-		defer tw.Close()
-		bus.Subscribe(tw)
 	}
+	defer traces.close()
 
 	// trace 里的第一条事实：这场会话由谁来服务，什么价钱。
 	//
@@ -437,8 +500,10 @@ func main() {
 	// 的 trace 里那些成本数字，也就因此没法复原。它在 trace writer 订阅之后
 	// 才发出，好让文件也拿到；而它和降级稍后发的是同一个事件：一种事件，一
 	// 个意思，"现在是这家在应答"。
-	_, _, pinfo := lad.pos()
-	bus.Emit(Event{Kind: KindProvider, Provider: &pinfo})
+	if lad != nil {
+		_, _, pinfo := lad.pos()
+		bus.Emit(Event{Kind: KindProvider, Provider: &pinfo})
+	}
 
 	stdin := bufio.NewScanner(os.Stdin)
 	stdin.Buffer(make([]byte, 0, 64*1024), 1024*1024)
@@ -448,44 +513,33 @@ func main() {
 	}
 
 	wd, _ := os.Getwd()
-	fmt.Printf("stage 11 · provider=%s (%s) · model=%s\ncwd=%s\n",
-		pname, provider.Protocol(), provider.Model(), wd)
 
-	// ---- 系统提示词，一次装配好 -----------------------------------------
+	// 外壳底下这句由横幅来带；stderr 留给那些没有横幅可带的路径。
+	if storeErr != nil && !shellMode {
+		fmt.Fprintf(os.Stderr, "note: %v\nnote: the settings commands are off until that file is fixed or deleted\n", storeErr)
+	}
+
+	sh := &shellSession{
+		storeErr: storeErr,
+		pf:       pf, view: view, bus: bus, store: store, trace: traces,
+		pname: pname, pcfg: pcfg, wd: wd,
+		opts: shellOpts{
+			provider: *providerName, fallback: *fallbackTo, cacheBP: !*noCache,
+			window: *window, noMemory: *noMemory, noSkills: *noSkills,
+			breakCache: *breakCache,
+		},
+	}
+
+	// ---- 系统提示词 -----------------------------------------------------
 	//
-	// 这里的一切在整个会话里都是稳定的，这才让它有资格待在缓存断点之前。
-	// 会动的东西一律进消息流——见 memory.go 的放置规则。
-	memory := ""
-	if !*noMemory {
-		memory, _ = loadMemory(wd, bus)
-	}
-
-	// 技能：只给名字和描述。正文留在磁盘上，直到模型判定某个用得上、拿 cat
-	// 读它——这就是渐进披露的全部，也是四十个技能跟一个技能花一样多的原因。
-	var skills []skill
-	if !*noSkills {
-		skills = loadSkills(wd)
-	}
-	if len(skills) > 0 {
-		idx, bodies := skillsCost(skills)
-		bus.Emit(Event{Kind: KindSkillsIndexed, Bytes: idx, TokensBefore: bodies,
-			Text: fmt.Sprintf("%d skills", len(skills))})
-	}
-
-	// stable 是进程运行期间不可能变的一切，而且逐字节共享给每个子 Agent。只
-	// 拼一次——见阶段 05。
-	stable := stableContext(shell, wd) + memoryPrompt
-	if memory != "" {
-		stable += para + memory
-	}
-	stable += skillsPrompt(skills)
-
-	full := basePrompt + para + stable
-	sys := func() string { return full }
-	if *breakCache {
-		sys = func() string {
-			return "Current time: " + time.Now().Format(time.RFC3339Nano) + "\n\n" + full
-		}
+	// 它里面的一切在整个会话里都是稳定的，这才让它有资格待在缓存断点之前；会
+	// 动的东西一律进消息流——见 memory.go 的放置规则。
+	//
+	// 在外壳出现之前，它就是在这里当场拼好，只拼一次。现在它是个函数，只为
+	// 一个理由：/open 会换掉工作目录，而记忆文件和技能索引都是从那个目录里
+	// 读的。依赖这个目录的东西一共四样，挪三样比一样都不挪更糟。
+	sys, stable := sh.assemble(shell, wd)
+	if *breakCache && !shellMode {
 		fmt.Println("--break-cache: a fresh timestamp goes into the system prompt on every request")
 	}
 
@@ -493,7 +547,7 @@ func main() {
 	if *noCompact {
 		comp.threshold = 0
 	}
-	if pcfg.Window <= 0 && !*noCompact {
+	if pcfg.Window <= 0 && !*noCompact && lad != nil && !shellMode {
 		fmt.Println("note: this provider has no `window` configured, so compaction can never fire. Set it, or pass --window.")
 	}
 
@@ -512,31 +566,39 @@ func main() {
 		},
 	}
 
+	ctx, cancel := context.WithCancelCause(context.Background())
+	defer cancel(context.Canceled)
+
 	// 整个会话共用一个 context，结束它的是 Ctrl-C。
 	//
 	// signal.NotifyContext 会更短，但它取消时带的是 context.Canceled，分
 	// 诊分不出它和卡住的区别。原因才是要点所在，所以这个 handler 是手写出
 	// 来的。
-	ctx, cancel := context.WithCancelCause(context.Background())
-	defer cancel(context.Canceled)
-	sigc := make(chan os.Signal, 1)
-	signal.Notify(sigc, os.Interrupt)
-	go func() {
-		<-sigc
-		cancel(errInterrupted)
-		// 第二次 Ctrl-C 不是第一次的加量。第一次是请 Agent 停下来，那意味着
-		// 收摊：杀掉命令，关掉 trace，把账印出来。要是这个收摊本身卡住了，
-		// 用户得有条出路，而这条出路不能依赖那段已经卡住的代码。
-		signal.Stop(sigc)
-	}()
+	//
+	// 外壳不装它，而这不是漏掉。原始模式会关掉 ISIG，所以在外壳底下，Ctrl-C 是
+	// 以字节 0x03 从 stdin 进来的，不是以信号进来的——这里再装一个处理器，就成
+	// 了同一次按键的第二个读者，含义还不一样，而且跟第一个抢。
+	if !shellMode {
+		sigc := make(chan os.Signal, 1)
+		signal.Notify(sigc, os.Interrupt)
+		go func() {
+			<-sigc
+			cancel(errInterrupted)
+			// 第二次 Ctrl-C 不是第一次的加量。第一次是请 Agent 停下来，那意味
+			// 着收摊：杀掉命令，关掉 trace，把账印出来。要是这个收摊本身卡住
+			// 了，用户得有条出路，而这条出路不能依赖那段已经卡住的代码。
+			signal.Stop(sigc)
+		}()
+	}
 
 	a := &agent{
 		lad: lad, pol: pol, dl: dl, httpc: httpc,
-		g:   &gate{yolo: cfg.yolo, in: stdin, available: interactive, out: os.Stdout},
+		g:   &gate{yolo: cfg.yolo, read: lineReader(stdin), available: interactive, out: os.Stdout},
 		bus: bus, cfg: cfg, comp: comp, system: sys, memoryDir: wd,
-		stable: stable, maxDepth: *maxDepth,
+		stable: stable, maxDepth: *maxDepth, out: os.Stdout,
 		seenIDs: map[string]bool{},
 	}
+	sh.a = a
 
 	// --subagent：一个任务，一份报告，没有对话。
 	//
@@ -551,6 +613,38 @@ func main() {
 		fmt.Println(lastAssistantText(msgs))
 		return
 	}
+
+	// -p：一条提示词，一份仪表盘，没有界面，退出。
+	//
+	// 把非交互的契约写成一个 flag，而不是听天由命地看 stdin 恰好是不是管道。外
+	// 壳能做的每件事，这里都能通过 flag 做到；它唯一做不到的是问，所以权限闸被
+	// 明确关掉，需要授权的命令会带着理由被拒——而不是挂在一个没人看的终端上。
+	if *printOnly != "" {
+		a.g.available = false
+		bus.Emit(Event{Kind: KindUserMessage, Text: *printOnly})
+		msgs := a.runTurn(ctx, []Msg{userTurn(*printOnly, volatileContext(shell, time.Now()))})
+		fmt.Println()
+		fmt.Println(lastAssistantText(msgs))
+		view.SessionSummary(a.lastPrompt)
+		return
+	}
+
+	if shellMode {
+		if err := sh.run(ctx); err == nil {
+			return
+		} else {
+			// 外壳拿不下这个终端。不致命：掉下去走朴素行提示符，反正 --no-tui
+			// 给的也是这个。一个因为画不出状态栏就不肯跑的工具，比一个什么都
+			// 不画的工具更糟。
+			fmt.Fprintf(os.Stderr, "the interactive shell could not start (%v); using the plain prompt\n", err)
+			if lad == nil {
+				tui.Die(provErr)
+			}
+		}
+	}
+
+	fmt.Printf("stage 11 · provider=%s (%s) · model=%s\ncwd=%s\n",
+		pname, pcfg.Protocol, pcfg.Model, wd)
 
 	var msgs []Msg
 	for {
@@ -579,14 +673,38 @@ func main() {
 	view.SessionSummary(a.lastPrompt)
 }
 
+// useShell 决定要不要画界面。
+//
+// 有四条路会落到朴素行提示符上，而每一条都是某个人真实的处境：--no-tui 给的
+// 是想要各章讲的那个循环的读者，-p 给的是脚本，管道喂进来的 stdin 则因为
+// `echo hi | agent` 从阶段 00 起就一直能用，而一个全屏界面会把每个这么干的
+// 脚本弄坏，还有 TERM=dumb——一个终端说自己干不了这个，那是实话。
+//
+// stdin 之外也查了 stdout。终端还接着、却把输出重定向进文件，就是这么拿到一
+// 份满是转义序列的日志，外加一块在你的 shell 上面反复重画的屏幕。
+func useShell(noTUI bool, printOnly string) bool {
+	if noTUI || printOnly != "" {
+		return false
+	}
+	if strings.EqualFold(os.Getenv("TERM"), "dumb") {
+		return false
+	}
+	fi, err := os.Stdin.Stat()
+	if err != nil || fi.Mode()&os.ModeCharDevice == 0 {
+		return false
+	}
+	fo, err := os.Stdout.Stat()
+	return err == nil && fo.Mode()&os.ModeCharDevice != 0
+}
+
 // command 处理斜杠命令。它们是为 docs/05-live-forever.md 里的实验准备
 // 的：压缩只在窗口快满时才触发，这很难演示，更难测试。
 func (a *agent) command(ctx context.Context, line string, msgs []Msg) (bool, []Msg) {
 	switch {
 	case line == "/help":
-		fmt.Println("  /compact          compact the conversation now")
-		fmt.Println("  /remember <note>  append a line to " + memoryFileForWriting)
-		fmt.Println("  /context          show what the conversation currently costs")
+		fmt.Fprintln(a.out, "  /compact          compact the conversation now")
+		fmt.Fprintln(a.out, "  /remember <note>  append a line to "+memoryFileForWriting)
+		fmt.Fprintln(a.out, "  /context          show what the conversation currently costs")
 		return true, msgs
 
 	case line == "/compact":
@@ -604,15 +722,15 @@ func (a *agent) command(ctx context.Context, line string, msgs []Msg) (bool, []M
 
 	case line == "/context":
 		base := len(a.system()) + toolChars()
-		fmt.Printf("  %d messages · %d chars of history + %d chars of system/tools\n",
+		fmt.Fprintf(a.out, "  %d messages · %d chars of history + %d chars of system/tools\n",
 			len(msgs), convChars(msgs), base)
-		fmt.Printf("  estimated prompt: ~%d tokens at %.2f chars/token (%d calibration samples)\n",
+		fmt.Fprintf(a.out, "  estimated prompt: ~%d tokens at %.2f chars/token (%d calibration samples)\n",
 			a.comp.estimate(msgs, base), a.comp.est.ratio, a.comp.est.obs)
 		if a.lastPrompt > 0 {
-			fmt.Printf("  last call actually billed: %d prompt tokens\n", a.lastPrompt)
+			fmt.Fprintf(a.out, "  last call actually billed: %d prompt tokens\n", a.lastPrompt)
 		}
 		if problem := validConversation(msgs); problem != "" {
-			fmt.Printf("  MALFORMED: %s\n", problem)
+			fmt.Fprintf(a.out, "  MALFORMED: %s\n", problem)
 		}
 		return true, msgs
 
@@ -661,6 +779,19 @@ func (a *agent) runTurn(ctx context.Context, msgs []Msg) []Msg {
 	for turn := 1; ; turn++ {
 		if turn > a.cfg.maxTurns {
 			a.bus.Notice("stopped: hit the %d-turn limit", a.cfg.maxTurns)
+			return msgs
+		}
+
+		// 用户要它停，那就停——在开始任何别的事情之前。
+		//
+		// 这道检查一直缺着，直到交互式外壳把它显出来；而它此前为什么显不出
+		// 来，比这个修法本身更值钱。外壳之前，打断的唯一办法是 Ctrl-C，它取消
+		// 会话 context 并结束进程；收摊路上多打一次注定失败的模型调用，谁也看
+		// 不出区别。外壳底下，会话扛得过一次打断，于是用户在一条正在跑的命令
+		// 上按下 Escape 之后看到的，是命令被正确杀掉，紧接着两行红字说一次
+		// HTTP POST 失败了——那正是这个循环在被叫停之后又去拨了一次模型的报告。
+		if ctx.Err() != nil {
+			a.bus.Notice("stopped: %v", context.Cause(ctx))
 			return msgs
 		}
 

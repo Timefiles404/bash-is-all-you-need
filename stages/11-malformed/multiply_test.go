@@ -1243,7 +1243,7 @@ func TestDispatchAnswersDeniedCallsToo(t *testing.T) {
 // 还发得出去。
 func TestDispatchStillAnswersEveryCallAfterAnAbort(t *testing.T) {
 	// 已经处在 EOF 的输入流会让 ask() 返回 abort。
-	g := &gate{available: true, in: bufio.NewScanner(strings.NewReader("")), out: io.Discard}
+	g := &gate{available: true, read: lineReader(bufio.NewScanner(strings.NewReader(""))), out: io.Discard}
 	a, rec := mulAgent(g, "")
 
 	calls := []Block{
@@ -1622,7 +1622,7 @@ func TestGateQuestionNamesItsCommand(t *testing.T) {
 		g := &gate{
 			available: true,
 			out:       &out,
-			in:        bufio.NewScanner(strings.NewReader("n\n")),
+			read:      lineReader(bufio.NewScanner(strings.NewReader("n\n"))),
 		}
 		if v, _ := g.ask(command); v != deny {
 			t.Fatalf("answering n gave verdict %q, want deny", v)

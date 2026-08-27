@@ -790,3 +790,21 @@ func partialUsage(ce *CallError) *Usage {
 	u := ce.Partial.Usage
 	return &u
 }
+
+// names 按顺序列出梯子，给状态报告用。
+//
+// 一份快照，而且刻意不是降级逻辑读的那一份——降级走的是锁底下的 pos() 和
+// advance()，因为一个调用方拿着过期的级号去动手，正是这个文件写出来要防的
+// 那种失败。
+func (l *ladder) names() []string {
+	if l == nil {
+		return nil
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	out := make([]string, 0, len(l.rungs))
+	for _, r := range l.rungs {
+		out = append(out, r.info.Name)
+	}
+	return out
+}

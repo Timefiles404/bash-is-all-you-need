@@ -373,7 +373,8 @@ guard because the natural way to write these strings is as advice.
 ```
 toolcall.go        the boundary: the taxonomy, checkCall, the schema subset,
                    uniqueIDs, mergeArgs, renderArgs, stripHarnessMarkup
-toolcall_test.go   31 tests, none of which need a network
+toolcall_test.go   32 tests for the boundary itself
+wiring_test.go     11 tests that it is CALLED — see below
 exec.go            parseBashArgs deleted; emptyCommand is the residue
 subagent.go        parseTaskArgs deleted; `description` no longer declared
                    required; dispatch validates before the switch
@@ -383,6 +384,37 @@ openai.go          mergeArgs in the accumulator; renderArgs on the way out
 events.go          KindToolCallInvalid, and a Fault field
 render.go          the fault line, and a session malformed count
 ```
+
+### Why there are two test files
+
+`toolcall_test.go` covers the boundary. `wiring_test.go` exists because that was
+not enough, and mutation testing is what said so.
+
+The first run broke the code in 42 places, one at a time. **Sixteen mutants
+survived**, and ten of them were the same shape: the checks were covered and the
+*calls to them* were not. Deleting the boundary's call from `dispatch` survived,
+because a second guard downstream happened to reject the same payload and the
+test only asserted "it was refused". Deleting `uniqueIDs` from the loop survived.
+Turning the fuse off survived. Reverting the accumulator to a blind append
+survived.
+
+The other six were tests that passed without exercising what they named — the
+id-length cap tested with an id short enough that the cap never fired, and four
+`jsonIsOpen` cases where the bracket depth had already decided the answer before
+the clause under test was reached.
+
+A unit test on a function proves the function works. Only a test that runs the
+loop proves the loop uses it. `wiring_test.go` drives `runTurn` against a
+scripted provider — no network — and asserts on the trace.
+
+One survivor was not a missing test. `jsonIsOpen` also checked for a trailing
+comma or colon, and removing that changed nothing, because no input can reach
+it: a cut immediately after `{"a":` leaves the object open, so `depth > 0` has
+already decided. Two lines and a variable that could never change an answer, so
+they are gone. That is the second time in this repo an equivalent mutant has been
+a signal to **delete** code rather than to write a test for it.
+
+Final: **41/41 caught, 0 survived.**
 
 ### Two corrections to stage 10 that this stage surfaced
 

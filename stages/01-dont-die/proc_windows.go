@@ -1,28 +1,23 @@
 //go:build windows
 
-// 进程树杀死，Windows 版。
+// 杀进程树，Windows 版。
 //
-// Windows 没有 Unix 意义上的进程组——而且，这是最容易
-// 让人栽跟头的地方——也没有可靠的父子关系。一个 Windows
-// 进程会记录创建它的那个 PID，但系统不会留着那个 PID，
-// 也不会把它传给后代，而是会积极地回收再利用。所以"沿着
-// 父链接往下走、杀掉整棵子树"这一招，在 Windows 上不只是
-// 有竞争风险，它根本就是错的：一个被回收的 PID，能让一个
-// 毫不相干的进程看起来像是你的孙进程，结果你杀掉的是
-// 别人的工作成果。
+// Windows 上没有 Unix 意义的进程组，而且——这才是把人坑住的地方——
+// 连可靠的父子关系也没有。Windows 进程会记下创建它的那个 PID，但那
+// 个 PID 不会被 keep-alive，不会被继承，还会被激进地回收。所以"顺着父链走
+// 一遍，把子树杀掉"在 Windows 上不只是有竞争，它是错的：PID 只要被
+// 回收过，就能让毫不相干的进程看起来像是你的孙子进程，于是你杀掉的
+// 是别人的活儿。
 //
-// 正确的基本构件是工作对象（Job Object）：一个进程可以被
-// 分配进去的内核容器，子进程会自动继承这层归属，还能被
-// 整体当作一个单位终止掉。这跟 Windows 容器背后的机制是
-// 同一套，也正是 TerminateJobObject 能做到原子操作的
-// 原因——内核会遍历它自己的成员列表，没有谁能在遍历到
-// 一半时，靠 fork 逃出这个列表。
+// 正确的原语是 Job Object——内核里的容器：进程分配进去，子进程自动
+// 继承，整体可以一次性终止。Windows 容器背后就是同一套机制，
+// TerminateJobObject 之所以是原子的也是因为它——内核走的是自己那份
+// 成员名单，所以没有谁能在它走到一半的时候 fork 出去。
 //
-// 这里用的是 golang.org/x/sys/windows，而不是手写的系统
-// 调用桩代码。它由 Go 团队在 Go 项目自己的仓库里维护，
-// 所以作为一个非 stdlib 的依赖，它已经很接近"stdlib"本身
-// 了；另一个选择是自己写 LazyDLL 绑定，那只会是同样代码
-// 的一个更差版本。
+// 这里用的是 golang.org/x/sys/windows，不是手写的 syscall 桩。它由
+// Go 团队维护，就放在 Go 项目自己的仓库里，所以在非标准库的依赖里，
+// 它已经算最接近"标准库"的了；另一条路是自己写 LazyDLL 绑定，那是同
+// 一份代码的更糟版本。
 package main
 
 import (
@@ -34,42 +29,35 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// procGroup 拥有一个工作对象句柄。和 Unix 版本不一样——
-// 那边的"组"只是一个内核早就知道的整数——这里是一个
-// 真实的内核对象，带着一个真实的句柄：忘记关闭它，它
-// 就会泄漏。
+// procGroup 持有一个 Job Object 句柄。Unix 那版里的"组"不过是个内核
+// 早就认识的整数，这里不一样：这是真正的内核对象，带着真正的句柄，
+// 你忘了关它就会漏。
 type procGroup struct {
 	mu     sync.Mutex
 	job    windows.Handle
 	closed bool
 }
 
-// newProcGroup 会事先就创建好工作对象，在进程存在之前。
+// newProcGroup 提前把 job object 建好，在进程存在之前。
 //
-// 这个限制标志，就是要专门配置这个工作对象的全部理由
-// 所在：JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE 的意思是
-// "当这个工作对象的最后一个句柄关闭时，终止仍在里面的
-// 所有东西"。那给了我们一张 Unix 实现根本没有的安全网——
-// 如果 Agent 进程死亡、崩溃，或者被任务管理器杀掉，内核
-// 会替我们关闭句柄，失控的那整棵树也会跟着一起死掉。而
-// 在 Unix 上，孤儿进程只会被过继给 init，然后继续运行。
+// 要给这个 job 做配置，理由全在那个 limit 标志上：
+// JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE 的意思是"这个 job 的最后一个句
+// 柄关掉时，把里面还剩的东西全部终止"。这给了我们一张安全网，Unix
+// 实现根本没有这东西——Agent 进程退出也好、崩了也好、被任务管理器杀
+// 掉也好，内核都会替我们关掉句柄，失控的那棵树跟着一起死。Unix 上这
+// 些孤儿会被过继给 init，接着跑。
 //
-// 有两个后果，学生必须牢记在心：
+// 有两个后果学生必须吃透：
 //
-//   - Close() 在这个类型上不是被动的清理，它会杀进程。
-//     这就是为什么 runBash 里的 `defer g.Close()` 是承重
-//     构件——也是为什么一个故意把长期运行的服务器放到
-//     后台的命令（`nohup npm start &`），会在 Linux/macOS
-//     上撑过这次工具调用，但在 Windows 上**不**会。这是
-//     两个文件之间真实存在的行为差异，不是疏忽。对一个
-//     Agent 来说，死掉大概反而是更好的默认行为：不该有
-//     什么东西在 Agent 不知情的情况下，活得比它的工具
-//     调用还久。
-//   - 不设置 JOB_OBJECT_LIMIT_BREAKAWAY_OK（保持默认）
-//     同样是故意的。如果不设置它，一个请求
-//     CREATE_BREAKAWAY_FROM_JOB 的子进程会被内核拒绝，
-//     CreateProcess 直接彻底失败。逃逸在默认情况下就是
-//     被禁止的，这正是我们想要的。
+//   - 这个类型上的 Close() 不是被动的清理。它会杀。这就是为什么
+//     runBash 里的 `defer g.Close()` 是承重的，也是为什么故意把长命
+//     服务扔到后台的那种命令（`nohup npm start &`），在 Linux/macOS
+//     上活得过这次工具调用，在 Windows 上**活不过**。这是两个文件之
+//     间真实的行为差异，不是疏忽。对 Agent 来说，死掉大概才是更好的
+//     默认：不该有东西在 Agent 不知情的情况下活过它那次工具调用。
+//   - 不设 JOB_OBJECT_LIMIT_BREAKAWAY_OK（也就是默认）同样是有意的。
+//     不设它，子进程要是申请 CREATE_BREAKAWAY_FROM_JOB，会被内核驳
+//     回，CreateProcess 直接失败。逃跑默认就是不许，这正是我们要的。
 func newProcGroup() (*procGroup, error) {
 	job, err := windows.CreateJobObject(nil, nil)
 	if err != nil {
@@ -79,78 +67,65 @@ func newProcGroup() (*procGroup, error) {
 	var info windows.JOBOBJECT_EXTENDED_LIMIT_INFORMATION
 	info.BasicLimitInformation.LimitFlags = windows.JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
 
-	// SetInformationJobObject 是一次裸内核调用：它接受一个
-	// 指针和一个长度，而让两者对得上，是我们自己的责任。
-	// 这里如果传错了大小，你得到的就是一个 ERROR_INVALID_PARAMETER
-	// ——而它什么都不会告诉你。
+	// SetInformationJobObject 是裸的内核调用：它收一个指针和一个长度，
+	// 让这两者对得上是我们的事。这里传错大小，回来的就是一句
+	// ERROR_INVALID_PARAMETER，什么也不告诉你。
 	if _, err := windows.SetInformationJobObject(
 		job,
 		windows.JobObjectExtendedLimitInformation,
 		uintptr(unsafe.Pointer(&info)),
 		uint32(unsafe.Sizeof(info)),
 	); err != nil {
-		windows.CloseHandle(job) // 不要泄漏我们刚配置失败的工作
+		windows.CloseHandle(job) // 刚配置失败的这个 job 不能漏掉
 		return nil, fmt.Errorf("SetInformationJobObject: %w", err)
 	}
 	return &procGroup{job: job}, nil
 }
 
-// attach 在 Windows 上是一个空操作，而这背后的原因，是
-// 这个文件里最有启发性的部分。
+// attach 在 Windows 上是空操作，而它为什么是空的，是这个文件里最有
+// 教益的一件事。
 //
-// 在 Unix 上，attach 会设置 Setpgid，内核会在 fork() 和
-// exec() 之间——也就是子进程执行第一条指令之前——把子
-// 进程放进它自己的进程组。Windows 没有对应的机制：一个
-// 进程只有在它已经存在之后，才能被分配到工作对象里，而
-// CreateProcess 给你的，是一个已经在运行的进程。这付出了
-// 什么代价，见 adopt()。
+// Unix 上 attach 会设 Setpgid，内核就在 fork() 和 exec() 之间把子进
+// 程放进它自己的进程组——子进程连一条指令都还没执行。Windows 没有对
+// 应的东西：进程只有存在之后才能被分配进 job，而 CreateProcess 交给
+// 你的是已经在跑的进程。这要付出什么代价，见 adopt()。
 //
-// （CreationFlags 字段是故意保持原样不动的。
-// CREATE_NEW_PROCESS_GROUP 关乎的是 Ctrl+C / Ctrl+Break
-// 的路由，跟包含机制无关；在这里设置它，只会改变控制台
-// 信号到达 shell 的方式，却没法帮我们杀掉它。）
+// （CreationFlags 字段是故意不动的。CREATE_NEW_PROCESS_GROUP 管的是
+// Ctrl+C / Ctrl+Break 往哪儿送，不是圈住进程，在这儿设它只会改变控
+// 制台信号怎么送到 shell，对我们杀它没有半点帮助。）
 func (g *procGroup) attach(cmd *exec.Cmd) {}
 
-// adopt 会把刚启动的这个进程——以及它接下来创建的每一个
-// 进程——都分配进这个工作对象。
+// adopt 把刚起来的进程——以及它接下来创建的每一个进程——分配进 job。
 //
-// # 剩余的竞争条件，坦诚交代
+// # 残留的竞争，老实交代
 //
-// 在 CreateProcess 返回、到 AssignProcessToJobObject 生效
-// 之间，有一个窗口期。如果 shell 设法在那个窗口内生成了
-// 一个孙进程，这个孙进程就**不**在工作对象里，kill() 也
-// 碰不到它。这个窗口只有几微秒宽，只有一个把启动后台
-// 进程当成自己第一件事来做的 shell，才可能踩中它，所以
-// 实际上这种情况不会被触发——但"实际上不会被触发"这句
-// 话，正是人们在自己发布出去的 bug 头上，最爱写的那句话。
+// CreateProcess 返回，到 AssignProcessToJobObject 生效，中间有段窗
+// 口。shell 要是赶在这段窗口里生出个孙子进程，这个孙子**不在** job
+// 里，kill() 也碰不到它。窗口只有微秒量级，而且得是那种一上来就先
+// 起个后台进程的 shell 才踩得中，所以实际上它不会发作——但"实际上
+// 它不会发作"，恰恰就是人们写在自己发布出去的 bug 上面的那句话。
 //
-// 彻底的修复办法是 CREATE_SUSPENDED：启动进程时让它的
-// 主线程保持挂起，在什么都还没法运行的时候把它分配进
-// 工作对象，然后再 ResumeThread。什么都逃不掉，因为什么
-// 都还没执行。exec.Cmd 让这件事变得别扭，而不是完全做
-// 不到：它暴露了 cmd.Process.Pid，却不暴露主线程的句柄，
-// 所以要恢复运行，就得对机器上所有线程做一次
-// CreateToolhelp32Snapshot，筛选出属于我们这个 PID 的
-// 线程，对幸存下来的那个调用 OpenThread，再
-// ResumeThread——大概六十行 Toolhelp 代码，再加上：
-// 如果这个进程在开始前不知怎么就有了不止一个线程，那又
-// 该怎么办的问题。（正是因为这个原因，os/exec 才故意不
-// 支持 CREATE_SUSPENDED：一个被挂起、而 Go 自己的收割者
-// 又永远不会去恢复的进程，会让 cmd.Wait() 直接挂起。）
+// 严丝合缝的修法是 CREATE_SUSPENDED：起进程的时候把主线程挂起，趁
+// 着什么都跑不起来的时候把 job 分配好，然后 ResumeThread。什么都没
+// 执行过，也就什么都逃不掉。exec.Cmd 让这条路变得别扭，但不是不可
+// 能：它暴露了 cmd.Process.Pid，却没暴露主线程的句柄，于是想恢复它
+// 就得对机器上所有线程做一次 CreateToolhelp32Snapshot，筛出属于我们
+// 这个 PID 的，对活下来的那个 OpenThread，再 ResumeThread——大约六十
+// 行 Toolhelp 代码，另外还有个问题要回答：万一进程还没开始跑就不知
+// 怎么有了不止一个线程，该怎么办。（os/exec 正是因为这个才故意不支
+// 持 CREATE_SUSPENDED；挂起的进程如果 Go 自己的收割逻辑永远不去恢复
+// 它，cmd.Wait() 就会挂住。）
 //
-// 这里做出的取舍是：接受这个微秒级的窗口，并把这一点
-// 大大方方地说出来。如果你写的是一个沙箱、而不是一个
-// 教学仓库，就该去写 Toolhelp 版本——或者干脆直接用
-// CreateProcess 代替 os/exec，那个标志位和线程句柄，在
-// PROCESS_INFORMATION 里都现成地摆在那儿。
+// 这里选的取舍是：接受这个微秒级的窗口，并且把话说在明处。如果你写
+// 的是沙箱而不是教学仓库，那就去写 Toolhelp 那版——或者干脆绕开
+// os/exec，直接用 CreateProcess，那里标志和线程句柄都明摆在
+// PROCESS_INFORMATION 里。
 //
-// 有一种竞争其实**不**存在，却常被以为存在：按 PID 调用
-// OpenProcess，看起来可能会碰上一个被回收的 PID。但在
-// 这里不会。os.Process 会一直持有一个指向子进程的打开
-// 句柄，从 Start() 开始，直到 Wait()/Release() 为止，
-// 而只要还有任何一个句柄指向它、并保持打开，Windows
-// 就不会回收这个 PID。Go 为自己簿记而保留的这个句柄，
-// 正是让我们的查找得以安全的原因。
+// 有一个竞争是**不**存在的，却常被人以为存在：按 PID 做 OpenProcess
+// 看起来可能撞上被回收的 PID。在这里撞不上。从 Start() 到
+// Wait()/Release()，os.Process 一直开着指向子进程的句柄，而只要还有
+// 任何句柄开着，Windows 就不会回收这个 PID。让我们这次查找安全的，
+// 正是 Go 为自己记账而留着的那个句柄。
 func (g *procGroup) adopt(cmd *exec.Cmd) error {
 	if cmd.Process == nil {
 		return fmt.Errorf("adopt called before Start")
@@ -162,11 +137,10 @@ func (g *procGroup) adopt(cmd *exec.Cmd) error {
 		return fmt.Errorf("adopt called after Close")
 	}
 
-	// PROCESS_SET_QUOTA 是 AssignProcessToJobObject 实际会
-	// 检查的那个访问权限（严格来说，工作对象是一种配额与
-	// 限制的容器）；此外还需要 PROCESS_TERMINATE。只精确地
-	// 申请这两项权限、而不是 PROCESS_ALL_ACCESS，才能让这套
-	// 机制在一个受限令牌下也照样能用。
+	// AssignProcessToJobObject 真正检查的访问权限是 PROCESS_SET_QUOTA
+	// （job 在正式定义上是个配额与限制的容器），另外还得配上
+	// PROCESS_TERMINATE。只要这两个而不是 PROCESS_ALL_ACCESS，在受限
+	// token 下也照样能用。
 	h, err := windows.OpenProcess(
 		windows.PROCESS_SET_QUOTA|windows.PROCESS_TERMINATE,
 		false,
@@ -175,44 +149,36 @@ func (g *procGroup) adopt(cmd *exec.Cmd) error {
 	if err != nil {
 		return fmt.Errorf("OpenProcess(%d): %w", cmd.Process.Pid, err)
 	}
-	// 我们自己持有的这个句柄，只是分配这一步本身需要用到。
-	// 工作对象自己保留着一份对这个进程的引用，所以关掉我们
-	// 这个句柄，不会对成员归属造成任何影响。
+	// 我们自己这个句柄只在做分配的时候要用。job 会自己留一份对进程的
+	// 引用，所以把它关掉，成员关系一点不变。
 	defer windows.CloseHandle(h)
 
 	if err := windows.AssignProcessToJobObject(g.job, h); err != nil {
-		// 这里典型的失败是 ERROR_ACCESS_DENIED，因为这个进程
-		// 已经处于一个禁止嵌套的工作对象里。嵌套工作对象只在
-		// Windows 8 / Server 2012 及更新版本上才能用；在更旧的
-		// 系统上，或是在某些会把每个进程都塞进一个锁死的工作
-		// 对象里的 CI 运行环境和容器宿主上，包含性就会在这里
-		// 失效。runBash 会把这个错误当成非致命错误处理，并发出
-		// 警告，这是诚实的做法：命令依然会运行，只是这时候超时
-		// 机制就只能杀掉 shell 本身了。
+		// 这里最典型的失败是 ERROR_ACCESS_DENIED，因为进程已经在某个不许
+		// 嵌套的 job 里了。嵌套 job 在 Windows 8 / Server 2012 及以后能用；
+		// 再老的版本上，或者在某些把每个进程都塞进受限 job 的 CI runner
+		// 和容器宿主里，圈住进程这件事就是在这儿丢的。runBash 把这个错误
+		// 当成不致命的，只警告一句，这是诚实的反应：命令照跑，只不过超时
+		// 现在只杀得掉 shell 自己。
 		return fmt.Errorf("AssignProcessToJobObject: %w", err)
 	}
 	return nil
 }
 
-// kill 会从内核那一侧，原子地终止这个工作对象里的每
-// 一个进程。
+// kill 把 job 里的每个进程都终止掉，原子地，由内核那边动手。
 //
-// 在某一点上，这严格强于 Unix 版本：在 Unix 上，进程组
-// 成员关系可以被一个对自己调用 setpgid() 的进程改变，
-// 所以一个存心要离开的子进程是可以脱离这个组的。工作
-// 对象的成员关系是永久性的——一旦分配，进程自己没法
-// 退出，别人也办不到。
+// 有一点上它严格强于 Unix 版：Unix 的进程组归属是可以改的，进程对自
+// 己调一次 setpgid() 就行，所以铁了心的子进程能脱离这个组。job 的成
+// 员关系是永久的——一旦分配进去，进程自己没法退出来，别人也没法把它
+// 弄出来。
 //
-// 被终止的进程，报告的会是退出代码 1。这个值是任意选的；
-// 唯一要避开的是 259（STILL_ACTIVE），那会让任何用
-// GetExitCodeProcess 检查的代码，都没法把一个已经死掉
-// 的进程和一个还在运行的进程区分开。
+// 被终止的进程会报的退出码是 1。这个值是随意挑的；唯一要避开的是
+// 259（STILL_ACTIVE），用它会让任何走 GetExitCodeProcess 的代码分不
+// 出死掉的进程和还在跑的进程。
 //
-// 错误被吞掉的原因，跟 Unix 上一样：等到你要调用 kill()
-// 的这个时候，剩下能做的补救，都是些你不会希望 Agent
-// 自动去尝试的事情。调用它两次，或者对一个成员已经全部
-// 退出的工作对象调用它，都没有害处——一个空的工作对象，
-// 照样能正常终止。
+// 吞掉错误的理由和 Unix 那边一样：走到调 kill() 这一步，剩下的补救
+// 办法都是你不会想让 Agent 自动去试的。调两次，或者对着成员早已全部
+// 退出的 job 调，都无害——空 job 照样终止得好好的。
 func (g *procGroup) kill() {
 	g.mu.Lock()
 	defer g.mu.Unlock()
@@ -222,14 +188,14 @@ func (g *procGroup) kill() {
 	_ = windows.TerminateJobObject(g.job, 1)
 }
 
-// Close 释放作业句柄——因为 JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE，
-// 也会杀死其中剩余的任何东西。
+// Close 放掉 job 句柄——而因为 JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE，
+// 这一放同时也会把还在里面的东西全杀掉。
 //
-// 幂等：句柄会在持锁的情况下先清零，再关闭，所以第二次 Close
-// 是空操作，kill() 与 Close 竞速时无法使用失效句柄。
-// 这一点比看起来的要重要。Windows 急切地回收句柄值，
-// 所以在已关闭的句柄上调用 TerminateJobObject 不是无害错误——
-// 它可能会落在恰好继承了该数字的任何对象上。
+// 幂等：句柄是在锁里先清零再关的，所以第二次 Close 什么也不做，跟
+// Close 抢跑的 kill() 也不可能用上失效的句柄。后面这点比看上去要
+// 紧。Windows 回收句柄值回收得很急，所以对已经关掉的句柄调
+// TerminateJobObject 不是无害的错误——那个数字碰巧被谁继承了，它就
+// 可能落到谁头上。
 func (g *procGroup) Close() error {
 	g.mu.Lock()
 	defer g.mu.Unlock()
@@ -245,22 +211,21 @@ func (g *procGroup) Close() error {
 	return windows.CloseHandle(job)
 }
 
-// processAlive 报告一个 PID 是否是当前正在运行的进程。
-// 它为 proc_test.go 存在，后者必须证明孙进程已离开，
-// 而不是相信 kill() 返回时没有抱怨。
+// processAlive 报告某个 PID 是不是正在跑的进程。它是为 proc_test.go
+// 存在的，那边必须证明孙子进程真的没了，而不是相信 kill() 没抱怨就
+// 算数。
 //
-// 注意这里**不**使用的东西：GetExitCodeProcess。这是显而易见的调用，
-// 有一个著名的陷阱——它为运行中的进程报告 STILL_ACTIVE（259），
-// 但 259 也是一个完全合法的退出码，所以以 259 退出的进程看起来
-// 永远活着。WaitForSingleObject 没有这样的歧义：进程句柄恰好在
-// 进程终止的那一刻变得有信号，所以只需一次零超时调用，就能
-// 给出明确的"已死/仍在运行"结果。
+// 注意它**没**用什么：GetExitCodeProcess。那是最顺手的调用，也有个
+// 出名的陷阱——它对正在跑的进程报 STILL_ACTIVE（259），可 259 同时
+// 也是完全合法的退出码，于是以 259 退出的进程看起来永远活着。
+// WaitForSingleObject 没有这种含糊：进程句柄恰好在进程终止的那一刻
+// 变成有信号，所以超时给零，一次调用就能拿到毫不含糊的"已经死了 /
+// 还在跑"。
 //
-// Windows 专属的注意事项，Unix 没有对应物：只要系统里任何地方
-// 还留着一个指向死进程的句柄没关闭，它的 PID 就不会被回收，
-// OpenProcess 用在它上面依然**成功**。所以"OpenProcess 工作"
-// 不是活跃的证据——你必须继续问句柄是否有信号，这正是 wait
-// 做的。
+// 一处 Unix 没有对应物的 Windows 但书：只要系统里任何地方还开着一个
+// 指向已死进程的句柄，它的 PID 就不会被回收，对它做 OpenProcess 还是
+// 会**成功**。所以"OpenProcess 成功了"不能当作活着的证据——你得接着
+// 问句柄有没有信号，而那正是这次 wait 干的事。
 func processAlive(pid int) bool {
 	if pid <= 0 {
 		return false
@@ -271,10 +236,10 @@ func processAlive(pid int) bool {
 		uint32(pid),
 	)
 	if err != nil {
-		// ERROR_INVALID_PARAMETER 表示没有这样的 PID：已死且完全回收。
-		// ERROR_ACCESS_DENIED 会表示活着但不属于我们——
-		// 对于我们启动的进程的孩子来说不可能，所以把它当作"消失"
-		// 在这里是安全的，但在通用工具中会是错的。
+		// ERROR_INVALID_PARAMETER 表示没这个 PID：死了，而且彻底回收了。
+		// ERROR_ACCESS_DENIED 则表示活着但不是我们的——对我们自己起的进
+		// 程的子进程来说这不可能，所以在这里把它当成"没了"是安全的，换
+		// 成通用工具就是错的。
 		return false
 	}
 	defer windows.CloseHandle(h)
@@ -283,7 +248,7 @@ func processAlive(pid int) bool {
 	if err != nil {
 		return false
 	}
-	// WAIT_OBJECT_0 => 句柄有信号 => 进程已终止。
-	// WAIT_TIMEOUT  => 无信号 => 仍在运行。
+	// WAIT_OBJECT_0 => 句柄有信号 => 进程已经终止。
+	// WAIT_TIMEOUT  => 没有信号 => 还在跑。
 	return event != windows.WAIT_OBJECT_0
 }

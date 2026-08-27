@@ -1,12 +1,11 @@
-// 阶段 02——运行命令。
+// 阶段 02——跑命令。
 //
-// 从阶段 01 继承而来，只改了一条原则：这个文件中没有东西
-// 打印。runBash 返回一个结果；调用者把它转成事件。这就是为什么
-// 同一条命令，能够出现在终端上、trace 文件里，以及几个月后的
-// 一次重放中，却不需要三份格式化代码的原因。
+// 从阶段 01 搬过来的，只改了一条原则：这个文件里什么都不打印。runBash
+// 返回结果，由调用方把它变成事件。同一条命令因此能出现在终端上、trace
+// 文件里、几个月后的重放里，而排版代码只有一份，不是三份。
 //
-// 超时、进程树杀死、头 + 尾截断，以及清理三部曲背后的推理，
-// 都在 docs/01-dont-die.md 里。它没有改变；只是它的管道改了。
+// 超时、杀进程树、头+尾截断，还有 sanitize 那三件事，背后的道理全在
+// docs/01-dont-die.md 里。道理没变，变的只是管道。
 package main
 
 import (
@@ -71,8 +70,8 @@ func runBash(shell, command string, timeout time.Duration) execResult {
 
 	res := execResult{TimedOut: timedOut, Unreaped: unreaped, Duration: time.Since(started)}
 	if unreaped {
-		// 复制 goroutine 仍然可能在缓冲区中写入；在这里读它们会是
-		// 数据竞争。报告，不取任何东西。
+		// 负责拷贝的 goroutine 可能还在往 buffer 里写，这时候读就是
+		// data race。只报告，什么都不取。
 		res.ExitCode = -1
 		return res
 	}
@@ -86,15 +85,15 @@ func runBash(shell, command string, timeout time.Duration) execResult {
 		res.Stderr += "\n" + waitErr.Error()
 	}
 	if adoptErr != nil {
-		// 遏制失效了，但命令还是运行了。要在模型和 **trace** 都能看到
-		// 的那个唯一地方，把这一点说清楚。
+		// 进程没圈住，但命令还是跑了。把这事说出来，说在模型和 trace 都
+		// 看得到的那一处。
 		res.Stderr += fmt.Sprintf("\n[harness: process group adoption failed: %v — a timeout can only kill the shell itself]", adoptErr)
 	}
 	return res
 }
 
-// render 把结果转成模型将看到的确切文本，并报告是否有内容
-// 被丢弃，好让调用者把这一点放进事件里。
+// render 把结果变成模型将看到的那段文本，一字不差；同时报告有没有东西
+// 被丢掉，好让调用方写进事件里。
 func (r execResult) render(maxOutput int) (string, bool) {
 	var b strings.Builder
 
@@ -130,8 +129,8 @@ func (r execResult) render(maxOutput int) (string, bool) {
 	return b.String(), cut
 }
 
-// truncate 保留头和尾，丢弃中间。参见 docs/01-dont-die.md，
-// 了解为什么只截取开头会丢失真正重要的那一行。
+// truncate 留头留尾，丢中间。只留头的截断为什么偏偏丢掉那行要紧的，
+// 见 docs/01-dont-die.md。
 func truncate(s string, max int) (string, bool) {
 	if max < 256 {
 		max = 256
@@ -154,9 +153,8 @@ func truncate(s string, max int) (string, bool) {
 
 var ansiRE = regexp.MustCompile(`\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\a\x1b]*(\a|\x1b\\)|\x1b[@-Z\\-_]`)
 
-// sanitize 剥离 ANSI 转义、标准化 CRLF、替换掉无效的 UTF-8，
-// 这样一个用本地代码页写入的程序，会明显地失败，而不是悄无
-// 声息地失败。
+// sanitize 剥掉 ANSI 转义、把 CRLF 归一化、替换非法 UTF-8，这样按本地
+// 代码页输出的程序会明明白白地坏掉，而不是悄没声地坏掉。
 func sanitize(s string) string {
 	s = ansiRE.ReplaceAllString(s, "")
 	s = strings.ReplaceAll(s, "\r\n", "\n")
@@ -166,10 +164,9 @@ func sanitize(s string) string {
 	return s
 }
 
-// parseBashArgs 会在分派前做验证。一次不返回错误的 unmarshal，
-// 不等于一次经过验证的调用——具体见 docs/01-dont-die.md 中实际
-// 观察到的 `{"raw_arguments": ""}` 载荷，这个函数存在，就是为了
-// 拒绝这种载荷。
+// parseBashArgs 先校验再派发。unmarshal 不报错，不等于这次调用校验过
+// ——它挡的是真见过的那种 `{"raw_arguments": ""}` payload，见
+// docs/01-dont-die.md。
 func parseBashArgs(raw string) (string, error) {
 	var args struct {
 		Command *string `json:"command"`

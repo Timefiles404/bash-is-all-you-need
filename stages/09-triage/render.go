@@ -1,13 +1,13 @@
-// 阶段 02——仪器面板。
+// 阶段 02——仪表盘。
 //
-// 这是一个 Subscriber，仅此而已。它访问不到 Agent，不懂 HTTP，
-// 也没有属于自己的时钟：它打印的每个数字，都在一个事件中
-// 到达。那个约束不是整洁，它是功能——它正是为什么 `replay`
-// 能够不联网，就把一次会话精确重现到毫秒级，以及为什么你
-// 当场看到的东西，和你事后读回的东西，能保证是同一样东西。
+// 这就是个 Subscriber，别的什么都不是。它够不着 Agent，不懂 HTTP，也没
+// 有自己的时钟：它打印的每一个数字，都是坐着 Event 来的。这条约束不是
+// 为了整洁，它就是功能本身——`replay` 能在不联网的情况下把一段会话复现
+// 到毫秒级，靠的正是它；你实跑时看到的和事后读回来的保证是同一样东西，
+// 靠的也是它。
 //
-// 如果你发现自己在这个文件里想用 `time.Now()`，那说明你想要
-// 的那个数字，其实应该放在某个事件里。
+// 要是你发现自己想在这个文件里用 `time.Now()`，那你想要的那个数字，
+// 该待在事件里。
 package main
 
 import (
@@ -19,8 +19,8 @@ import (
 	"strings"
 )
 
-// 价格是每百万 token。零意味着"未知"，未知打印为破折号而不是 $0.00——
-// 一个编造的零比无数字更差，因为它是人们引用的数字。
+// prices 按每百万 token 计价。零的意思是"不知道"，不知道就印成破折号，
+// 不印 $0.00——编出来的零比没有数字更糟，因为人们拿去引用的就是这个数。
 type prices struct {
 	in, out, cacheRead, cacheWrite float64
 }
@@ -29,11 +29,10 @@ func (p prices) known() bool {
 	return p.in > 0 || p.out > 0 || p.cacheRead > 0 || p.cacheWrite > 0
 }
 
-// cost 为一次调用计价。三个输入速率是分开的，因为它们相差
-// 一个数量级：缓存读大约是基础速率的 0.1x，缓存写大约 1.25x，
-// 所以一个按 token 数量看起来很贵的会话，实际上可能很便宜，
-// 反之亦然。把它们压缩成一个"输入"数字，是 Agent 成本报告
-// 出错最常见的一种方式。
+// cost 给一次调用算钱。三种输入费率分开，是因为它们差着一个数量级：
+// 缓存读约为基准价的 0.1x，缓存写约 1.25x，所以按 token 数看着贵的会话
+// 可能很便宜，反过来也一样。把它们塌成一个"input"数字，是 Agent 成本
+// 统计出错最常见的方式。
 func (p prices) cost(u Usage) float64 {
 	m := func(tok int, rate float64) float64 { return float64(tok) * rate / 1e6 }
 	return m(u.Input, p.in) + m(u.CacheWrite, p.cacheWrite) + m(u.CacheRead, p.cacheRead) + m(u.Output, p.out)
@@ -43,86 +42,80 @@ type renderer struct {
 	out    io.Writer
 	color  bool
 	prices prices
-	window int // 模型上下文窗口，用于水位线；0 = 未知
+	window int // 模型上下文窗口，给水位线用；0 = 不知道
 
-	// 会话总计。这些是问起自己的 Agent 时，没有人答得上来的
-	// 那些数字——这正是这个文件存在的原因。
+	// 会话总计。这些数字，没人答得上自己那个 Agent 到底是多少——这个文件
+	// 存在，就是因为这个。
 	session     Usage
 	sessionCost float64
 	calls       int
 	commands    int
 
-	// showRequest 打开请求检查器：完整 JSON 体，在每个调用前
-	// 打印。它默认关闭，因为体积巨大；但模型第一次做出无法解释
-	// 的事情时，就值得打开看看——十之八九，答案是 prompt 里
-	// 根本没有你以为它有的东西。
+	// showRequest 打开请求检查器：每次调用前把完整的 JSON body 打出来。
+	// 默认关着，因为它太大了；模型第一次干出没法解释的事时值得打开——
+	// 十次里有九次，答案是 prompt 里根本没有你以为在里面的东西。
 	showRequest bool
 
 	// 每次调用的流式状态。
 	ttft      int64
-	openBlock string // "text" | "reasoning" | "" — 我们正处在哪种流式的中途
+	openBlock string // "text" | "reasoning" | ""——正在流的是哪一种
 	sawOutput bool
 
-	// 上下文压缩状态。inCompaction 把总结器的流式文本，重新路由进一个专门
-	// 标记出来的隔离区，这样一来，模型写的是**关于**这次会话的一段话，
-	// 就永远不会被误当成它写**在**会话里的一段话。
+	// 压缩状态。inCompaction 把摘要器流出来的文本改道，送进一条带标记的边
+	// 槽里，这样模型*关于*这次会话写的段落，就绝不会被当成它*在*这次会话
+	// 里写的段落。
 	inCompaction bool
 	compactions  int
-	saved        int // 压缩从 prompt 中移除的 token，累计
+	saved        int // 压缩从 prompt 里拿掉的 token，累计
 
-	// 线上看到的字节和 token，用于实时字符到 token 的比率。
-	// 这是"如何不用 tokenizer 计数 token"这个问题的完整答案：
-	// 每个响应都告诉你刚发送的请求的确切 token 数，
-	// 并且你知道那个请求有多少字节。
+	// 线上看到的字节数和 token 数，用来算实时的字符每 token 比值。"没有
+	// tokenizer 怎么数 token"，答案全在这里：每个响应都会告诉你，你刚发出
+	// 去的那个请求正好是多少 token，而那个请求有多少字节，你自己知道。
 	wireBytes  int
 	wireTokens int
 
 	// 子 Agent 状态（阶段 07）。
 	//
-	// 一个由并发所迫的设计决定，值得主动说清楚，而不是让人自己发现：
-	// **当一个子 Agent 正在运行时，这个渲染器会停止显示流式文本。**
+	// 并发逼出来的设计决定，与其让人自己撞见，不如挑明：**只要有子
+	// Agent 在跑，这个渲染器就不再显示流式文本。**
 	//
-	// 两三个子 Agent 同时在流式吐出 token。线性终端只有一个光标，把它们
-	// 交错在一起，就会拼出一段由三句不同句子拼凑成的话——这不只是难看，
-	// 而是确确实实在误导人，因为读起来就像一个 Agent 在自相矛盾。给每个
-	// 片段都加上 Agent id 前缀，做法本身没错，但落到每个 delta 只有四个
-	// 字符的场景里，就会变得没法读。
+	// 两三个子 Agent 同时往外吐 token。线性终端只有一个光标，交错起来就
+	// 是一段由三句不同的话拼出来的文字——不只是难看，是实打实的误导，因
+	// 为它读起来像是同一个 Agent 在自相矛盾。给每个片段前面加上 agent id
+	// 是正确的，也是每个 delta 才四个字符、根本没法读的。
 	//
-	// 所以这个朴素渲染器选择诚实地降级：对子 Agent，它显示的是结构——
-	// 它跑了什么、花了多少、返回了什么——然后丢掉那些自然语言描述。什么
-	// 都没有真正丢失，因为每个 delta 都在 trace 里，而阶段 06 的 composer
-	// 之所以存在，正是因为线性终端对一棵树来说是错误的形状。一个没法
-	// 完整呈现某样东西的渲染器，应该靠少显示一些来承认这一点，而绝不能
-	// 靠显示错误的东西来蒙混。
+	// 所以朴素渲染器诚实地降级：碰上子 Agent，它显示结构——跑了什么、花
+	// 了多少、返回了什么——把散文丢掉。什么都没丢，因为每个 delta 都在
+	// trace 里，而阶段 06 的 composer 存在的理由，恰恰就是线性终端对树来
+	// 说是错的形状。渲染器显示不了某样东西，就该少显示来把话说明白，绝
+	// 不能显示错的。
 	subDepth int
 
 	// 重试记账（阶段 09）。
 	//
 	// 两个计数器，不是一个，而这个拆分是第一次实跑逼出来的修正。
 	//
-	// retries 是会话总数，永远不清零：它是一个人在最后想知道的东西，因为"这花了
-	// 四分钟"和"这花了四分钟、重试了十一次"是两个不同的会话。
+	// retries 是整场会话的总数，永不清零：这是人在最后想看的数，因为"这花了
+	// 四分钟"和"这花了四分钟、重试了十一次"是两场不同的会话。
 	//
-	// billedFailures 每来一个 usage 帧就清零，只数那些真的到了模型、因而被收了
-	// 钱的尝试——一个打开了又死掉的流。一个 503 什么都不花，而一个为它收费的面板
-	// 是在发明钱。
+	// billedFailures 每来一帧 usage 就清零，只数那些真的到了模型、因而被收了
+	// 钱的尝试——也就是流打开了又死掉的那种。503 不花钱，而为它收费的面板是
+	// 在无中生有地造钱。
 	//
-	// rebilled 和 session 分开，理由属于同一类：一个是供应商告诉我们的，另一个
-	// 是我们自己推算出来的。把它们并在一起，会让量到的数字和推断出来的数字在报
-	// 告里分不出彼此，而一个估算就是这样变成事实的。
+	// rebilled 和 session 分开放，属于同一类理由：一个是供应商告诉我们的数，
+	// 另一个是我们自己推出来的数。把它们并起来，报告里就分不清哪个是量到的、
+	// 哪个是推出来的——而估算就是这样变成事实的。
 	retries        int
 	billedFailures int
 	rebilled       Usage
 	rebilledCost   float64
 
-	// lastUsage 锁定的，是最近一次 KindUsage 携带的内容。
+	// lastUsage 把最近一条 KindUsage 带来的东西锁存下来。
 	//
-	// 它的存在，是因为一个真实发生过的集成 bug。Usage 和响应的
-	// 结束是两个不同的事件，由相同组件发出，但不在同一时刻；
-	// 第一版的这个渲染器，只从 KindResponseEnd 上读取 usage——
-	// 结果就是一整块全是零的面板。渲染器不应该关心某个数字是
-	// 搭着哪个事件来的；它应该记住自己被告知的最后一个值，并
-	// 使用那个值。
+	// 它存在，是因为真出过一次集成 bug。usage 和响应结束是两条不同的事件，
+	// 由同一个组件发出，但不在同一时刻；而这个渲染器的第一版只从
+	// KindResponseEnd 上读 usage——结果面板里全是零。渲染器不该关心某个数
+	// 是坐哪条事件来的；它该记住最后一次被告知的值，然后用那个值。
 	lastUsage Usage
 }
 
@@ -131,16 +124,16 @@ func newRenderer(out io.Writer, color bool, p prices, window int) *renderer {
 }
 
 // ---------------------------------------------------------------------------
-// 颜色。有意很小：四个语义角色，无主题系统。
+// 颜色。故意做得很小：四个语义角色，没有主题系统。
 // ---------------------------------------------------------------------------
 
 const (
 	cReset = "\x1b[0m"
 	cDim   = "\x1b[2m"
-	cCmd   = "\x1b[36m" // 青色：Agent 做的东西
+	cCmd   = "\x1b[36m" // 青色：Agent 干过的事
 	cWarn  = "\x1b[33m"
 	cErr   = "\x1b[31m"
-	cFull  = "\x1b[31m" // 红色：全价计费的 token
+	cFull  = "\x1b[31m" // 红色：按全价计费的 token
 	cWrite = "\x1b[33m" // 黄色：缓存写，~1.25x
 	cRead  = "\x1b[32m" // 绿色：缓存读，~0.1x
 )
@@ -156,9 +149,8 @@ func (r *renderer) p(format string, args ...any) {
 	fmt.Fprintf(r.out, format, args...)
 }
 
-// closeBlock 结束任何打开的流式区域。流式意味着文本会在
-// 可预测的位置到达，却没有换行符，所以由渲染器——而不是
-// 模型——来决定版面。
+// closeBlock 把开着的那个流式区域收尾，不管开的是哪一种。流式意味着
+// 文本到达时，换行不会落在可预料的位置，所以版式归渲染器管，不归模型管。
 func (r *renderer) closeBlock() {
 	if r.openBlock != "" {
 		r.p("\n")
@@ -167,15 +159,14 @@ func (r *renderer) closeBlock() {
 }
 
 // ---------------------------------------------------------------------------
-// Subscriber 实现。一个 switch；每个分支都是一个屏幕决定。
+// Subscriber 的实现。一个 switch；每个 case 都是一次关于屏幕的决定。
 // ---------------------------------------------------------------------------
 
 func (r *renderer) OnEvent(e Event) {
-	// 深度决定了后面的大部分内容，而且它是从**事件**上读出来的，不是从
-	// 渲染器状态上读出来的。面对并发的子 Agent，"我们现在身处哪个 Agent
-	// 之中"并不是一个随时间变化的属性：要是渲染器把它当成一个随时间变化
-	// 的状态来跟踪，就会把子 Agent 的命令，错记到不管哪个子 Agent 碰巧
-	// 最后开口的账上。
+	// 深度是下面大部分分支的闸门，而它取自**事件**，不是渲染器自己的状
+	// 态。有了并发的子 Agent，"我们此刻在哪个 agent 里面"就不是时间的属
+	// 性了：把它当成时间属性来跟踪的渲染器，会把子 Agent 的命令算到碰巧
+	// 最后说话的那个子 Agent 头上。
 	deep := e.Depth > 0
 
 	switch e.Kind {
@@ -194,9 +185,8 @@ func (r *renderer) OnEvent(e Event) {
 		if e.Usage != nil {
 			u = *e.Usage
 		}
-		// 两个数字，也就是子 Agent 存在的整个论证，被并排打印在一起：它
-		// **花了什么，又返回**了什么。它们之间的差距，就是父 Agent 不必
-		// 携带的那部分上下文。
+		// 构成子 Agent 全部论据的那两个数字，并排打出来：**花掉**多少，
+		// **返回**多少。两者之间的落差，就是父 Agent 不必背的上下文。
 		r.p("  %s\n", r.c(cCmd, fmt.Sprintf("╰─ %d turns · %d prompt + %d output tokens · %dms → %s returned",
 			e.Turn, u.Prompt(), u.Output, e.Millis, humanBytes(e.Bytes))))
 
@@ -225,11 +215,11 @@ func (r *renderer) OnEvent(e Event) {
 
 	case KindReasoningDelta:
 		if deep {
-			return // 看 subDepth：线性终端无法交错这些
+			return // 见 subDepth：线性终端没法把这些交错起来
 		}
-		// 思考会被显示出来——调暗、并加上标记。隐藏它是大多数产品
-		// 的默认做法，但在这里，这是错误的默认选择：看不到模型推理
-		// 过程的学生，分不清究竟是计划出了问题，还是工具出了问题。
+		// 思考过程要显示出来，压暗，并且做上标记。多数产品的默认是把它藏
+		// 起来，在这里那是错的默认：学生看不见模型的推理，就分不清是计划
+		// 不好还是工具不好。
 		if r.openBlock != "reasoning" {
 			r.closeBlock()
 			r.p("%s ", r.c(cDim, "\n  ·"))
@@ -243,9 +233,10 @@ func (r *renderer) OnEvent(e Event) {
 			return
 		}
 		if r.inCompaction {
-			// 总结被显示，不被隐藏。一个你无法读取的上下文压缩
-			// 是一个你无法调试的上下文压缩，而"Agent 忘记了东西"
-			// 几乎总是"总结丢弃了它"——只有通过观看总结进行才能发现。
+			// 摘要是显示出来的，不是藏起来的。读不到的压缩，就是
+			// 调不了的压缩；而"Agent 忘了点什么"，几乎总是"摘要
+			// 把它丢了"——而这件事，只有亲眼看着摘要滚过去，你
+			// 才会知道。
 			if r.openBlock != "compact" {
 				r.closeBlock()
 				r.p("  %s ", r.c(cDim, "\n  ≡"))
@@ -267,9 +258,9 @@ func (r *renderer) OnEvent(e Event) {
 
 	case KindToolCallReady:
 		if deep {
-			// 每一级缩进一步，即使对子 Agent 也一样会显示：一个受委托的 Agent
-			// 到底**运行**了什么，是用户最需要看到的东西，也是大多数实现会藏在
-			// 加载动画背后的东西。
+			// 每深一层缩进一格，而且子 Agent 的也照显：被委派的 agent
+			// 到底**跑了什么**，是用户最需要看到的东西，也是多数实现
+			// 藏在转圈图标后面的东西。
 			r.p("  %s%s %s\n", strings.Repeat("│ ", e.Depth),
 				r.c(cDim, "$"), r.c(cDim, oneLineDim(e.Command, 84)))
 			return
@@ -282,9 +273,9 @@ func (r *renderer) OnEvent(e Event) {
 		}
 
 	case KindCommandEnd:
-		// 计数，不打印。下面的工具结果已经以退出码和持续时间结束，
-		// 因为那段文本是为模型写的——如果你看到的总结和模型拿到的
-		// 不一样，那正是这个阶段存在的目的所要消灭的那种偏差。
+		// 只计数，不打印。紧接着的工具结果末尾已经带着退出码和耗时了，因为
+		// 那段文本本来就是写给模型看的——给你看一份和模型拿到的不一样的摘要，
+		// 正是这个阶段要消灭的那类分歧。
 		r.commands++
 
 	case KindToolResult:
@@ -303,20 +294,20 @@ func (r *renderer) OnEvent(e Event) {
 			r.session = addUsage(r.session, *e.Usage)
 			r.sessionCost += r.prices.cost(*e.Usage)
 
-			// 阶段 09：推算那些失败的尝试花了多少钱。
+			// 阶段 09：推算失败的那些尝试花了多少钱。
 			//
-			// 一个被重试的调用，每次尝试都要计一次费，而失败的那些尝试自己说不
-			// 出这件事——usage 在一个流的*末尾*才到，而那些流没有结束。所以估算
-			// 在这里做，在这个 prompt 有一个真实数字的唯一时刻：终于成功的那一
-			// 次尝试。
+			// 重试过的调用，每次尝试都各计一次费，而失败的尝试自己说不出
+			// 这件事——usage 是在流的*末尾*到的，那些流没有末尾。所以估算
+			// 放在这里做，放在这个 prompt 唯一有真实数字的那一刻：最后成
+			// 功的那次尝试。
 			//
-			// 每一次失败的尝试，都用和成功那次相同的全价/缓存写/缓存读拆分来计
-			// 价，这让它成为一个**下界**，而不是一个取中间的猜测。一次冷调用第
-			// 一次尝试付的是缓存*写*，重试时付的是更便宜的*读*，所以照抄成功那
-			// 次的拆分，会给第一次少算钱。摘要正是因为这个才打印"≥"。
+			// 每次失败的尝试，都按成功那次同样的 full/write/read 拆分来计
+			// 价，这让它成了**下界**，而不是折中的猜测。冷调用第一次尝试付
+			// 的是缓存*写*，重试付的是更便宜的*读*，所以照抄成功那次的拆
+			// 分，会把第一次算少了。摘要行上打"≥"就是因为这个。
 			//
-			// 反正下界才是这个数字诚实的形状：它在一场关于账单的争论里站得住，
-			// 而其他每个 Agent 给出的替代方案是沉默。
+			// 反正对这个数字来说，下界才是诚实的形状：它在为账单争论时站得
+			// 住，而其他 Agent 提供的替代方案是沉默。
 			if r.billedFailures > 0 {
 				u := *e.Usage
 				est := Usage{
@@ -332,9 +323,9 @@ func (r *renderer) OnEvent(e Event) {
 
 	case KindResponseEnd:
 		if deep {
-			// 子 Agent 的调用仍然会被计数，并由上面的 KindUsage 计入会话合计；
-			// 被压制的只是逐次调用的面板，因为三次调用交错在一起，就已经不成
-			// 面板了。subagent_end 这一行，报告的是聚合结果。
+			// 子 Agent 的调用照样被上面的 KindUsage 计数、计入会话总
+			// 额；被压掉的只是每次调用的面板，因为三块面板交错在一起
+			// 就不成其为面板。subagent_end 那行报的是汇总。
 			return
 		}
 		r.closeBlock()
@@ -362,21 +353,21 @@ func (r *renderer) OnEvent(e Event) {
 			e.MsgsBefore, e.MsgsAfter, e.TokensBefore, e.TokensAfter, pct, e.Millis)))
 
 	case KindCacheInvalidated:
-		// 在它被引起的时刻打印，而不是当它显示的时候。
-		// 成本落在**下一个**调用上，作为突然变红的条，
-		// 没有这一行看起来像是回退而不是后果。
+		// 在它被造成的那一刻打印，不是在它显形的时候。代价落在
+		// **下一次**调用上，表现为一条突然变红的条；没有这一行，
+		// 那看起来就像退化，不像后果。
 		r.p("  %s\n", r.c(cErr, "! "+e.Text))
 
 	// ---- 阶段 09 ---------------------------------------------------------
 
 	case KindProvider:
-		// 渲染器是从这个事件重新计价的，而不是从启动配置，这就是价格要搭在它上
-		// 面的全部理由。
+		// 渲染器重新算价的依据是这个事件，不是启动时的配置——价格之所以要
+		// 跟着它走，全部理由就在这里。
 		//
-		// 两处回报。一个降级过的会话，不再用第一个供应商的费率给第二个供应商的
-		// token 计价——那是一份自信地算错的成本报告，比一份承认自己不知道的更
-		// 糟。以及，一条在没有 providers.json 的机器上被重放的 trace，现在也能
-		// 显示真实的钱，因为费率就在文件里。
+		// 两处回报。降级过的会话，不会再拿第一家供应商的价格去算第二家的
+		// token——那是一份自信满满的错误成本报告，比一份承认自己不知道的
+		// 更糟。另外，在没有 providers.json 的机器上重放 trace，现在也能看
+		// 到真钱，因为价钱就在文件里。
 		if e.Provider != nil {
 			r.prices = prices{in: e.Provider.Prices.In, out: e.Provider.Prices.Out,
 				cacheRead: e.Provider.Prices.CacheRead, cacheWrite: e.Provider.Prices.CacheWrite}
@@ -384,7 +375,7 @@ func (r *renderer) OnEvent(e Event) {
 				r.window = e.Provider.Window
 			}
 			if e.Triage == "" {
-				break // 会话开始：横幅已经点过供应商的名字了
+				break // 会话开始：横幅里已经写过供应商了
 			}
 			r.closeBlock()
 			r.p("  %s\n", r.c(cWarn, fmt.Sprintf("provider → %s (%s · %s) — %s",
@@ -392,9 +383,9 @@ func (r *renderer) OnEvent(e Event) {
 		}
 
 	case KindCallError:
-		// 当后面还跟着一个决策时，它按警告打印，而不是按错误打印。大多数
-		// call_error 都被熬过去了，而把一个能熬过去的失败涂成红色，正是人们学会
-		// 忽略红色的过程。
+		// 后面跟着裁决的时候，按警告打印，不按错误打印。多数 call_error 都
+		// 被扛过去了，而把扛得过去的失败涂成红色，人就是这样学会忽略红色
+		// 的。
 		r.closeBlock()
 		colour, tag := cWarn, e.Triage
 		if e.Triage == string(TriageFatal) {
@@ -402,30 +393,31 @@ func (r *renderer) OnEvent(e Event) {
 		}
 		r.p("  %s\n", r.c(colour, fmt.Sprintf("call failed (attempt %d, %s): %s", e.Attempt, tag, e.Text)))
 
-		// 只有拿到了自己的 200、然后才坏掉的失败，才花过钱。
+		// 只有先拿到 200、然后才断掉的失败，才花了钱。
 		//
-		// 这一行之所以在这里，是因为这个阶段的第一次实跑把它算错了。一个故障注
-		// 入器返回了两次 503；面板数出两次重试，报的是 "re-sent ≥1926 prompt
-		// tokens (≥$0.000301)"——比会话真实的 $0.000276 还多。这是胡说：那些请求
-		// 在生成之前就被拒了，所以供应商为它们一分钱都没收。
+		// 这一行之所以在这里，是因为这个阶段第一次实跑就搞错了。故障注入器
+		// 返了两次 503，面板数出两次重试，然后报了一句
+		// "re-sent ≥1926 prompt tokens (≥$0.000301)"——比这场会话实际的
+		// $0.000276 还多。这是胡说：那些请求在生成之前就被拒了，供应商一分
+		// 钱都没为它们计。
 		//
-		// 一个被拒的状态和一个被拒的连接都是免费的。一个打开了又死掉的流不是：
-		// 那些 token 已经在上游生成出来、也被收了钱，而本该说出这件事的 usage
-		// 帧永远没有到。这个不对称，就是 Phase 要挂在事件上的全部理由。
+		// 被拒的状态和被拒的连接都是免费的。打开了又死掉的流不是：那些 token
+		// 已经在上游生成出来、也已经被计了费，而本该说出这件事的 usage 帧永远
+		// 没到。正是这个不对称，才是 Phase 要挂在事件上的全部理由。
 		if e.Phase == string(phaseStream) {
 			r.billedFailures++
 		}
 		if e.Usage != nil {
-			// 一个断掉的流，走得足够远、报出了 usage。这很少见，但真发生时值
-			// 得单独一行：那些 token 是要计费的，而面板里别的地方再也不会提到
-			// 它们。
+			// 断掉的流，但走得够远，把 usage 报出来了。少见，但真发生时
+			// 值得单独占一行：那些 token 是要计费的，而面板里再没有别的
+			// 地方会提到它们。
 			r.p("  %s\n", r.c(cDim, fmt.Sprintf("  └ billed on the failed attempt: %d prompt + %d output",
 				e.Usage.Prompt(), e.Usage.Output)))
 		}
 
 	case KindRetry:
-		// 重试计数器住在这里，因为渲染器才是那个有权说出一个回合花了多少的东
-		// 西，而一个重试过的回合，花的比面板本来会显示的更多。见 rebilled。
+		// 重试计数器放在这里，因为一个回合花了多少钱要由渲染器来说；而重
+		// 试过的回合，花的比面板本来会显示的更多。见 rebilled。
 		r.retries++
 		r.p("  %s\n", r.c(cDim, fmt.Sprintf("retrying in %dms (attempt %d) — %s", e.Millis, e.Attempt, e.Text)))
 
@@ -457,31 +449,31 @@ func (r *renderer) commandFooter(e Event) string {
 	return r.c(cDim, "  └ "+strings.Join(parts, " · "))
 }
 
-// renderPanel 是每次调用的仪器读数，也是任何人都该读这个
-// 仓库的理由。它回答了三个普通 Agent 回答不了的问题：
+// renderPanel 是每次调用的仪表读数，也是别人该读这个仓库的理由。它回答
+// 三个普通 Agent 回答不了的问题：
 //
-//	prompt token 去哪了？ → 完整 / 写 / 读拆分
-//	速度有多快，真的？ → TTFT 与吞吐分离
-//	那花了多少钱？  → 这个调用，以及会话到目前为止
+//	prompt token 都去哪了？  → 拆成 full / write / read
+//	它到底有多快？           → TTFT 和吞吐分开报
+//	这一次花了多少钱？       → 这次调用，以及到此为止的会话
 func (r *renderer) renderPanel(e Event) {
 	u := e.Usage
 	if u == nil {
-		u = &r.lastUsage // 参见 lastUsage：usage 搭的是自己事件的车
+		u = &r.lastUsage // 见 lastUsage：usage 是坐自己那条事件来的
 	}
 	prompt := u.Prompt()
 
 	label := "  ┌─ call " + fmt.Sprint(r.calls) + " · " + e.FinishReason
 	if r.inCompaction {
-		// 总结器是在真实模型上、以真实价格发生的真实调用。每个把上下文压缩
-		// 当成内部细节处理的实现，都会把这次调用排除在自己的账目之外，
-		// 然后没法解释账单从哪儿来的。这里把它打上标签、计入次数，
-		// 和其他一切一样，记在账本里。
+		// 摘要器是一次真调用，打在真模型上，按真价钱付。凡是把
+		// 压缩当成内部细节的实现，都会把这次调用漏在自己的账目
+		// 外面，然后解释不了自己的账单。这里给它贴标签、计数，
+		// 和其他一切一起记进账本。
 		label += " · COMPACTION"
 	}
 	r.p("\n%s\n", r.c(cDim, label))
 
-	// 行 1——prompt token 去哪了。柱状图才是关键：三种颜色，
-	// 按你实际被计费的比例排布。
+	// 第 1 行——prompt token 去哪了。那根条形图才是重点所在：三种颜色，
+	// 比例就是你实际被计费的比例。
 	bar := r.cacheBar(*u)
 	r.p("  %s in %s %s  %s\n",
 		r.c(cDim, "│"),
@@ -489,9 +481,8 @@ func (r *renderer) renderPanel(e Event) {
 		bar,
 		r.c(cDim, fmt.Sprintf("full %d · write %d · read %d%s", u.Input, u.CacheWrite, u.CacheRead, hitRate(*u))))
 
-	// 行 2——输出和速度。TTFT 和 token/秒是两个独立的数字，
-	// 因为它们会各自失灵：第一个 token 慢，可能是排队或者
-	// prompt 太长；吞吐慢，则是模型本身的问题。
+	// 第 2 行——输出和速度。TTFT 和 tokens/sec 分成两个数，因为它们是分开
+	// 坏的：第一个 token 慢，是排队或者 prompt 太长；吞吐慢，那是模型本身。
 	speed := ""
 	if gen := e.Millis - r.ttft; gen > 0 && u.Output > 0 {
 		speed = fmt.Sprintf(" · %.1f tok/s", float64(u.Output)*1000/float64(gen))
@@ -505,7 +496,7 @@ func (r *renderer) renderPanel(e Event) {
 		pad(fmt.Sprint(u.Output)+think, 6),
 		r.c(cDim, fmt.Sprintf("TTFT %dms · total %dms%s", r.ttft, e.Millis, speed)))
 
-	// 行 3——钱，或一个诚实的破折号。
+	// 第 3 行——钱，或者一条老实的破折号。
 	if r.prices.known() {
 		r.p("  %s $%s  %s\n",
 			r.c(cDim, "│"),
@@ -515,29 +506,27 @@ func (r *renderer) renderPanel(e Event) {
 		r.p("  %s %s\n", r.c(cDim, "│"), r.c(cDim, "cost — (no prices configured for this provider; see providers.json)"))
 	}
 
-	// 行 4——上下文有多满。这个数字决定了阶段 05 的压缩
-	// 什么时候必须触发。
+	// 第 4 行——上下文有多满。阶段 05 的压缩什么时候必须触发，就由这个数
+	// 说了算。
 	ctx := fmt.Sprintf("context %d tokens", prompt)
 	if r.window > 0 {
 		ctx = fmt.Sprintf("context %d / %d (%.1f%%)", prompt, r.window, float64(prompt)*100/float64(r.window))
 	}
-	// 这个会话里实测的每 token 字节数，正是那个让 tokenizer 变得
-	// 没必要——用来决定何时压缩——的数字。之所以把它打印出来，
-	// 是因为看着它稳定下来——读 JSON 时是 3.1，散文里是 4.2——
-	// 是理解"固定除数为什么是个差估算器、校准过的估算器为什么是个
-	// 好估算器"最快的办法。
+	// 这次会话实测的字节每 token。就是这个数让"什么时候该压缩"这件事不再
+	// 需要 tokenizer。之所以把它打出来，是因为看着它慢慢稳定下来——读
+	// JSON 时 3.1，散文里 4.2——是最快搞明白"为什么固定除数是个糟糕的估
+	// 算器、校准过的却挺好"的办法。
 	if r.wireTokens > 0 {
 		ctx += fmt.Sprintf(" · ≈%.1f B/tok", float64(r.wireBytes)/float64(r.wireTokens))
 	}
 	r.p("  %s %s\n", r.c(cDim, "└"), r.c(cDim, ctx))
 }
 
-// cacheBar 把 prompt 拆分画成二十个格子。
+// cacheBar 把 prompt 的切分画成二十格。
 //
-// 三个数字的表格是可读的；柱状图**是可扫一眼的**，你想注意
-// 到的，是比例在回合之间的变化。当绿色突然消失，说明某个
-// 东西让你的缓存失效了——你想在它发生的那个回合就看到，
-// 而不是等到月底账单里才看到。
+// 三个数字排成表也读得懂；条形图则是**扫一眼就看见**，而你想察觉的东西
+// 是回合之间比例的变化。绿色突然没了，说明有什么东西把你的缓存作废了
+// ——你要在它发生的那个回合就看见，不是月底在账单上看见。
 func (r *renderer) cacheBar(u Usage) string {
 	const width = 20
 	total := u.Prompt()
@@ -550,7 +539,7 @@ func (r *renderer) cacheBar(u Usage) string {
 		}
 		c := n * width / total
 		if c == 0 {
-			c = 1 // 永远不要让非零分量渲染成空白
+			c = 1 // 非零的分量，绝不许画成什么都没有
 		}
 		return c
 	}
@@ -560,21 +549,19 @@ func (r *renderer) cacheBar(u Usage) string {
 	}
 	pad := width - full - write - read
 
-	// 三个不同的**符号**，不仅仅三种颜色。bar 必须活下来
-	// `| grep`、一个文件、一个 CI log 和一个色盲读者——这些
-	// 才是人们实际查看 Agent 输出的方式。一个只在彩色终端里
-	// 才能用的图表，就是一个恰好在有人想用它向你展示问题时，
-	// 是空白的图表。
+	// 三种不同的**字形**，不只是三种颜色。这根条形图要扛得住 `| grep`、
+	// 扛得住存成文件、扛得住 CI 日志、扛得住色盲的读者——人们看 Agent 输
+	// 出，实际上就是这么看的。只在彩色终端里管用的图，恰好会在有人想给
+	// 你看问题的时候是一片空白。
 	return r.c(cFull, strings.Repeat("█", full)) +
 		r.c(cWrite, strings.Repeat("▓", write)) +
 		r.c(cRead, strings.Repeat("░", read)) +
 		strings.Repeat(" ", max(0, pad))
 }
 
-// SessionSummary 打印总计。重要的那一行，是最后一行：被
-// 计费的 token 数，相对于产生这些 token 的对话规模。阶段 00
-// 的文档记录过，在没有缓存的情况下，这个比例是 4.2x；这就是
-// 你观察它变化的地方。
+// SessionSummary 打印总计。要紧的是最后一行：计费的 token 数，对上产出
+// 这些 token 的那段对话有多大。阶段 00 的文档记下这个比值在不开缓存时
+// 是 4.2x；在这里你可以看着它动。
 func (r *renderer) SessionSummary(finalPrompt int) {
 	r.p("\n%s\n", r.c(cDim, "  ── session ──────────────────────"))
 	r.p("  %d calls · %d commands\n", r.calls, r.commands)
@@ -587,8 +574,8 @@ func (r *renderer) SessionSummary(finalPrompt int) {
 	if r.compactions > 0 {
 		r.p("  compactions: %d · ~%d tokens removed from the prompt\n", r.compactions, r.saved)
 	}
-	// 只在它们真的发生过时才打印。每个干净的会话上都写着 "retries: 0" 的行，会
-	// 教人们不再读这个块。
+	// 只有真发生过才打印。每场干净的会话都印一行"retries: 0"，只会教会人不
+	// 再读这个块。
 	if r.retries > 0 {
 		word := "retries"
 		if r.retries == 1 {
@@ -611,14 +598,12 @@ func (r *renderer) SessionSummary(finalPrompt int) {
 
 // ---------------------------------------------------------------------------
 
-// hitRate 报告的是，prompt 里有多大比例是从缓存提供的。
+// hitRate 报的是 prompt 里有多大比例是从缓存拿的。
 //
-// 分母是 Prompt()，永远不是 Input。在一个温调用上，Input
-// 只是没被缓存的那部分剩余——在一次实测的运行里，是 18 个
-// token 对一个 17,985-token 的 prompt——所以拿它做分母，
-// 会报出 99.9% 的命中率，不管缓存到底有没有在起作用。得拿
-// 你实际被计费的总数来算这个比率，不然你搭出来的就是一个
-// 看不出回归的仪表盘。
+// 分母是 Prompt()，绝不是 Input。热调用时 Input 只剩没缓存的那点余
+// 数——一次实测里，prompt 有 17,985 个 token，Input 只有 18 个——拿它
+// 去除，不管缓存有没有在起作用，报出来的命中率都是 99.9%。要拿你
+// 真正被计费的总数去算比率，不然你搭出来的仪表盘根本显示不出退化。
 func hitRate(u Usage) string {
 	total := u.Prompt()
 	if total == 0 || u.CacheRead == 0 {
@@ -655,9 +640,8 @@ func humanBytes(n int) string {
 	}
 }
 
-// oneLineDim 把一个值压平成一行侧注文字，标记掉它删去的换行，而不是
-// 无声无息地把它们拼在一起——"这原本是多行"，往往正是你需要知道的
-// 那件事。
+// oneLineDim 把值压平到一行沟槽上，并且把删掉的换行标出来，而不是不
+// 声不响地接在一起——"这里原来是多行"往往正是你需要知道的事。
 func oneLineDim(s string, w int) string {
 	s = strings.ReplaceAll(strings.TrimSpace(s), "\n", " ⏎ ")
 	if len(s) > w {
@@ -671,9 +655,9 @@ func indentLines(s string) string {
 	return "  │ " + strings.ReplaceAll(s, "\n", "\n  │ ")
 }
 
-// colorEnabled 报告是否发出 ANSI。尊重 NO_COLOR（一个实际
-// 存在的跨工具约定），永远不要给管道上色——一份被输入到
-// `less` 或文件里的 **trace**，应该是纯文本。
+// colorEnabled 判断要不要输出 ANSI。尊重 NO_COLOR（这是跨工具真在用的
+// 约定），并且绝不给管道上色——trace 管进 `less` 或者管进文件，都该是
+// 纯文本。
 func colorEnabled(f *os.File) bool {
 	if os.Getenv("NO_COLOR") != "" {
 		return false

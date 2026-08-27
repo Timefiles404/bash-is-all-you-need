@@ -1,27 +1,28 @@
-// 阶段 07 —— 子 Agent，即同一个主循环被再调用一次。
+// 阶段 07——子 Agent，就是把同一个循环再调一次。
 //
-// 这里没有框架也没有编排层。子 Agent 就是：
+// 这里没有框架，也没有编排层。子 Agent 就是：
 //
-//	一个新的 []Msg，一个不同的系统提示词，同一个供应商，同一套工具
-//	—— 它返回**文本**给调用者，不是它的对话历史。
+//	一个全新的 []Msg、另一份系统提示词、同一个 provider、同一套
+//	工具——而且它返给调用方的是**文本**，不是它的对话记录。
 //
-// 最后这一条是整个产品。子 Agent 做的一切 —— 每个工具调用、每个 40kB 的
-// 命令输出、它走进又退出来的每一次弯路 —— 都发生在一个结束时被扔掉的消
-// 息数组中。父 Agent 的上下文只会增长报告的长度，别的都不增长。
+// 最后那半句才是全部的产品。子 Agent 做的每一件事——每次工具调用、每
+// 一份 40kB 的命令输出、每一步走错又退回来的弯路——都发生在一个跑完
+// 就扔掉的消息数组里。父 Agent 的上下文只按报告的长度增长，别的一点
+// 不涨。
 //
-// 所以要讲清楚的是，因为这正好是人们假设的反面：
+// 所以有件事得说清楚，因为它和大家的想当然正好相反：
 //
-//	**子 Agent 不省 token。它省的是上下文。**
+//	**子 Agent 不省 token，它省的是"上下文"。**
 //
-// 它的总 token 通常比内联做完这件事**更多** —— 子 Agent 要重读一遍系统提
-// 示词，重新确立自己在做什么，还要重新发现父 Agent 早就知道的东西。它买
-// 到的是父 Agent 的窗口不会被填满，而那才是真正会耗尽的资源。阶段 05 测
-// 过它填满后会发生什么。
+// 它的总 token 通常比内联做完这件事*更多*——子 Agent 要重读一遍系统
+// 提示词，重新确立自己在做什么，还要重新发现父 Agent 早就知道的东
+// 西。它买到的是父 Agent 的窗口不会被填满，而那才是真正会耗尽的资
+// 源。阶段 05 量过被填满之后会发生什么。
 //
-// 第二个值得注意的是什么**不是**新的。父 Agent 已经有一个主循环；子
-// Agent 就是那个主循环。父 Agent 已经有一条事件总线；子 Agent fork 了它。
-// 父 Agent 已经有一个压缩器和一个权限闸；子 Agent 共享它们。这个文件的大
-// 约一百行是这个功能，其中大部分是保险丝。
+// 第二件值得注意的事，是有哪些东西**不是**新的。父 Agent 本来就有循
+// 环，子 Agent 就是那个循环；父 Agent 本来就有总线，子 Agent 把它
+// fork 一下；父 Agent 本来就有 compactor 和权限闸，子 Agent 跟它共用。这
+// 个文件里大约一百行是新功能，而其中大多数是保险丝。
 package main
 
 import (
@@ -34,10 +35,10 @@ import (
 
 // 子 Agent 的系统提示词。
 //
-// 第三段才是重点，它是向模型解释的机制，而不是隐藏起来的。一个不知道自己
-// 的对话历史被丢弃的子 Agent 会写一个自己过程的总结（"我看了几个文件找到
-// 了一些东西"），因为那是一个聊天回合通常的样子。明确告诉它最后一条消息
-// 是唯一会存活的东西，它就会写一个报告。
+// 要紧的是第三段，它把机制讲给模型听，而不是瞒着模型。不知道自己的
+// 对话记录会被扔掉的子 Agent，写出来的是过程小结（"我看了几个文件，
+// 发现了一些东西"），因为聊天的一个回合通常就长这样。明明白白告诉
+// 它，只有最后那条消息能活下来，它写出来的就是报告。
 const subagentSystem = `You are a subagent. Another agent has delegated one task to you and is waiting.
 
 You have the same shell it has, and the same working directory. Do the task.
@@ -60,8 +61,8 @@ chose.`
 func taskToolDef() Tool {
 	return Tool{
 		Name: "task",
-		// 描述是为了**经济学**而写的，因为那是模型必须做出的决定。一个只说
-		// 明工具做什么的工具描述，没法告诉模型该在什么时候用它。
+		// 这段描述是冲着*经济账*写的，因为模型要做的正是这个决定。
+		// 只说工具做什么的描述，等于没告诉模型什么时候该伸手去拿。
 		Description: "Delegate a self-contained piece of work to a subagent with its own context window. " +
 			"The subagent has the same shell and returns only a final written report; its commands and " +
 			"output never enter your context. Use this for work that will read a lot and conclude a little — " +
@@ -87,11 +88,11 @@ func taskToolDef() Tool {
 	}
 }
 
-// parseTaskArgs 镜像 parseBashArgs，包括指针字段。
+// parseTaskArgs 照着 parseBashArgs 抄，指针字段也一并抄过来。
 //
-// 阶段 01 是吃过亏才明白这一点的：一个值类型的字符串字段会让
-// json.Unmarshal 在根本没有这个 key 的 payload 上成功，所以一个被截断
-// 的工具调用变成了空任务而不是错误。这里两个必需字段，所以两个指针。
+// 阶段 01 是吃过亏学到的：值类型的 string 字段会让 json.Unmarshal 在
+// 一份根本没带这个键的 payload 上成功，于是截断的工具调用变成空任
+// 务，而不是错误。这里有两个必填字段，所以两个指针。
 func parseTaskArgs(raw string) (description, prompt string, err error) {
 	var args struct {
 		Description *string `json:"description"`
@@ -111,16 +112,16 @@ func parseTaskArgs(raw string) (description, prompt string, err error) {
 }
 
 // ---------------------------------------------------------------------------
-// 生成子 Agent
+// 派生
 // ---------------------------------------------------------------------------
 
-// spawn 运行一个子 Agent 到完成并返回它的报告。
+// spawn 把一个子 Agent 跑到结束，返回它的报告。
 //
-// 注意什么被共享什么不被共享。共享的：供应商、HTTP 客户端、权限闸、shell
-// 配置和事件总线核心 —— 所以子 Agent 的权限提示到达同一个人，子 Agent 的
-// 事件进入同一条有序的 trace。不共享的：消息数组、系统提示词、压缩器和回
-// 合预算。这条分割线，正好是"父 Agent 必须不失去的状态"与"子 Agent 必
-// 须不继承的状态"之间的界线。
+// 注意什么共享、什么不共享。共享的：provider、HTTP 客户端、权限闸、
+// shell 配置，还有总线的 core——这样子 Agent 的权限提问会送到同一个
+// 人面前，它的事件也落进同一份有序的 trace。不共享的：消息数组、系
+// 统提示词、compactor 和回合预算。这道分界线恰好就是"父 Agent 不能丢的
+// 状态"对上"子 Agent 不能继承的状态"。
 func (a *agent) spawn(callID, description, prompt string) (string, Usage, error) {
 	started := time.Now()
 	agentID := fmt.Sprintf("%s#%d", description, a.nextChild())
@@ -137,8 +138,8 @@ func (a *agent) spawn(callID, description, prompt string) (string, Usage, error)
 
 	report := lastAssistantText(msgs)
 	if strings.TrimSpace(report) == "" {
-		// 一个返回空的子 Agent 比错误还糟糕，因为父 Agent 会把空字符串当作一个发
-		// 现。把话讲清楚。
+		// 什么都不返回的子 Agent 比出错更糟，因为父 Agent 会把空串
+		// 当成结论。把话挑明说出来。
 		report = "[the subagent produced no final report — it may have hit its turn limit or been cut off. Treat this as a failure, not as an empty result.]"
 	}
 
@@ -157,23 +158,24 @@ func (a *agent) nextChild() int {
 	return a.children
 }
 
-// newChild 构建一个子 Agent，它共享必须共享的，不继承必须不继承的。
+// newChild 造出的子 Agent，该共享的都共享，不该继承的一样不继承。
 //
-// 共享的：供应商、HTTP 客户端、权限闸、shell 配置和事件总线核心 —— 所以
-// 子 Agent 的权限提示到达同一个人，它的事件进入同一条有序的 trace。不共
-// 享的：消息数组、系统提示词、压缩器和回合预算。
+// 共享的：provider、HTTP 客户端、权限闸、shell 配置，还有总线的
+// core——这样子 Agent 的权限提问会送到同一个人面前，它的事件也落进同
+// 一份有序的 trace。不共享的：消息数组、系统提示词、compactor 和回合预
+// 算。
 //
-// 它是逐字段写出来的，而不是作为 `child := *a`，这样更短而且 `go vet` 正
-// 确地拒绝它：agent 拥有一个 sync.Mutex，复制一个包含它的结构体会给副本
-// 一个已经处于原件状态的互斥锁。这种明确的形式也是诚实的形式 —— 它的每一
-// 行都是关于什么是子 Agent 的一个决定。
+// 一个字段一个字段写出来，而不是写 `child := *a`——后者更短，而且
+// `go vet` 拒得没错：agent 里有 sync.Mutex，复制含互斥锁的结构体，副
+// 本拿到的锁就停在原件当时的那个状态上。写全了也更诚实：这里每一
+// 行，都是在决定子 Agent 到底是什么。
 func (a *agent) newChild(agentID string, system func() string) *agent {
 	child := &agent{
-		// 梯子是按指针共享的，不是拷贝的，而这是一个决策，不是语法上的偶然。"这
-		// 个端点在拒绝调用"是一个关于端点的事实，所以发现它的子 Agent 不应该还
-		// 得去教它的父 Agent，而一个已经降级过的父 Agent，也不应该把自己的子
-		// Agent 送回那个死掉的一级。这就是 ladder 要有一把互斥锁的原因：好几个
-		// 子 Agent 可能同时在同一个供应商上失败。
+		// 梯子是按指针共享的，不是拷贝的，而这是个决定，不是语法上的意外。
+		// "这个端点在拒绝调用"是关于端点的事实，所以子 Agent 发现了它，不该
+		// 还要回头教父 Agent；而已经降级过的父 Agent，也不该把自己的子 Agent
+		// 送回已经死掉的那一级。这也是 ladder 要带一把互斥锁的原因：好几个子
+		// Agent 可能同时在同一家供应商上失败。
 		lad: a.lad, pol: a.pol, httpc: a.httpc, g: a.g, cfg: a.cfg,
 		bus:       a.bus.Fork(agentID),
 		memoryDir: a.memoryDir,
@@ -182,21 +184,21 @@ func (a *agent) newChild(agentID string, system func() string) *agent {
 		maxDepth:  a.maxDepth,
 		system:    system,
 
-		// 一个新的压缩器，因为子 Agent 的对话是一段不同的对话。共享一个会意味着
-		// 子 Agent 的估算器是在父 Agent 的流量上校准的 —— 通常足够接近，而"通常
-		// 足够接近"就是一个共享的可变对象在六个月后如何变成 bug 的。
+		// compactor 要新的，因为子 Agent 的对话是另一场对话。共用一个，
+		// 子 Agent 的估算器就是拿父 Agent 的流量校准的——通常也够接近
+		// 了，而"通常够接近"正是共享可变对象在半年后变成 bug 的路子。
 		comp: newCompactor(a.comp.window, a.comp.threshold, a.comp.keepRatio),
 	}
-	child.comp.est.ratio = a.comp.est.ratio // 一个免费提示，然后它校准
+	child.comp.est.ratio = a.comp.est.ratio // 白送一次提示，之后它自己校准
 
-	// 子 Agent 自己的回合预算，默认比父 Agent 的要小：一个需要三十轮的子
-	// Agent，接到的是一个本该拆成三个子 Agent 来做的任务，保险丝是唯一会
-	// 告诉你这一点的东西。
+	// 子 Agent 自己的回合预算，默认比父 Agent 小：要跑三十轮才够的子
+	// Agent，接到的任务本该拆成三个子 Agent，而唯一会告诉你这件事的，就
+	// 是这道保险丝。
 	child.cfg.maxTurns = a.cfg.subTurns
 	return child
 }
 
-// lastAssistantText 是子 Agent 的返回值：它最后说的东西。
+// lastAssistantText 就是子 Agent 的返回值：它最后说的那句话。
 func lastAssistantText(msgs []Msg) string {
 	for i := len(msgs) - 1; i >= 0; i-- {
 		if msgs[i].Role == RoleAssistant {
@@ -209,21 +211,21 @@ func lastAssistantText(msgs []Msg) string {
 }
 
 // ---------------------------------------------------------------------------
-// 工具表，是深度的函数
+// 工具表，它是深度的函数
 // ---------------------------------------------------------------------------
 
-// tools 返回这个 Agent 可以调用的。
+// tools 返回这个 agent 可以调用的东西。
 //
-// 在深度限制处 `task` 工具被**移除**，不是被拒绝。这是一个刻意的差别，值
-// 得一段文字：
+// 到了深度上限，`task` 工具是被**摘掉**，不是被拒绝。这个区别是有意
+// 为之，值得单占一段：
 //
-// 一个运行时拒绝要花一个完整的往返 —— 模型写一个工具调用，宿主拒绝它，模
-// 型读拒绝并尝试别的 —— 而且每个永远用不上它的请求，都要搭上工具定义的
-// token。更糟的是，这条规则在模型看来明显是随意定的，而模型对付随意规则
-// 的办法，就是换个说法继续争辩。
+// 运行时拒绝要花一整趟往返——模型写出工具调用，宿主把它拒掉，模型读
+// 到拒绝再换个别的试——而且它还要在每一次永远用不上这个工具的请求里，
+// 付掉工具定义的 token。更糟的是，这条规矩模型看得出是随意的，而模型
+// 对付随意的规矩，办法就是换个说法。
 //
-// 一个不在列表中的工具不是一个规则。没有东西可争论，没有东西可绕过，模型
-// 在它拥有的工具中计划，这正是你想要的。
+// 不在列表里的工具不是规矩。没什么可争的，也没什么可绕的，模型就在
+// 手上这些工具里做计划，而这正是你想要的。
 func (a *agent) tools() []Tool {
 	if a.depth >= a.maxDepth {
 		return []Tool{bashToolDef()}
@@ -232,28 +234,28 @@ func (a *agent) tools() []Tool {
 }
 
 // ---------------------------------------------------------------------------
-// 运行一个回合的工具调用，其中一些同时进行
+// 跑完一个回合的工具调用，其中有些同时跑
 // ---------------------------------------------------------------------------
 
-// dispatch 执行一个 Assistant 回合中的每个工具调用，并
-// **按模型发出的顺序**返回结果。
+// dispatch 执行一个 assistant 回合里的每一次工具调用，并且**按模型发
+// 出的顺序**返回结果。
 //
-// 子 Agent 调用并发运行；其他所有东西按序运行。顺序保证是要注意的部分：
-// 执行是并发的，历史是确定的。如果结果是按完成的顺序追加的，同一个会话重
-// 放两次会产生两个不同的消息数组、两个不同的 prompt 前缀，以及 —— 按阶段
-// 04 —— 一个永远不会命中的缓存。并发可以改变一件事要花多长时间。它不能
-// 改变对话里说了什么。
+// 子 Agent 的调用并发跑，其余的按顺序跑。要留意的是那条顺序保证：执
+// 行是并发的，历史是确定的。结果要是按完成先后追加，同一次会话重放
+// 两遍会产出两份不同的消息数组、两份不同的 prompt 前缀，以及——照阶
+// 段 04 的说法——永远命不中的缓存。并发可以改变事情花多长时间，不可
+// 以改变对话说了什么。
 func (a *agent) dispatch(turn int, calls []Block) ([]Block, bool) {
 	results := make([]Block, len(calls))
 	texts := make([]string, len(calls))
 	stopped := false
 
-	// 第一步：按序工作，和所有东西的权限闸决策。
+	// 第 1 趟：串行的活儿，以及所有调用的权限裁决。
 	//
-	// 每个权限问题都在**这里**被问，在一个 goroutine 上，在任何并发开始前。
-	// 一个从两个 goroutine 同时写的权限闸 prompt，会在同一行里拼出两句各写
-	// 一半的问题，又把同一个答案当成这两句共同的回答——这是一个穿着 UI bug
-	// 外衣的安全 bug。
+	// 每一个权限问题都在**这里**问，在同一个 goroutine 上，在并发开始之
+	// 前。权限提问要是被两个 goroutine 同时写出来，一行上就会出现两个半
+	// 截的问题，然后读一个答案当两个用——这是穿着 UI bug 外衣的安全
+	// bug。
 	type pending struct {
 		i           int
 		description string
@@ -307,13 +309,14 @@ func (a *agent) dispatch(turn int, calls []Block) ([]Block, bool) {
 			}
 
 		default:
-			// 一个模型发明的工具名。这确实会发生，答案是把话说得准确而不是让回合失败：
-			// 模型能从"没有这样一个工具"中恢复，不能从丢弃的结果恢复。
+			// 模型编出来的工具名。这种事会发生，而对策是把话说准，而
+			// 不是让整个回合失败：模型能从"没有这个工具"里恢复过来，
+			// 从丢掉的结果里恢复不了。
 			texts[i] = fmt.Sprintf("[there is no tool called %q. The tools available to you are listed in this request.]", c.Name)
 		}
 	}
 
-	// 第二步：子 Agent，全部一次。
+	// 第 2 趟：子 Agent，一起上。
 	if len(async) > 0 {
 		var wg sync.WaitGroup
 		for _, p := range async {
@@ -337,8 +340,8 @@ func (a *agent) dispatch(turn int, calls []Block) ([]Block, bool) {
 	return results, stopped
 }
 
-// runCommand 是 dispatch 的 bash 部分，从阶段 06 开始保持不变，只是它返
-// 回渲染的结果而不是追加它。
+// runCommand 是 dispatch 的 bash 那一半，和阶段 06 相比没有变化，只是
+// 它把渲染好的结果返回，而不是追加进去。
 func (a *agent) runCommand(turn int, callID, command string) string {
 	a.bus.Emit(Event{Kind: KindCommandStart, Turn: turn, ToolID: callID, Command: command})
 	r := runBash(a.cfg.shell, command, a.cfg.timeout)
@@ -351,12 +354,12 @@ func (a *agent) runCommand(turn int, callID, command string) string {
 	return rendered
 }
 
-// firstLine 是用户在批准子 Agent 时读到的，所以它有两个工作：显示某些东
-// 西，永远不要在不完整时读起来完整。
+// 用户批准子 Agent 时读到的就是 firstLine，所以它有两件活儿：显示点
+// 东西出来，以及在内容不完整时绝不读起来像完整的。
 //
-// 开头的空白，在切点**之前**而不是之后被修剪。一个以换行开头的 prompt
-// —— 大多数时候都是这样，当模型写一个多段落的任务时 —— 过去会产生字符
-// 串" …"：省略号前面什么都没有，就出现在正请人授权的那一行上。
+// 前导空白是在切之**前**去掉的，不是切完再去。以换行开头的 prompt——
+// 模型写多段任务时大多如此——从前会产出字符串 " …"：省略号前面什么都
+// 没有，而这一行正是要人来授权的那行。
 func firstLine(s string) string {
 	s = strings.TrimSpace(s)
 	if i := strings.IndexByte(s, '\n'); i >= 0 {

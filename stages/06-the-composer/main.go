@@ -1,18 +1,19 @@
-// 阶段 06——Composer：阶段 05，加上一种看看它做了什么的方式。
+// 阶段 06——The Composer：阶段 05，外加一个办法，去看清它干了什么。
 //
-// 三个视界，每个 Agent 都需要全部三个：
+// 三种时间尺度，任何 Agent 三样都要：
 //
-//	在一个请求内——消息数组。阶段 00–04。
-//	在一个会话内——压缩，当数组超出窗口。
-//	跨会话——一个文件。那就是整个机制。
+//	一次请求之内  —— messages 数组。阶段 00–04。
+//	一次会话之内  —— 上下文压缩，数组撑不进窗口的时候。
+//	跨会话        —— 一个文件。机制全部就在这儿。
 //
-// 针对阶段 04 的差异很小，落在三个地方：系统提示词现在携带记忆和稳定环境
-// （memory.go），每个用户回合都会在它旁边冻结一份易变快照，工具循环的顶
-// 部检查对话是否即将达到极限（compact.go）。
+// 跟阶段 04 的 diff 很小，落在三个地方：系统提示词现在带上了记忆和稳定
+// 的环境信息（memory.go），每个用户回合会在旁边冻一份易变的快照，工具
+// 循环的开头会查一下对话是不是快撞墙了（compact.go）。
 //
-// 一个值得注意的结构变化：长期存在的部分——供应商、总线、权限闸、配置、压
-// 缩器——移到了一个 `agent` struct。阶段 04 的 runTurn 取了八个参数，阶段
-// 05 还要再多三个。一个接收者不是一个抽象；它是相同的值，只是名字更短。
+// 有一处结构上的改动值得一提：那些长命的部件——供应商、总线、权限闸、
+// 配置、compactor——挪到了 `agent` 结构体上。阶段 04 的 runTurn 收八个
+// 参数，阶段 05 还要再加三个。这里的接收者不是什么抽象，它就是同一堆值
+// 换了个短名字。
 package main
 
 import (
@@ -47,16 +48,12 @@ either find another way or ask.
 
 When the task is done, reply with a short plain-text summary and no tool call.`
 
-// memoryPrompt 是整个长期记忆特性。
+// memoryPrompt 就是长期记忆这个功能的全部。
 //
-// 没有工具，没有存储，没有嵌入，
-// 没有检索步骤：一个文件，加一句
-// 话，告诉模型可以用它已有的工具，
-// 把内容追加进这个文件。最后一行
-// 是决定文件是否值得在六个月后读
-// 的部分——"记录你学到的，不是
-// 你做了什么"是知识库和日记之间
-// 的区别。
+// 没有工具，没有存储，没有 embedding，没有检索这一步：一个文件，加一句
+// 话告诉模型，它可以用手头已有的工具往里追加。最后那一行才是决定这份
+// 文件半年后还值不值得读的地方——"记你学到了什么，不是你干了什么"，
+// 就是知识库和日记的分界线。
 const memoryPrompt = `
 
 Durable notes live in ` + memoryFileForWriting + ` in the working directory. If that file
@@ -98,8 +95,7 @@ type config struct {
 }
 
 // ---------------------------------------------------------------------------
-// 权限闸。自阶段 01 以来未改，除了它通过
-// 总线报告。
+// 权限闸。除了改成通过总线上报，从阶段 01 起就没变过。
 // ---------------------------------------------------------------------------
 
 type gate struct {
@@ -143,8 +139,7 @@ func (g *gate) ask(command string) (verdict, string) {
 
 // ---------------------------------------------------------------------------
 
-// agent 装着贯穿整个会话生命周期、
-// 始终存在的一切。
+// agent 装着活满整个会话的那些东西。
 type agent struct {
 	p     Provider
 	httpc *http.Client
@@ -153,11 +148,9 @@ type agent struct {
 	cfg   config
 	comp  *compactor
 
-	// system 是函数，不是字符串，因为
-	// 阶段 04 的 --break-cache 实验：
-	// 启动时计算一次的值是常数前缀，
-	// 只有每个请求重计算的值使任何东西
-	// 无效。保持间接使那个区别可表达。
+	// system 是函数而不是字符串，原因在阶段 04 的 --break-cache 实验：启动
+	// 时算一次的值是恒定前缀，只有每次请求都重算的值才会作废缓存。留着这
+	// 一层间接，才能把这个差别表达出来。
 	system func() string
 
 	memoryDir  string
@@ -175,18 +168,18 @@ func main() {
 		step         = flag.Bool("step", false, "replay: wait for Enter before each event")
 		showReq      = flag.Bool("show-request", false, "print the full request body before each call")
 
-		// 阶段 06。Composer 是一个**读者**，所以它只需要一个路径，其他什么都不需
-		// 要——没有密钥，没有供应商，没有网络。那不是限制，而是阶段 02 决定让
-		// trace 成为真实来源、而不是调试日志的收获。
+		// 阶段 06。composer 是个**读者**，所以它只要一个路径，别的什么都不
+		// 需要——不要 key，不要供应商，不要网络。这不是限制，这是阶段 02 当
+		// 初决定让 trace 当事实来源、而不是当调试日志的回报。
 		composerAt = flag.String("composer", "", "open the TUI on a trace file instead of running the agent")
 
-		// 同样的视图，印出来，而不是画出来。
+		// 同样这几个视图，只是打印出来而不是画出来。
 		//
-		// 这不是调试舱口。只要你想 diff、grep、把内容粘贴进一个 issue，或者在 CI
-		// 里检查，TUI 就是一条死路；而"模型在第 12 次调用中看到了什么"这类问题，
-		// 你恰恰想要一个能丢进管道里处理的答案。渲染和绘制原本就是两个独立的函数
-		// （views.go 返回文本行；term.go 把它们画出来），所以这里只多花八行代码——
-		// 这就是不让 UI 独占数据的回报。
+		// 这不是调试暗门。凡是你想 diff、想 grep、想贴进 issue、想在 CI 里
+		// 核对的东西，TUI 都是死路；而"第 12 次调用时模型看到了什么"，正是
+		// 那种你希望能把答案接进管道的问题。渲染和绘制原本就是两个函数
+		// （views.go 返回行，term.go 负责画），所以这件事只花了八行——不让
+		// UI 占住数据，回报就在这儿。
 		dumpAt   = flag.String("composer-dump", "", "print one composer view for a trace and exit")
 		dumpView = flag.String("view", "model", "composer-dump: god | model | wire")
 		dumpCall = flag.Int("call", 1, "composer-dump: which model call (1-based)")
@@ -209,9 +202,9 @@ func main() {
 	flag.BoolVar(&cfg.yolo, "yolo", false, "run every command without asking")
 	flag.Parse()
 
-	// 首先要说清楚：Composer 从来不需要供应商；要是非让它等一个供应商，就意
-	// 味着你没法在一台没配密钥的机器上读 trace——可那恰恰是你最想读 trace 的
-	// 大多数机器。
+	// 放在最前面：composer 从来不需要供应商，让它先等着供应商，就等于
+	// 没配 key 的机器上读不了 trace——而你想读 trace 的机器，多半正是这
+	// 种。
 	if *dumpAt != "" {
 		if err := dumpComposer(*dumpAt, *dumpView, *dumpCall, *dumpW, os.Stdout); err != nil {
 			fmt.Fprintln(os.Stderr, err)
@@ -243,20 +236,17 @@ func main() {
 		return
 	}
 
-	// resolveErr 这里故意**不是**致命的。
+	// resolveErr 在这里故意**不**致命。
 	//
-	// 重放不需要密钥、不需要 shell、不需要网络，也不需要
-	// 供应商——那个承诺是阶段 02 的，它在 README 中，
-	// 从阶段 03 直到这行被写它是假的：resolve() 移动到
-	// 重放分支上方，并把它的 os.Exit(1) 带走了。
-	// 在一台设置了 env vars 的机器上（这是作者测试过的
-	// 每台机器），什么看起来都没错。在一台只有 trace 文件、
-	// 别无他物——这正是该功能存在的机器上——
-	// `--replay` 打印"no provider configured"。
+	// 重放不需要 key、不需要 shell、不需要网络，也不需要供应商——这是阶段 02
+	// 许下的承诺，写在 README 里；而从阶段 03 开始，直到这行代码写下之前，它一
+	// 直是假的：resolve() 挪到了重放分支的上面，把自己那句 os.Exit(1) 也一起带
+	// 了上去。在环境变量都设好的机器上（作者测过的每台机器都是这样），什么毛病
+	// 也看不出来。在只有 trace 文件、别的什么都没有的机器上——而这个功能存在的
+	// 意义正是为了这种机器——`--replay` 打出来的是 "no provider configured"。
 	//
-	// 所以错误被携带而不是被抛出，并在下面检查，
-	// 在唯一实际需要供应商的路径上。配置错误应该只对
-	// 依赖配置的代码致命，对其余代码则完全没有影响。
+	// 所以错误是被带着走的，不是当场抛出来；到下面真正需要供应商的那一条路径上
+	// 再检查。配置出错，该致命的只有依赖这份配置的代码，别的一概不该。
 	pcfg, pname, resolveErr := pf.resolve(*providerName)
 	if *window > 0 {
 		pcfg.Window = *window
@@ -319,13 +309,10 @@ func main() {
 	fmt.Printf("stage 06 · provider=%s (%s) · model=%s\ncwd=%s\n",
 		pname, provider.Protocol(), provider.Model(), wd)
 
-	// ---- 系统提示词，一次组装 -----------
+	// ---- 系统提示词，一次装配好 -----------------------------------------
 	//
-	// 这里的一切，在整个会话期间都
-	// 不会变——这就是它们能被排在
-	// 缓存断点之前的原因。会变的东西，
-	// 则进入消息流——参见 memory.go
-	// 的放置规则。
+	// 这里的一切在整个会话里都是稳定的，这才让它有资格待在缓存断点之前。
+	// 会动的东西一律进消息流——见 memory.go 的放置规则。
 	memory := ""
 	if !*noMemory {
 		memory, _ = loadMemory(wd, bus)
@@ -375,22 +362,16 @@ func main() {
 		}
 
 		bus.Emit(Event{Kind: KindUserMessage, Text: line})
-		// 易变快照在**这里**被取出一次，
-		// 冻结进这条消息。它永远不会
-		// 重新计算，这正是缓存能在一个
-		// 知道时间的会话里活下来的
-		// 全部原因。
+		// 易变快照在**这里**取，只取一次，然后冻进消息里。它永不重算——
+		// 会话知道现在几点，缓存却还活着，全靠这一点。
 		msgs = append(msgs, userTurn(line, volatileContext(shell, time.Now())))
 		msgs = a.runTurn(msgs)
 	}
 	view.SessionSummary(a.lastPrompt)
 }
 
-// command 处理斜线命令。它们是
-// 为 docs/05-live-forever.md 中的
-// 实验而存在的：只有窗口快满时
-// 才触发的压缩，很难演示，
-// 更难测试。
+// command 处理斜杠命令。它们是为 docs/05-live-forever.md 里的实验准备
+// 的：压缩只在窗口快满时才触发，这很难演示，更难测试。
 func (a *agent) command(line string, msgs []Msg) (bool, []Msg) {
 	switch {
 	case line == "/help":
@@ -438,18 +419,17 @@ func (a *agent) command(line string, msgs []Msg) (bool, []Msg) {
 	return false, msgs
 }
 
-// toolChars 是工具定义的字符成本，
-// 它们是每个 prompt 的一部分，
-// 否则对估算器不可见。
+// toolChars 是工具定义的字符开销。工具定义是每个 prompt 的一部分，而估
+// 算器本来看不见它们。
 func toolChars() int {
 	n := 0
 	for _, t := range []Tool{bashToolDef()} {
-		n += len(t.Name) + len(t.Description) + 200 // 模式，足够接近
+		n += len(t.Name) + len(t.Description) + 200 // schema 大概就这么大
 	}
 	return n
 }
 
-// call 执行一个模型调用。
+// call 做一次模型调用。
 func (a *agent) call(turn int, msgs []Msg) (*CallResult, error) {
 	req, body, err := a.p.BuildRequest(a.system(), msgs, []Tool{bashToolDef()}, 4096)
 	if err != nil {
@@ -478,17 +458,12 @@ func (a *agent) runTurn(msgs []Msg) []Msg {
 			return msgs
 		}
 
-		// ---- 墙检查 ---------------------------------
+		// ---- 撞墙检查 -------------------------------------------------
 		//
-		// 它在**这里**，在工具循环的顶部，
-		// 而不是用户循环的顶部。填满
-		// 上下文窗口的不是对话，而是
-		// 一个回合里的工具输出：单单
-		// 一个 `find /` 就能加上超过一
-		// 小时的聊天量。只在用户消息
-		// 之间检查，意味着撞墙会发生在
-		// 回合中途——那正是唯一没有
-		// 优雅恢复余地的地方。
+		// 它放在**这里**，工具循环的开头，不是用户循环的开头。填满上下文
+		// 窗口的不是对话，是一个回合内部的工具输出：一条 `find /` 就能顶上
+		// 一个多小时的聊天。只在用户消息之间检查，意味着墙是在回合中途
+		// 撞上的——而那正是唯一没有优雅退路的地方。
 		base := len(a.system()) + toolChars()
 		if est := a.comp.estimate(msgs, base); a.comp.due(est) {
 			cut, why := a.comp.plan(msgs, base)
@@ -510,11 +485,8 @@ func (a *agent) runTurn(msgs []Msg) []Msg {
 			return msgs
 		}
 		a.lastPrompt = res.Usage.Prompt()
-		// 校准。这是 Agent 能决定何时压缩
-		// 而不厂商化分词器的唯一原因：
-		// 服务器刚刚精确告诉了我们，我们
-		// 发送的那些字符变成了多少个
-		// token。
+		// 校准。Agent 能在不自带 tokenizer 的情况下决定何时压缩，全靠这一
+		// 点：服务端刚刚告诉了我们，发出去的那些字符最后变成了多少 token。
 		a.comp.est.observe(sentChars, res.Usage.Prompt())
 
 		am := Msg{Role: RoleAssistant}
@@ -523,13 +495,10 @@ func (a *agent) runTurn(msgs []Msg) []Msg {
 		}
 		am.Blocks = append(am.Blocks, res.Calls...)
 
-		// 模型可以返回什么都没有——无文本，
-		// 无工具调用——附加它产生一条消息，
-		// 带空内容数组，Anthropic 协议在
-		// **下一个**请求拒绝。阶段 04 里
-		// 这个问题就已经埋下了；
-		// compact.go 中的 validConversation()
-		// 是发现它的。
+		// 模型可以什么都不返回——没有文本，没有工具调用——把它追加进去，
+		// 就得到一条 content 数组为空的消息，而 Anthropic 协议要到*下一次*
+		// 请求才拒绝它。阶段 04 就潜伏着这个问题；是 compact.go 里的
+		// validConversation() 把它挖出来的。
 		if len(am.Blocks) == 0 {
 			a.bus.Notice("the model returned an empty response (wire: %q) — not adding it to the history", res.RawStop)
 			return msgs

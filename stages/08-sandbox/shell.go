@@ -1,30 +1,30 @@
-// 阶段 08 —— 级别 3：做 shell。
+// 阶段 08——第 3 级：成为 shell。
 //
-// policy.go 从外面检查一个命令，会输两次，而且两次的原因相同：它看到
-// 的是"接下来会发生什么"的描述，而 shell 决定的才是真正发生的事。引用
-// 击败了字符串检查。展开击败了解析检查。
+// policy.go 从外面检查命令，输了两次，两次都输在同一件事上：它看的是"将
+// 要发生什么"的一份描述，而 shell 那边正在决定实际发生什么。引号干掉了字
+// 符串检查，展开干掉了解析检查。
 //
-// 真正管用的做法，是不再当一个置身事外的观察者。嵌入解释器：在引用移
-// 除、参数展开、命令替换、算术、波浪展开、globbing 和 `eval` **之后**，
-// 它即将执行的每个命令，都会作为一个已经拼好的参数向量到达。没有语法
-// 可以再拿来躲在后面，因为语法刚刚才被消耗掉。
+// 真正管用的一步是：别再当外部观察者。把解释器嵌进来，它每要执行一条命
+// 令，到手的就是一个成品参数向量——在去引号、参数展开、命令替换、算术、
+// 波浪号展开、通配和 `eval` **之后**。已经没有语法可以躲在后面了，因为语
+// 法刚刚就是被吃掉的那个东西。
 //
-//	命令：  X=.en; eval "cat \$X"'v'
-//	argv：     ["cat", ".env"]
+//	命令:     X=.en; eval "cat \$X"'v'
+//	argv:     ["cat", ".env"]
 //
-// 两个处理器 —— 而两者都要用到，这一点并不显而易见：
+// 两个 handler，而两个都需要，是不那么显然的那部分：
 //
-//	ExecHandler  shell 运行的每个程序，用它的最终 argv
-//	OpenHandler  shell 本身打开的每个文件 —— 重定向
+//	ExecHandler  shell 跑的每个程序，连它最终的 argv
+//	OpenHandler  **shell** 自己打开的每个文件——重定向
 //
-// `cat < .env` 运行 `cat` **没有参数**。shell 打开文件，交出一个文件描
-// 述符。一个只检查 argv 的策略，压根看不到文件名，会在包括这一级在内
-// 的每个级别都放它通过。
+// `cat < .env` 跑 `cat` 时**一个参数都没有**。文件由 shell 打开，交过来的
+// 是文件描述符。只检查 argv 的策略根本看不到那个文件名，而且它在每一级都
+// 会放这条命令过去，包括这一级。
 //
-// 然后是诚实的部分，也是这一章剩下的内容：这是一个**策略和可观察性层，
-// 不是安全边界。** 它看得到每一个命令，却看不进任何一个的内部。
-// `python -c "..."` 是一个 exec，这个 exec 之后，沙箱对任何事都不再有
-// 意见。
+// 然后是诚实的那部分，也就是本章剩下的内容：这是**一层策略与可观测层，不
+// 是安全边界。** 它看得见每一条命令，却看不进任何一条里面。
+// `python -c "..."` 是一次 exec，那次 exec 之后，沙箱对任何事情都不再有意
+// 见了。
 package main
 
 import (
@@ -47,14 +47,14 @@ type sandbox struct {
 	root string
 	bus  *Bus
 
-	// enforce=false 把这个做成观察者：它报告每个 exec 和每个打开，什么都不
-	// 阻挡。这值得单独做成一种模式 —— 这里的价值大部分在于，能看到一个
-	// shell 命令真正做了什么，而这份价值并不需要拒绝任何东西。
+	// enforce=false 把它变成观察者：报告每一次 exec、每一次 open，什么都不
+	// 拦。这值得单独做成一种模式——这里大半的价值就在于看清一条 shell 命令
+	// 究竟做了什么，而这份价值并不需要拒绝任何东西。
 	enforce bool
 
 	mu      sync.Mutex
-	execs   []string // 展开后看到的每个 argv 都要检查，不只是模型写下的那个
-	opens   []string // 每个 shell 打开的路径
+	execs   []string // 看到的每个 argv，展开之后的
+	opens   []string // shell 打开过的每个路径
 	blocked []string
 }
 
@@ -62,18 +62,17 @@ func newSandbox(root string, bus *Bus, enforce bool) *sandbox {
 	return &sandbox{root: root, bus: bus, enforce: enforce}
 }
 
-// run 在嵌入的解释器内执行一个命令。
+// run 在嵌入的解释器里执行一条命令。
 //
-// 它返回的 execResult 和 runBash 完全一样，所以 Agent 的其余部分根本分
-// 不出区别 —— 这正是 exec.go 从阶段 01 起，就让渲染和运行保持分离的意
-// 义所在。
+// 它返回和 runBash 一样的 execResult，所以 Agent 的其余部分分辨不出差别
+// ——这正是从阶段 01 起就把 exec.go 的"跑命令"和"渲染结果"分开的意义。
 func (s *sandbox) run(command string, timeout time.Duration) execResult {
 	started := time.Now()
 
 	file, err := syntax.NewParser().Parse(strings.NewReader(command), "cmd")
 	if err != nil {
-		// 这里的解析错误，就是一个 **shell** 解析错误，会在任何东西运行之前就
-		// 报告出来。这比 bash 的行为更好 —— bash 会一直执行到语法错误那一行，
+		// 这里的解析失败是 *shell* 的解析失败，在任何东西跑起来之前就报
+		// 出来了。这比 bash 的行为好：bash 会把语法错误之前的全部执行掉，
 		// 然后才抱怨。
 		return execResult{
 			Stderr:   "sandbox: " + err.Error(),
@@ -104,8 +103,8 @@ func (s *sandbox) run(command string, timeout time.Duration) execResult {
 		Duration: time.Since(started),
 	}
 
-	// 超时是上下文的，取消上下文杀死默认处理器开始的子进程 —— 所以阶段 01 的
-	// 进程组工作仍在这里一层下做它的工作。
+	// 超时用的是 context 的超时，取消 context 会杀掉默认 handler 起的子进
+	// 程——所以阶段 01 那套进程组的功夫，在这里、在下面一层，仍然在干活。
 	if ctx.Err() == context.DeadlineExceeded {
 		res.TimedOut = true
 		res.ExitCode = -1
@@ -119,8 +118,8 @@ func (s *sandbox) run(command string, timeout time.Duration) execResult {
 	case errors.As(runErr, &status):
 		res.ExitCode = int(status)
 	default:
-		// 一个处理器返回了一个非状态错误 —— 很可能是一个策略拒绝。把文本亮出
-		// 来：它是唯一能告诉模型该怎么换种做法的东西。
+		// 某个 handler 返回了不是退出状态的错误——十有八九是策略拒绝。把
+		// 文本抛出来：只有它才会告诉模型该换成怎么做。
 		res.ExitCode = 1
 		if res.Stderr != "" && !strings.HasSuffix(res.Stderr, "\n") {
 			res.Stderr += "\n"
@@ -130,10 +129,10 @@ func (s *sandbox) run(command string, timeout time.Duration) execResult {
 	return res
 }
 
-// execMiddleware 包装解释器的默认 exec 处理器。
+// execMiddleware 包住解释器默认的 exec handler。
 //
-// 这里的 `args` 是完成的参数向量。shell 原本要对源文本做的所有事，此
-// 刻都已经做完了 —— 这正是为什么这里是策略唯一能立足的地方。
+// 这里的 `args` 就是成品参数向量。shell 打算对源文本做的一切都已经做完
+// 了，这正是为什么只有站在这里，策略才站得住。
 func (s *sandbox) execMiddleware(next interp.ExecHandlerFunc) interp.ExecHandlerFunc {
 	return func(ctx context.Context, args []string) error {
 		if len(args) == 0 {
@@ -145,9 +144,9 @@ func (s *sandbox) execMiddleware(next interp.ExecHandlerFunc) interp.ExecHandler
 		s.execs = append(s.execs, joined)
 		s.mu.Unlock()
 
-		// 对**每个** exec 发出，包括模型从不写的那些 —— pipeline、循环、别名
-		// 或 `eval` 生产出来的那些。这就是这一章"每进程拦截"的那一半，读它的
-		// trace，是搞清楚一个 shell 命令到底做了什么的最快方式。
+		// **每一次** exec 都会发出事件，包括模型根本没写过的那些——管道、
+		// 循环、别名或 `eval` 产出来的那些。这是本章"逐进程拦截"的那一半；
+		// 读它的 trace，是搞清一条 shell 命令究竟做了什么的最快办法。
 		s.bus.Emit(Event{Kind: KindSandboxExec, Command: joined})
 
 		if r := s.checkArgv(args); r != nil {
@@ -163,12 +162,11 @@ func (s *sandbox) execMiddleware(next interp.ExecHandlerFunc) interp.ExecHandler
 	}
 }
 
-// shell 本身打开的每个文件 —— 也就是重定向 —— 都会触发一次 open 调用。
+// shell 自己打开的每个文件都会调到 open：也就是重定向。
 //
-// 由 shell 运行的**程序**打开的文件，不会经过这里 —— 解释器对另一个进
-// 程的 syscall 没有可见性，而想得到这种可见性，就得靠 ptrace、
-// seccomp-bpf，或者一个文件系统命名空间，这也是这一章最后落脚的、操作
-// 系统级别的答案。
+// shell 跑起来的那些*程序*打开的文件不走这里——解释器看不见另一个进程的
+// 系统调用，要看见就得上 ptrace、seccomp-bpf 或者文件系统 namespace，那
+// 就是本章结尾落到的操作系统层答案。
 func (s *sandbox) open(ctx context.Context, path string, flag int, perm os.FileMode) (io.ReadWriteCloser, error) {
 	s.mu.Lock()
 	s.opens = append(s.opens, path)
@@ -188,7 +186,7 @@ func (s *sandbox) open(ctx context.Context, path string, flag int, perm os.FileM
 	return interp.DefaultOpenHandler()(ctx, path, flag, perm)
 }
 
-// checkArgv 是策略，应用到一个完成的参数向量。
+// checkArgv 就是策略本身，作用在成品参数向量上。
 func (s *sandbox) checkArgv(args []string) *refusal {
 	for _, a := range args[1:] {
 		if isSecretPath(a) {
@@ -197,17 +195,17 @@ func (s *sandbox) checkArgv(args []string) *refusal {
 		}
 	}
 
-	// shell-in-a-shell 情况，一个诚实的半措施。
+	// shell 里再套一层 shell 的情形，还有诚实的半截措施。
 	//
-	// `sh -c 'cat .env'` 是一个 exec，它的 argv 里，装着一整个新程序，就塞
-	// 在一个字符串里。拒绝把脚本交给一个嵌套 shell，意味着沙箱无法被轻易
-	// 绕过，也让 Agent 付出了一项真实能力的代价。它**不**做的是泛化：perl、
-	// python、awk、ruby、node、`find -exec`、`git -c core.pager=` 和
-	// `make`，也都能拿一个程序当参数，列举它们，就是级别 1 已经输掉的那个
-	// denylist 游戏。
+	// `sh -c 'cat .env'` 是一次 exec，它的 argv 里用字符串装着一整个新程
+	// 序。不让嵌套 shell 拿到脚本，意味着这个沙箱没法被轻轻松松绕开，代价
+	// 是 Agent 真丢掉了一项能力。它**不**做的事情是推广开去：perl、python、
+	// awk、ruby、node、`find -exec`、`git -c core.pager=` 和 `make` 也都能
+	// 把程序当参数收，而一个个列举它们，就是第 1 级早就输掉的那场黑名单游
+	// 戏。
 	//
-	// 它之所以在这里，是因为它确实有点用；之所以被说成一个半措施，是因为
-	// 假装它不止于此，正是沙箱骗得信任的方式。
+	// 它留在这里，是因为它确实值点什么；把它写成半截措施，是因为不这么写，
+	// 沙箱就会被人当真信了。
 	if len(args) >= 3 {
 		switch args[0] {
 		case "sh", "bash", "dash", "zsh", "ksh":
@@ -220,7 +218,7 @@ func (s *sandbox) checkArgv(args []string) *refusal {
 	return nil
 }
 
-// report 汇总沙箱观察到的一切，供一次会话结束时使用。
+// report 把沙箱观察到的东西汇总一句，给会话结束时用。
 func (s *sandbox) report() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()

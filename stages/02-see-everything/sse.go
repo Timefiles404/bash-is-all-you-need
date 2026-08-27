@@ -1,35 +1,29 @@
-// 阶段 02——读取流式响应。
+// 阶段 02——读流式响应。
 //
-// 一个非流式调用给你一个 JSON 对象和一个瞬间：整个答案
-// 在你问好几秒后才到达。流式则拿这个，换来一个片段序列，
-// 而几乎一切让 Agent 显得"活着"的东西，都来自那个序列——
-// 文本随写入而出现，一个 TTFT 数字，一个你能在参数完全
-// 到达之前，就在屏幕上叫出名字的工具调用。
+// 非流式调用给你的是一个 JSON 对象、一个瞬间：你问完几秒之后，整个答案
+// 一次性砸下来。流式把这个换成一串碎片，而 Agent 之所以显得是活的，几乎
+// 全部出自这串碎片——文字边写边出、有 time-to-first-token 这个数、工具调
+// 用在参数还没传完时就能在屏幕上被叫出名字。
 //
-// 这个文件有意分成两半：
+// 这个文件故意切成两半：
 //
-//	readSSE           只知道 **SSE**（Server-Sent Events），别的
-//	                  什么都不知道。它从未听说过 OpenAI、工具
-//	                  调用，或 token。
-//	parseOpenAIStream 知道某一个供应商的块 schema，并把它转换
-//	                  成这个仓库的事件。
+//	readSSE           只懂 Server-Sent Events，此外一无所知。它没听说过
+//	                  OpenAI，没听说过工具调用，也没听说过 token。
+//	parseOpenAIStream 懂某一家供应商的 chunk 结构，把它转成这个仓库里
+//	                  的事件。
 //
-// 阶段 03 加入了 Anthropic 协议，这是一套完全不同的块
-// schema，却搭载在**相同**的框架之上。它逐字复用前一半，
-// 又在后一半旁边，写了第二个解析器。假如这两半原本是
-// 同一个函数，这个阶段就会是一次重写，而不是一次新增——
-// 这一句话，就是这么拆分的全部理由。
+// 阶段 03 加进 Anthropic 协议，那是一套完全不同的 chunk 结构，跑在*同一
+// 套*分帧上。它把前一半原样复用，在后一半旁边再写第二个解析器。这两半要
+// 是写成一个函数，那个阶段就不是新增而是重写——一句话，这就是拆开的全部
+// 理由。
 //
-// 下面的一切，都是针对 docs/wire-notes.md §B4/§B5/§B7 写的，
-// 它记录的是这个端点实际发送的内容，而不是规范上说它应该
-// 发送什么。两者不一致时，字节说了算，每一处分歧，都被
-// 写进了注释。那些注释，是这份文件里最有价值的几行：每
-// 一处都是一次崩溃，或者一个悄无声息出错的数字——都是
-// 那种只读 spec 的客户端，会一头撞上去的东西。
+// 底下的一切都是照着 docs/wire-notes.md §B4/§B5/§B7 写的，那份文档记的是
+// 这个端点实际发了什么，而不是规范说它该发什么。两边打架时字节说了算，每
+// 一处冲突都有注释。那些注释是这个文件里最值钱的行：每一条对应的，都是照
+// 规范写的客户端一头撞上去的崩溃，或者悄无声息就错掉的数字。
 //
-// 这里有意不处理的：带内错误帧。在这个端点上，一个错误，
-// 是一个带 JSON 体的非 200 响应（§D11），永远不是 200 流
-// 内部的一个帧，所以根本没有什么好找的。
+// 这里故意不处理带内错误帧。在这个端点上，错误是带 JSON body 的非 200 响
+// 应（§D11），从来不是 200 流里的某一帧，所以没什么可找的。
 package main
 
 import (
@@ -43,67 +37,57 @@ import (
 )
 
 // ---------------------------------------------------------------------------
-// 第一半：**SSE** 框架。有意做到与协议无关。
+// 前一半：SSE 分帧。故意做成与协议无关。
 // ---------------------------------------------------------------------------
 
-// sseFrame 是一个解码后的 SSE 帧。对于省略了 event: 行的流，
-// Name 会是 ""——这就是这个阶段所能看到的每一个帧，因为
-// 这个端点的 OpenAI 一侧，只发送 `data:`（§B4：在整个流中，
-// `grep -c '^event:'` = 0）。Name 之所以还是存在，是因为阶段
-// 03 里的 Anthropic 一侧，确实会用到 `event:` 行，而一个要
-// 等到以后才被教会认识它们的读取器，在这之前的这段时间
-// 里，本身就是错的。
+// sseFrame 是解出来的一帧 SSE。流里不带 event: 行时 Name 是 ""——本阶段会
+// 见到的每一帧都是这样，因为这个端点的 OpenAI 那边只发 `data:`（§B4：整
+// 条流上 `grep -c '^event:'` = 0）。Name 还是留着，因为阶段 03 的
+// Anthropic 那边确实用 `event:` 行；等到那时再来教读取器认它，中间这段时
+// 间它就是错的。
 type sseFrame struct {
 	Name string
 	Data string
 }
 
-// readSSE 会对每一帧都调用 fn，直到流结束为止。它必须
-// 处理：只有 `data:` 行的帧、带 `event:` + `data:` 的帧、多行
-// 数据、空行分隔、CRLF，以及以 ':' 开头的注释行。如果 fn
-// 返回一个非 nil 的错误，就会停止扫描，并把那个错误返回。
+// readSSE 对每一帧调用 fn，直到流结束。它必须应付：只有 `data:` 行的帧、
+// `event:` + `data:` 的帧、多行 data、空行分隔、CRLF，以及以 ':' 开头的注
+// 释行。fn 返回非 nil 的 error 会中止扫描，并把那个 error 原样返回。
 //
-// 注意它**不**做的事：它完全不知道 `[DONE]` 是什么意思。
-// 一个哨兵，是载荷协议的属性，不是框架的属性——把这个
-// 知识硬塞进这一层里，正是你最终会没法复用这个读取器的
-// 原因。
+// 注意它*不*做什么：它根本不知道 `[DONE]` 是什么意思。哨兵是载荷协议的属
+// 性，不是分帧的属性，把这份知识往下压到这里，最后就是读取器复用不了。
 //
-// 实现里有三个细节，每一个都值得算作一个 bug：
+// 实现里有三个细节，每一个都对得起一个 bug：
 //
-//  1. bufio.Reader，不是 bufio.Scanner。Scanner 默认会拒绝
-//     超过 64KB 的 token，并在最糟糕的时刻，把这一点报告
-//     为错误——一个在单个 delta 里被原样回显回来的大型
-//     工具结果，正是会触发这个问题的那种帧，而这种情况，
-//     只会在生产环境里才发生。
+//  1. 用 bufio.Reader，不用 bufio.Scanner。Scanner 默认拒收超过 64KB 的
+//     token，而且是在最糟的时刻把这事报成错误——某个大工具结果在一条
+//     delta 里回显出来，正是踩中它的那一帧，而且这种事只会在生产环境发
+//     生。
 //
-//  2. 流的最后一行，会在 EOF 被处理**之前**，先被处理掉。
-//     ReadString 会把它设法读到的字节，连同 io.EOF 一起
-//     交回来，所以一个没有以空行收尾就关闭连接的服务器，
-//     它的最后一帧，仍然会好好地待在 `line` 变量里。如果
-//     你先检查错误，就会无声无息地丢掉每一个这种流的
-//     最后一帧——而这一帧，通常正是携带着 usage 的那一个。
+//  2. 流的最后一行是在处理 EOF *之前*就先处理掉的。ReadString 会把已经
+//     读到的字节连同 io.EOF 一起交回来，所以服务端不带结尾空行就关闭
+//     时，最后一帧还躺在 `line` 里。先判错误，你就会悄悄丢掉每一条这种
+//     流的最后一帧——而那通常就是带 usage 的那帧。
 //
-//  3. 行尾会被逐个剥离（先 `\n`，再 `\r`），而不是用一个
-//     cutset 一起处理，所以那些确实是以一个回车符结尾的
-//     合法数据，会把它保留下来。一个单独的 CR 终止符——
-//     SSE spec 允许、没有人会发出、§B4 里也没有出现——
-//     超出范围；在这里，也是观察赢过 spec——就像这份文件
-//     里其他所有地方一样。
+//  3. 行尾是一次剥一个（先 `\n`，再 `\r`），不是拿 cutset 一把切掉，所以
+//     正当地以回车结尾的数据能把回车留住。单独一个 CR 作终止符——SSE 规
+//     范允许，没人真发，§B4 里也没有——不在处理范围内；这里跟这个文件其
+//     他地方一样，观测赢过规范。
 func readSSE(r io.Reader, fn func(sseFrame) error) error {
 	br := bufio.NewReader(r)
 
 	var (
 		name    string
-		data    []string // 每个 `data:` 行一项；分发时用 "\n" 连接
-		sawData bool     // 是否有**任何**数据行到达，不是是否非空
+		data    []string // 每个 `data:` 行一项；dispatch 时用 "\n" 拼起来
+		sawData bool     // 有没有来过*任何* data 行，而不是它是否非空
 	)
 
-	// 分发会交付目前为止构建好的帧，并重置缓冲区。
+	// dispatch 把攒到此刻的这一帧交出去，然后清空缓冲。
 	//
-	// 规范说没有数据行的帧不是事件，这里就是这个规则：它让连续的
-	// 空白行和裸 keep-alive 注释不产生代价，而不是引发一阵空帧。
-	// 有一个数据行恰好为空的帧**确实**会分发，这是有意越过规范一步
-	// ——这是调试工具，可见的空帧比无声丢弃的帧教得更多。
+	// 规范说没有 data 行的帧不算事件，这里就照这条办：一连串空行、光秃秃的
+	// keep-alive 注释于是一点代价都不花，而不是抖出一串空帧。带一条恰好为空
+	// 的 data 行的帧*是*会 dispatch 的，这是有意越过规范一步——这是个调试工
+	// 具，看得见的空帧比被悄悄丢掉的空帧教得更多。
 	dispatch := func() error {
 		if !sawData {
 			name = ""
@@ -123,21 +107,21 @@ func readSSE(r io.Reader, fn func(sseFrame) error) error {
 
 			switch {
 			case line == "":
-				// 空行：帧结束。
+				// 空行：一帧到此结束。
 				if derr := dispatch(); derr != nil {
 					return derr
 				}
 
 			case strings.HasPrefix(line, ":"):
-				// 注释。代理和网关把这个当 keep-alive 发送，这样空闲连接就不会
-				// 在生成过程中被回收。它们什么都不带，也不能终止当前帧——注意
-				// 这种情况得在下面的字段拆分之前测试，否则 `: ping` 会解析成一个
-				// 名字为空的字段。
+				// 注释行。代理和网关拿它当 keep-alive 发，免得空闲连接在
+				// 生成到一半时被回收。它们什么都不带，也不能结束当前这一
+				// 帧——另外注意，这个 case 必须放在下面的字段切分之前判，
+				// 否则 `: ping` 会被解析成一个名字为空的字段。
 
 			default:
-				// `field: value`，其中只有**第一个**冒号分隔，值的单个前导空格被
-				// 剥离。两个都很重要：这里的每个载荷都是 JSON，所以值里全是冒号，
-				// 空格规则错误会把每个消息的每个字节移位一位。
+				// `field: value`，只有**第一个**冒号算分隔，值开头恰好剥掉
+				// 一个空格。两条都要紧：这里每份载荷都是 JSON，值里全是冒
+				// 号；空格规则搞错，每条消息的每个字节都会错开一位。
 				field, value := line, ""
 				if i := strings.IndexByte(line, ':'); i >= 0 {
 					field, value = line[:i], line[i+1:]
@@ -150,17 +134,17 @@ func readSSE(r io.Reader, fn func(sseFrame) error) error {
 					data = append(data, value)
 					sawData = true
 				}
-				// `id:` 和 `retry:` 是规范字段，用于重新连接到断开的流。两个都
-				// 没有出现在 §B4，这个端点不提供恢复半生成完成的功能，所以它们
-				// 被忽视而不是半支持。
+				// `id:` 和 `retry:` 是规范里用来重连断流的字段。§B4 里这两
+				// 个都没出现，而这个端点也不提供"续上生成到一半的补全"这
+				// 回事，所以直接忽略，而不是支持一半。
 			}
 		}
 
 		if err != nil {
 			if err == io.EOF {
-				// 流结束了。任何还在缓冲的东西是一个真实的帧，只是没有得到它
-				// 的终止空行——Anthropic 一侧（§B6）正是这样结束的，关闭连接
-				// 时根本没有哨兵。
+				// 流结束了。缓冲里还剩下的是一帧真帧，只是没等到它那行终
+				// 止空行——Anthropic 那边（§B6）正是这么收尾的：连接一关，
+				// 连哨兵都没有。
 				return dispatch()
 			}
 			return err
@@ -169,87 +153,87 @@ func readSSE(r io.Reader, fn func(sseFrame) error) error {
 }
 
 // ---------------------------------------------------------------------------
-// 下半部分：OpenAI 块模式。
+// 后一半：OpenAI 的 chunk 结构。
 // ---------------------------------------------------------------------------
 
-// sseDoneSentinel 是 OpenAI 协议用来说"就这么多"的帧。
+// sseDoneSentinel 是 OpenAI 协议用来说"就这些了"的那一帧。
 //
-// **决策：我们跳过它并继续排空到 EOF**。它不是这里的停止信号。
+// **决定**：跳过它，**继续读到 EOF**。它在这里不是停止信号。
 //
-// §B4 帧 13 是一个真实的帧，在哨兵**之后**到达：
-// `{"choices":[],"cost":"0"}`。每个规范兼容的客户端在 `[DONE]` 处停止
-// 读取并丢弃它。有三个理由不这样做：
+// §B4 的第 13 帧是一帧真帧，而且到得比哨兵*还晚*：
+// `{"choices":[],"cost":"0"}`。每个守规范的客户端读到 `[DONE]` 就停，把它
+// 扔了。不当这种客户端，有三个理由：
 //
-//   - 正确性。成本帧是这个端点试图给我们的数据。
-//   - 连接卫生。放弃还有字节在其中的响应体意味着 HTTP 传输不能
-//     把连接返回到 keep-alive 池；你每回合支付一次新 TLS 握手，
-//     永远不会注意到为什么。
-//   - 健壮性。如果使用量曾经在哨兵之后移动——在一个已经在那里放
-//     `cost` 的端点，那不是疯狂的假设——一个停止得早的客户端报告
-//     零 token 且充满信心地错了。
+//   - 正确性。cost 帧是这个端点想给我们的数据。
+//   - 连接卫生。body 里还有字节就把响应丢开，HTTP transport 就没法把连接
+//     还回 keep-alive 池；于是你每个回合都付一次全新的 TLS 握手，而且一直
+//     不知道为什么。
+//   - 健壮性。万一哪天 usage 挪到哨兵后面——在一个已经把 `cost` 放在那儿
+//     的端点上，这算不上什么离谱的假设——提前收手的客户端会报出零 token，
+//     而且报得理直气壮。
 //
-// 排空什么都不花：服务器之后立即关闭流。
+// 读到底不花什么代价：服务端紧接着就把流关了。
 const sseDoneSentinel = "[DONE]"
 
-// sseChunk 是 OpenAI 协议上的一个 `data:` 载荷。
+// sseChunk 是 OpenAI 协议上的一份 `data:` 载荷。
 //
-// 关于这些结构体，最重要的一件事是：在这个端点，每个字段都被显式
-// 地发出为 `null` 而不是省略（§B4）。Go 的解码器把 `null` 转成字符串
-// 的零值、切片的 nil 和结构体的 no-op——默默无声，没有错误。那正是
-// 我们想要的，也正是陷阱：这里"键在场"根本说不了什么。测试值。
-// 下面的每个检查都测试一个值。
+// 关于这几个 struct，最要紧的一件事：这个端点上每个字段都是显式发出
+// `null`，而不是省略掉（§B4）。Go 的解码器会把 `null` 变成 string 的零
+// 值、slice 的 nil，对 struct 则什么都不做——安安静静，不报错。这正是我
+// 们要的，也正是陷阱所在："这个 key 在"在这里什么都说明不了。要判的是
+// 值。下面每一处检查判的都是值。
 type sseChunk struct {
-	// Choices 在 usage 帧（§B4 帧 11）和 DONE 之后的 cost 帧
-	// （帧 13）上是**空的**。这里是这个文件最可能藏 bug 的地方：
-	// `chunk.Choices[0]` 读起来毫无问题，能通过每一个 happy path
-	// 测试，然后在每个真实请求的倒数第二帧上以 index-out-of-range
-	// panic。下面那个循环用的是 `range`，那就是修法。
+	// usage 帧（§B4 第 11 帧）和 DONE 之后的 cost 帧（第 13 帧）上，Choices
+	// 是**空的**。这个文件最可能出 bug 的地方就在这儿：
+	// `chunk.Choices[0]` 读起来没毛病，顺利路径上的测试全都过，然后在每个真
+	// 实请求的倒数第二帧上以 index-out-of-range panic。下面那个循环用的是
+	// `range`，这就是修法。
 	Choices []sseChoice `json:"choices"`
 
-	// Usage 是指针，所以"不存在/null"和"存在但全是零"保持可区分。
-	// 零 token 响应是一种合法的、可以正当报告的情况。
+	// Usage 用指针，是为了让"缺席/null"和"在，但全是零"这两种情况分得开。零
+	// token 的响应是件正当的、该报出来的事。
 	Usage *sseUsage `json:"usage"`
 }
 
 type sseChoice struct {
 	Index        int      `json:"index"`
-	FinishReason string   `json:"finish_reason"` // 除最后一个以外每个块都是 null
+	FinishReason string   `json:"finish_reason"` // 除最后一个 chunk 外都是 null
 	Delta        sseDelta `json:"delta"`
 }
 
-// sseDelta 是增量载荷。注意推理**不是**这个协议上的独立事件或块
-// 类型——它搭在同一个对象里的相邻字段上，只通过两个中哪个
-// 非 null 来区分（§B7）。在那里记录的运行中，44 帧携带了 reasoning_content
-// 和 1 帧携带了 content。
+// sseDelta 是增量载荷。注意在这个协议里，reasoning **不是**单独的事件或
+// 块类型——它就搭在同一个对象里，是个兄弟字段，区分它俩全靠哪个非 null
+// （§B7）。那儿记下的那次运行里，44 帧带 reasoning_content，1 帧带
+// content。
 type sseDelta struct {
-	Role             string             `json:"role"`              // 开启端是"assistant"，之后是 null
-	Content          string             `json:"content"`           // 开启端是""，大多数块上是 null
-	ReasoningContent string             `json:"reasoning_content"` // §B7：思考在这里到达
+	Role             string             `json:"role"`              // 开场帧上是 "assistant"，之后是 null
+	Content          string             `json:"content"`           // 开场帧上是 ""，多数 chunk 上是 null
+	ReasoningContent string             `json:"reasoning_content"` // §B7：思考从这里来
 	ToolCalls        []sseToolCallDelta `json:"tool_calls"`
 }
 
 type sseToolCallDelta struct {
-	// Index 是助手消息的 tool_calls 数组中的位置，它是把片段和它所属的
-	// 调用绑在一起的**唯一**依据。并行工具调用会交错它们的片段；按别的
-	// 什么累积，就会把一个调用的参数拼接进另一个调用里。
+	// Index 是这条 assistant 消息的 tool_calls 数组里的位置，也是**唯一**能
+	// 把一个碎片和它所属的调用绑起来的东西。并行的工具调用会把各自的碎片交
+	// 错着发；按别的东西攒，就会把一个调用的参数接到另一个的身上。
 	Index int `json:"index"`
 
-	// ID 和 Function.Name 在**恰好一个**块中到达，在它之后的每个块中都
-	// 是 null（§B4 帧 2 对比帧 3–9）。第一眼就锁定它们。
+	// ID 和 Function.Name 只在**一个** chunk 里到，在它之后的每个 chunk 上都
+	// 是 null（§B4 第 2 帧对比第 3–9 帧）。第一次见到就锁住。
 	ID       string `json:"id"`
-	Type     string `json:"type"` // 始终是"function"；不是 null，也不是信号
+	Type     string `json:"type"` // 全程都是 "function"；不会置 null，也不是信号
 	Function struct {
 		Name string `json:"name"`
 
-		// Arguments 片段**不是** JSON 对齐的。§B4 观察了分裂
+		// Arguments 的碎片**不**按 JSON 边界切。§B4 观测到的切法是
 		// `{"command": ` / `"` / `ls` / ` -la /srv` / `/app` / `"` / `}`——
-		// 中间 token 和中间路径。片段在任何时点上都不是可解析的 JSON，
-		// 所以这被累积为原始字符串，在流结束后恰好被调用者解析一次。
+		// 词切一半，路径也切一半。没有哪个时刻碎片是能解析的 JSON，所以这
+		// 里当裸字符串攒着，等流结束之后由调用方解析，只解析这一次。
 		Arguments string `json:"arguments"`
 	} `json:"function"`
 }
 
-// sseUsage 是 OpenAI 的 token 记账，在 OpenAI 的方向。
+// sseUsage 是 OpenAI 的 token 账，按 OpenAI 自己的方向记的。
 type sseUsage struct {
 	PromptTokens        int `json:"prompt_tokens"`
 	CompletionTokens    int `json:"completion_tokens"`
@@ -262,33 +246,33 @@ type sseUsage struct {
 	} `json:"completion_tokens_details"`
 }
 
-// normalise 转换成这个仓库的 Usage，转换是方向反转，不是重命名。
+// normalise 转成本仓库的 Usage，这个转换是把方向反过来，不是改个名。
 //
-// 线上（§B4 帧 11）：
+// 线上（§B4 第 11 帧）：
 //
 //	"prompt_tokens": 506, "prompt_tokens_details": {"cached_tokens": 192}
 //
-// 506 是**完整的 prompt。192 个缓存 token 被计入其中**。
+// 506 是**整个** prompt。那 192 个缓存 token 是算在**它里面**的。
 //
-// 这个仓库的 Usage.Input 意思是"按满价计费"（见 events.go），所以
-// 缓存部分得**出来**：
+// 本仓库的 Usage.Input 意思是"按全价计费的那部分"（见 events.go），所以缓
+// 存那部分得**减出去**：
 //
 //	Input = 506 - 192 = 314   CacheRead = 192   →   Prompt() = 506 ✓
 //
-// 把字段不变地复制过来，Usage.Prompt() 对一个 506 token 的 prompt
-// 报告 698。错误恰好是缓存命中的大小，所以它在冷首次请求上是零：
-// 测试时看起来完美，你的缓存工作得越好它变得越差。那就是这个是
-// 函数而不是结构体标签的全部原因。
+// 字段照抄不动，Usage.Prompt() 就会把 506 token 的 prompt 报成 698。误差恰
+// 好等于缓存命中的大小，所以头一次冷请求时它是零：你测的时候它看着完美无
+// 缺，而你的缓存做得越好它错得越狠。这就是这里为什么是个函数，而不是
+// struct tag。
 //
-// Anthropic 一侧再反转一次——那里 `input_tokens` 只是未缓存的
-// 余量，所以它直接映射到 Input，没有减法。两个协议，相反的约定，
-// 一个规范化的结构体，这正是要有一个规范化结构体的理由所在。
+// Anthropic 那边又反了过来——在那儿 `input_tokens` 只是没命中缓存的余量，
+// 所以直接映射到 Input，什么都不用减。两个协议，相反的约定，一个归一化的
+// struct——这正是要有这个归一化 struct 的理由。
 func (u sseUsage) normalise() Usage {
 	cached := u.PromptTokensDetails.CachedTokens
 
-	// 限制而不是信任。负的 Input 会传播到 Prompt() 和任何建立在它上
-	// 的成本估计；如果端点哪天报告比 prompt token 更多的缓存 token，
-	// 丢掉这个差值，好过导出一个负的 token 计数。
+	// 钳住，别信它。负的 Input 会一路传进 Prompt()，也传进任何拿它算出来的成
+	// 本估算；万一这个端点报出的缓存 token 比 prompt token 还多，把这点出入吞
+	// 掉，也好过对外抛一个负的 token 数。
 	input := u.PromptTokens - cached
 	if input < 0 {
 		input = 0
@@ -298,58 +282,58 @@ func (u sseUsage) normalise() Usage {
 		Input:     input,
 		CacheRead: cached,
 		Output:    u.CompletionTokens,
-		// 是 Output 的一个子集，不是外加的东西——§B4 报告这里是 0，因为那个运行使
-		// 用了 reasoning_effort:"none"。
+		// 它是 Output 的子集，不是外加的——§B4 这里报 0，是因为那次运行用
+		// 的是 reasoning_effort:"none"。
 		Reasoning: u.CompletionTokensDetails.ReasoningTokens,
-		// CacheWrite 一直是 0：这个协议的缓存是隐式的，线上根本没有"写入"
-		// 这个数字。它是零，不是因为什么都没缓存，而是因为这个概念不上报。
+		// CacheWrite 保持 0：这个协议的缓存是隐式的，线上根本没有缓存写这
+		// 个数。它是零，不是因为什么都没缓存，是因为这个概念压根不上报。
 	}
 }
 
-// streamToolCall 是跨许多块组装的一个工具调用。
+// streamToolCall 是跨很多个 chunk 拼起来的一次工具调用。
 type streamToolCall struct {
 	ID   string
 	Name string
-	Args string // 连接的原始 JSON 字符串；**这里不解析**
+	Args string // 拼接起来的裸 JSON 字符串；这里**不**解析
 }
 
-// streamResult 是一个流式模型调用产生的东西。
+// streamResult 是一次流式模型调用产出的东西。
 type streamResult struct {
 	Text         string
 	Reasoning    string
-	ToolCalls    []streamToolCall // 按升序索引顺序
+	ToolCalls    []streamToolCall // 按 index 升序
 	FinishReason string
 	Usage        Usage
-	TTFT         time.Duration // 如果什么都没流式过则为零
+	TTFT         time.Duration // 什么都没流出来的话就是零
 }
 
-// sseToolAccum 是一个工具调用的飞行中状态。它不是返回的形状因为
-// 它持有两个调用者永远不该看到的东西：构建器和启动事件是否已经
+// sseToolAccum 是一次工具调用在途中的状态。它不是对外返回的那个形状，因为
+// 它拿着两样调用方绝不该看见的东西：builder，以及 start 事件是不是已经发
 // 出去了。
 type sseToolAccum struct {
 	index     int
 	id        string
 	name      string
 	args      strings.Builder
-	announced bool // 已为这个索引发出 KindToolCallStart
+	announced bool // 这个 index 的 KindToolCallStart 已经发过了
 }
 
-// parseOpenAIStream 消耗一个 OpenAI 协议 SSE 体，在事件到达时向
-// bus 发出事件，并返回组装的结果。
+// parseOpenAIStream 吃一份 OpenAI 协议的 SSE body，事件到一个就往 bus 上发
+// 一个，最后返回拼好的结果。
 //
-// `started` 是请求出去时，不是这个函数被调用时——TTFT 是往返的
-// 属性，从响应头到达的时刻测量隐藏了你试图看到的整个延迟。
+// `started` 是请求发出去的时刻，不是这个函数被调用的时刻——TTFT 是往返的
+// 属性，从响应头到达那一刻起算，会把你本来想看的那段延迟整个藏起来。
 //
-// 在中流 I/O 失败时这返回部分结果**和**错误，这是有意打破常规
-// 的 `return nil, err`。一个在完整工具调用后死掉的流与一个什么都
-// 没产生的不同，调用者只有在被交给到达的东西时才能区分。调用者
-// 必须仍然检查错误——一个没有 finish_reason 的部分结果是截断，
-// 阶段 01 是一个关于截断未被注意时会发生什么的整章。
+// 流中途 I/O 失败时，这里把部分结果**和**错误一起返回，是有意不走通常那套
+// `return nil, err`。一条在完整工具调用之后才断掉的流，和一条什么都没产出
+// 的流，是两回事；而调用方只有拿到已经到手的东西才分得清这两者。调用方仍
+// 然必须检查错误——没有 finish_reason 的部分结果就是截断，而阶段 01 整整
+// 一章讲的就是截断没被发现会怎么样。
 func parseOpenAIStream(r io.Reader, bus *Bus, turn int, started time.Time) (*streamResult, error) {
 	res := &streamResult{}
 
-	// emit 在每个事件上戳上回合号，所以没有调用点能忘记它，并且
-	// 容忍 nil bus，好让解析器可以当纯函数使用。
+	// emit 在每个事件上都盖上回合号，这样哪个调用点都忘不掉；它也容忍 bus 为
+	// nil，好让这个解析器能当纯函数用。
 	emit := func(e Event) {
 		if bus == nil {
 			return
@@ -367,10 +351,11 @@ func parseOpenAIStream(r io.Reader, bus *Bus, turn int, started time.Time) (*str
 
 	// markFirstToken 只触发一次，在模型真正输出的第一个字节上。
 	//
-	// role 开启帧（§B4 帧 1）刻意不算：它带的是 `content: ""`，没有任何
-	// 载荷。把它算进去，TTFT 就变成了 time-to-first-byte —— 而在一个开口
-	// 之前先想四秒的模型上，那是个好看却毫无意义的数字。文本、推理和工具
-	// 调用结构都算，尤其是推理：在思考型模型上，它确实是最先生成的东西。
+	// role 开场帧（§B4 第 1 帧）故意不算数：它带的是 `content: ""`，一点载荷
+	// 都没有。把它算进去，TTFT 就变成了 time-to-first-byte——碰上先想四秒再
+	// 开口的模型，这个数好看得很，却什么也说明不了。文本、reasoning、工具调
+	// 用结构都算数——尤其是 reasoning，在会思考的模型上它确实是最先生成出来
+	// 的东西。
 	markFirstToken := func() {
 		if firstSeen {
 			return
@@ -386,27 +371,26 @@ func parseOpenAIStream(r io.Reader, bus *Bus, turn int, started time.Time) (*str
 			return nil
 		}
 		if payload == sseDoneSentinel {
-			// 跳过它，继续读。见 sseDoneSentinel 了解为什么。
+			// 跳过它，接着往下读。理由见 sseDoneSentinel。
 			return nil
 		}
 
 		var c sseChunk
 		if jerr := json.Unmarshal([]byte(payload), &c); jerr != nil {
-			// 一个格式错误的帧不应该摧毁一个已经产生有效工具调用的回合。
-			// 作为通知呈现它——在 trace 中可见，在主循环中存活——并继续。
-			// 在这里返回错误，是那个看起来更整洁、实际更差的选择。
+			// 回合已经产出了有效的工具调用，不该被一帧坏帧毁掉。把它
+			// 以 notice 的形式露出来——在 trace 里看得见，在主循环里活得
+			// 下去——然后接着走。在这里返回错误，看着更利落，实际更糟。
 			emit(Event{Kind: KindNotice, Text: fmt.Sprintf("skipped an SSE frame that was not JSON: %v (%.120s)", jerr, payload)})
 			return nil
 		}
 
-		// range 遍历 Choices，永远不是 Choices[0]。在使用情况帧和
-		// post-DONE 成本帧上，这个数组是空的，循环体根本不会执行。
-		// 那一个词，决定了这个文件是能正常工作，还是会在每个请求的
-		// 倒数第二帧上崩溃。
+		// 对 Choices 用 range，绝不写 Choices[0]。usage 帧和 DONE 之后的 cost
+		// 帧上，这个数组是空的，循环体干脆就不执行。就这一个词，决定了这个文
+		// 件是能跑，还是在每个请求的倒数第二帧上 panic。
 		//
-		// (`n > 1` 会把几个补全交错进一个结果里。这个 Agent 从不要求它，
-		// 要正确支持它，就意味着每个累积器都得同时以选择索引和工具
-		// 索引为键。)
+		// （`n > 1` 会把好几个 completion 交错进同一个结果。这个 Agent 从不
+		// 这么要，而要正经支持它，每个累加器就得同时按 choice index 和 tool
+		// index 做键。）
 		for _, ch := range c.Choices {
 			d := ch.Delta
 
@@ -431,11 +415,11 @@ func parseOpenAIStream(r io.Reader, bus *Bus, turn int, started time.Time) (*str
 					calls[tc.Index] = acc
 				}
 
-				// **闩。** 只在传入值非空时赋值。§B4 帧 3–9 携带
-				// `"id":null,"function":{"name":null}`，
-				// 一个不加防范的 `acc.id = tc.ID` 会在紧接着的下一块里把 id 清空——
-				// 留下一个参数完整、却无法被回复的工具调用，因为 API 在回复中
-				// 要求的 tool_call_id 没了。
+				// **锁存点**。只在进来的值非空时才赋值。§B4 第 3–9 帧带
+				// 的是 `"id":null,"function":{"name":null}`，直白写一句
+				// `acc.id = tc.ID`，下一个 chunk 就会把 id 抹平——于是你
+				// 有一次参数完整却没法回答的工具调用，因为 API 要求回复
+				// 里带回的那个 tool_call_id 没了。
 				if tc.ID != "" {
 					acc.id = tc.ID
 				}
@@ -443,17 +427,18 @@ func parseOpenAIStream(r io.Reader, bus *Bus, turn int, started time.Time) (*str
 					acc.name = tc.Function.Name
 				}
 
-				// 宣布一次，一旦这个调用可识别。在这个端点 id 和 name 在一个块
-				// 中一起到达，所以实践中事件总是两个都携带；"任一非空"的权限闸
-				// 意味着把它们拆开的协议仍然得到宣布而不是沉默。
+				// 只宣告一次，这次调用刚能被认出来就宣告。这个端点上 id
+				// 和 name 是同一个 chunk 里一起到的，所以实际上事件总是
+				// 两个都带着；用"两者之一非空"来开闸，是为了让某个把它
+				// 俩拆开发的协议照样能得到一次宣告，而不是一片沉默。
 				if !acc.announced && (acc.id != "" || acc.name != "") {
 					acc.announced = true
 					emit(Event{Kind: KindToolCallStart, ToolID: acc.id, ToolName: acc.name})
 				}
 
-				// 开启端携带 `"arguments":""`，所以这个空值检查会让一个没有意义
-				// 的零长度 delta 进不了 trace。片段是照原样追加的，从不检查内容
-				// ——见 sseToolCallDelta。
+				// 开场帧带的是 `"arguments":""`，这个空值判断挡住的是一
+				// 条毫无意义的零长度 delta，别让它进 trace。碎片是原样
+				// 追加的，从不检查——见 sseToolCallDelta。
 				if tc.Function.Arguments != "" {
 					acc.args.WriteString(tc.Function.Arguments)
 					emit(Event{
@@ -465,8 +450,8 @@ func parseOpenAIStream(r io.Reader, bus *Bus, turn int, started time.Time) (*str
 				}
 			}
 
-			// 以同样的方式锁定，出于同样的原因：除了完成块之外，处处都是
-			// null，一个无防卫的赋值会在那之后的帧上把它擦掉。
+			// 同样地锁存，同样的理由：除了 finish chunk，别处全是 null，
+			// 不加防护的赋值会在它后面的那些帧上把它抹掉。
 			if ch.FinishReason != "" {
 				res.FinishReason = ch.FinishReason
 			}
@@ -476,9 +461,9 @@ func parseOpenAIStream(r io.Reader, bus *Bus, turn int, started time.Time) (*str
 			u := c.Usage.normalise()
 			res.Usage = u
 
-			// 发出**复制**。交出 &res.Usage 会把事件别名到调用者仍然可以写
-			// 到的一个字段，一个懒序列化的订阅者（trace 写入者不是；TUI 之后
-			// 可能）会记录它之后变成的任何东西。
+			// 发**副本**。把 &res.Usage 交出去，等于让事件和调用方还能写
+			// 的那个字段共用同一份；而某个惰性序列化的订阅者（trace 写入
+			// 器不是，后面的 TUI 可能是）记下来的，就会是它后来变成的样子。
 			sent := u
 			emit(Event{Kind: KindUsage, Usage: &sent})
 		}
@@ -489,10 +474,10 @@ func parseOpenAIStream(r io.Reader, bus *Bus, turn int, started time.Time) (*str
 	res.Text = text.String()
 	res.Reasoning = reasoning.String()
 
-	// 升序索引顺序，不是到达顺序。Go 里 map 的迭代顺序是故意随机化的，
-	// 所以不做这次排序，顺序就会一次运行一个样——一种一周重现一次的
-	// bug，还会被怪到模型头上。没有工具调用时留 nil，所以仅文本结果
-	// 等于零值 streamResult。
+	// 按 index 升序，不是按到达顺序。Go 的 map 遍历是故意随机化的，没有这次
+	// 排序，顺序就会一次运行一个样——这种 bug 一周复现一次，然后被赖到模型
+	// 头上。没有工具调用时留 nil，这样纯文本的结果跟零值 streamResult 比起来
+	// 是相等的。
 	if len(calls) > 0 {
 		ordered := make([]*sseToolAccum, 0, len(calls))
 		for _, a := range calls {
@@ -511,15 +496,14 @@ func parseOpenAIStream(r io.Reader, bus *Bus, turn int, started time.Time) (*str
 	}
 
 	if err != nil {
-		// 没有 KindResponseEnd：响应没有结束，它破了。发出这样一个事件，
-		// 等于向每个订阅者撒了一个干净利落的谎，trace 应该是证据。
+		// 不发 KindResponseEnd：响应不是结束了，是断了。发一个出去，等于对
+		// 每个订阅者说一句干干净净的谎，而 trace 本该是证据。
 		return res, err
 	}
 
-	// 如果流结束时没有带上 finish reason，FinishReason 在这里就是
-	// 空字符串——这个协议报告截断的方式，就是干脆不提。把这个空
-	// 字符串原样传下去，能让调用者看到这一点，而不是凭空发明一个
-	// 从未发生过的"stop"。
+	// 流结束时没给出 finish reason 的话，这里的 FinishReason 就是 ""——这种
+	// 截断，这个协议就是靠只字不提来"报告"的。把空字符串原样传下去，调用方
+	// 就还看得见它，而不是凭空编出一个根本没发生过的 "stop"。
 	emit(Event{
 		Kind:         KindResponseEnd,
 		FinishReason: res.FinishReason,

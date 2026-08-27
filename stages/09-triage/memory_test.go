@@ -10,26 +10,19 @@ import (
 )
 
 // ---------------------------------------------------------------------------
-// 辅助函数
+// 辅助代码
 // ---------------------------------------------------------------------------
 
-// memRecorder 收集的是 loadMemory
-// 告诉总线的内容。记忆只在启动
-// 时装载一次，进入的是提示词里
-// 一个没有人会再看的部分——所以
-// 这个事件，是用户手上唯一能
-// 证明这件事真的发生过的证据。
+// memRecorder 收集 loadMemory 往总线上说的话。记忆只在启动时加载一次，
+// 进的是 prompt 里之后再没人看见的那一块——所以这个事件是用户手上
+// 唯一的证据，证明这件事真的发生过。
 type memRecorder struct{ events []Event }
 
 func (r *memRecorder) OnEvent(e Event) { r.events = append(r.events, e) }
 
-// memWrite 把一个文件放进 dir。
-// 这个文件里的每一个文件系统
-// 测试，都在 t.TempDir() 里运行；
-// 这里的任何测试都不能碰到
-// 仓库自己的 AGENTS.md 或
-// MEMORY.md——那些是人类会亲自
-// 维护的真实文件。
+// memWrite 往 dir 里丢一个文件。这个文件里每个碰文件系统的测试都在
+// t.TempDir() 里干活；这里的任何东西都不许靠近仓库自己的 AGENTS.md 和
+// MEMORY.md——那是真人在维护的真文件。
 func memWrite(t *testing.T, dir, name, body string) string {
 	t.Helper()
 	path := filepath.Join(dir, name)
@@ -39,10 +32,8 @@ func memWrite(t *testing.T, dir, name, body string) string {
 	return path
 }
 
-// memWhen 是一个固定的时刻，
-// 所以 <now> 断言比对的是一个
-// 字面量，而不是重新生成的
-// 格式化字符串。
+// memWhen 是固定的时刻，这样 <now> 的断言比的是一个字面量，而不是又推
+// 导一遍格式串。
 var memWhen = time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
 
 const memWhenLine = "<now>2026-01-02 03:04:05 +0000</now>"
@@ -51,11 +42,8 @@ const memWhenLine = "<now>2026-01-02 03:04:05 +0000</now>"
 // loadMemory
 // ---------------------------------------------------------------------------
 
-// 新目录没有记忆文件，这是常见
-// 情况。如果这里返回的不是空
-// 字符串，就会把流浪字节，塞进
-// 每一个从未用过这个功能的会话
-// 的系统提示词最前面。
+// 新目录里没有记忆文件，这才是常态。这里只要返回的不是空字符串，那些从
+// 没用过这个功能的会话，系统提示词的最前面就都会多出几个野字节。
 func TestLoadMemoryOnAnEmptyDirectory(t *testing.T) {
 	got, found := loadMemory(t.TempDir(), nil)
 	if got != "" {
@@ -66,17 +54,11 @@ func TestLoadMemoryOnAnEmptyDirectory(t *testing.T) {
 	}
 }
 
-// 两个文件，按记录顺序，每个都
-// 在自己的标记块里。
+// 两个文件都在，按文档里的顺序，各自裹在自己的标签块里。
 //
-// 顺序本身就是约定的一部分：
-// AGENTS.md 是人类的指令，
-// MEMORY.md 是 Agent 自己的笔记，
-// 两者内容有冲突时，模型会更
-// 看重后面那个块。如果默默把
-// 顺序倒过来，就等于让 Agent
-// 的猜测，压过了操作者写下的
-// 东西。
+// 顺序是契约的一部分：AGENTS.md 是人的指令，MEMORY.md 是 Agent 自己的
+// 笔记；两边冲突时，模型更看重靠后的那一块。把它们倒过来，就悄无声息
+// 地让 Agent 的猜测盖过了操作者写下的东西。
 func TestLoadMemoryReturnsBothFilesInTheDocumentedOrder(t *testing.T) {
 	dir := t.TempDir()
 	memWrite(t, dir, "AGENTS.md", "# Conventions\n\nDo not touch generated/.\n")
@@ -107,14 +89,9 @@ func TestLoadMemoryReturnsBothFilesInTheDocumentedOrder(t *testing.T) {
 	}
 }
 
-// 一个空文件，是 `touch AGENTS.md`
-// 留下的东西；一个只剩空白的
-// 文件，则是编辑器在最后一条
-// 笔记被删除之后留下的东西。
-// 这两种情况，只要被注入进去，
-// 都会白白花掉 prompt 的字节，
-// 还会让模型以为：这里有一个
-// 约定文件，但里面什么都没有。
+// 空文件是 `touch AGENTS.md` 留下的东西，只有空白的文件是编辑器在最后
+// 一条笔记被删掉之后留下的。这两种只要注入进去，都在花 prompt 的字节，
+// 还告诉模型：有一份约定文件，里面什么都没有。
 func TestLoadMemorySkipsEmptyFiles(t *testing.T) {
 	dir := t.TempDir()
 	memWrite(t, dir, "AGENTS.md", "   \n\t\n\n")
@@ -132,11 +109,8 @@ func TestLoadMemorySkipsEmptyFiles(t *testing.T) {
 	}
 }
 
-// 这个事件，是用户唯一能看到
-// "提示词前缀里进了什么"的
-// 窗口；nil bus 对应的，是渲染器
-// 还没接上之前，启动阶段会走
-// 的那条路径。
+// prompt 前缀里进了什么，用户唯一的窗口就是这个事件；而 nil 总线对应的
+// 是渲染器还没接上的那段启动路径。
 func TestLoadMemoryEmitsOneEventPerFileAndToleratesANilBus(t *testing.T) {
 	dir := t.TempDir()
 	memWrite(t, dir, "AGENTS.md", "conventions")
@@ -158,9 +132,7 @@ func TestLoadMemoryEmitsOneEventPerFileAndToleratesANilBus(t *testing.T) {
 		t.Errorf("events name %v; they must carry the full path so the file can be opened from the trace", loaded)
 	}
 
-	// 必须不 panic：main.go 会在
-	// 任何订阅者存在之前，先装载
-	// 记忆。
+	// 不能 panic：main.go 加载记忆的时候，一个订阅者都还不存在。
 	if _, found := loadMemory(dir, nil); len(found) != 2 {
 		t.Errorf("loading with a nil bus found %v", found)
 	}
@@ -184,20 +156,13 @@ func TestRememberCreatesTheFile(t *testing.T) {
 	}
 }
 
-// 记忆文件的全部价值，就在于
-// 它会不断累积。不带 O_APPEND
-// 打开它来写，会摧毁掉之前
-// 所有的笔记，而且没有任何
-// 报错：命令执行成功，新笔记
-// 也确实写进去了，真正注意到
-// 问题的，是三周后的那次
-// 会话——那时候才发现，文件里
-// 恰好只剩一行。
+// 记忆文件的全部价值就在于它会累积。不带 O_APPEND 打开写，之前的每一条
+// 笔记全毁，而且没人报告这件事：命令成功了，新笔记在那儿；发现问题的会
+// 话是三周后的那一次——它打开文件，发现里面正好只有一行。
 func TestRememberAppendsRatherThanOverwrites(t *testing.T) {
 	dir := t.TempDir()
 
-	// 人类手写下的既有内容，Agent
-	// 绝不能吃掉。
+	// 人手写在里面的既有内容，Agent 不许吃掉。
 	memWrite(t, dir, memoryFileForWriting, "# Memory\n\n- (2026-01-01) hand-written line\n")
 
 	if err := remember(dir, "first note"); err != nil {
@@ -222,9 +187,7 @@ func TestRememberAppendsRatherThanOverwrites(t *testing.T) {
 	}
 }
 
-// 一条你判断不出年龄的记忆，
-// 就是一条你没法决定删不删的
-// 记忆。
+// 看不出年纪的记忆，你没法决定要不要删。
 func TestRememberDatestamps(t *testing.T) {
 	dir := t.TempDir()
 	if err := remember(dir, "no date on this one?"); err != nil {
@@ -244,18 +207,12 @@ func TestRememberDatestamps(t *testing.T) {
 // userTurn
 // ---------------------------------------------------------------------------
 
-// 两块，人类的文本是**最后的**
-// 一个。
+// 两个 block，人类的文本是**最后**那一个。
 //
-// 顺序是承重的，不是装饰性的：
-// 阶段 06 对这两块的呈现方式
-// 不同——上帝视角显示的是被
-// 注入的快照，模型视角显示的
-// 是模型实际收到的那条消息——
-// 而模型会把最后一块当作指令
-// 来读。如果把快照放在最后，
-// 用户的问题就会反过来，变成
-// 时间戳的背景信息。
+// 这个顺序是承重的，不是装饰：阶段 06 渲染这两个 block 的方式不一样——
+// 上帝视角显示注入的快照，模型视角显示模型收到的那条消息——而模型把
+// 最后一个 block 当成指令来读。把快照放在最后，用户的问题就成了时间戳
+// 的上下文。
 func TestUserTurnPutsTheSnapshotFirstAndTheHumanLast(t *testing.T) {
 	const text = "what changed since yesterday?"
 	m := userTurn(text, memWhenLine)
@@ -292,8 +249,8 @@ func TestUserTurnWithoutASnapshotIsASingleBlock(t *testing.T) {
 	}
 }
 
-// userTurn 构建的消息直接进入 compactor 截断的历史记录，
-// 所以它生成的任何形态都必须是 validConversation 接受的形态。
+// userTurn 造出来的消息会直接进入历史，而历史正是 compactor 要切的东
+// 西；所以它造出什么形状，validConversation 就必须收得下那个形状。
 func TestUserTurnSurvivesValidConversation(t *testing.T) {
 	msgs := []Msg{
 		userTurn("how big is this repo?", memWhenLine),
@@ -313,10 +270,10 @@ func TestUserTurnSurvivesValidConversation(t *testing.T) {
 // 上下文块
 // ---------------------------------------------------------------------------
 
-// 时钟是每个快照必须包含的唯一东西，git 探针是必须永远不被需要的唯一东西。
-// 这在不存在的 shell 上运行探针——这就是没有 bash
-// 的机器的样子：快照仍然必须携带 <now>，
-// 不得将失败报告为内容——说"git: not found"的探针会教导模型其环境被破坏了。
+// 时钟是每张快照里都必须有的东西，git 探针是永远不许成为必需品的东西。
+// 这里拿一个不存在的 shell 去跑探针——没装 bash 的机器就是这个样子：
+// 快照里还是得有 <now>，而且不能把失败当成内容报上来——探针要是说
+// "git: not found"，就等于告诉模型：它的环境是坏的。
 func TestVolatileContextAlwaysHasANowLineAndNeverReportsAFailedProbe(t *testing.T) {
 	missing := filepath.Join(t.TempDir(), "definitely-not-a-shell")
 	got := volatileContext(missing, memWhen)
@@ -332,9 +289,9 @@ func TestVolatileContextAlwaysHasANowLineAndNeverReportsAFailedProbe(t *testing.
 	}
 }
 
-// 与真实 shell 相同的保证，在不是仓库的目录中——
-// 这就是探针中 `|| true` 存在的情况。没有 bash 时跳过而不是失败，
-// 因为 Agent 也必须在那里工作。
+// 同样的保证，换成真 shell，在一个不是仓库的目录里——探针里那个
+// `|| true` 就是为这种情况准备的。没有 bash 的地方跳过而不是失败，因为
+// Agent 在那里也得能干活。
 func TestVolatileContextOmitsGitOutsideARepository(t *testing.T) {
 	shell, err := findBash()
 	if err != nil {
@@ -343,7 +300,7 @@ func TestVolatileContextOmitsGitOutsideARepository(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
 
-	// 如果临时目录碰巧位于某人的仓库内，这个测试就什么都说不了。
+	// 临时目录要是刚好落在谁的仓库里面，这个测试就没什么可说的了。
 	if r := runBash(shell, "git rev-parse --abbrev-ref HEAD 2>/dev/null", 10*time.Second); r.ExitCode == 0 && strings.TrimSpace(r.Stdout) != "" {
 		t.Skip("the temp directory is itself inside a git repository")
 	}
@@ -357,8 +314,8 @@ func TestVolatileContextOmitsGitOutsideARepository(t *testing.T) {
 	}
 }
 
-// 积极的一面：在仓库内部，快照必须带上分支、脏计数和 HEAD 的主题，
-// 因为这三样东西，要是没有它们，Agent 就得每个回合都烧一次工具调用去问。
+// 正面那一半：在仓库里面，快照必须带上分支、脏文件数和 HEAD 的标题，因
+// 为不然的话，Agent 每个回合都要烧一次工具调用去查这三样东西。
 func TestVolatileContextReportsGitInsideARepository(t *testing.T) {
 	shell, err := findBash()
 	if err != nil {
@@ -388,9 +345,9 @@ func TestVolatileContextReportsGitInsideARepository(t *testing.T) {
 	}
 }
 
-// stableContext 进入系统提示词，在缓存断点之前。
-// 同一进程中的两个调用必须生成相同的字节，否则前缀会移动，
-// 第 04 阶段的缓存工作就会被撤销。
+// stableContext 进的是系统提示词，在缓存断点之前。同一个进程里调用两
+// 次，必须产出完全一样的字节，否则前缀就动了，阶段 04 的缓存功夫就全
+// 白费了。
 func TestStableContextIsByteStable(t *testing.T) {
 	a := stableContext("/usr/bin/bash", "/srv/app")
 	b := stableContext("/usr/bin/bash", "/srv/app")

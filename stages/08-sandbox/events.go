@@ -1,22 +1,20 @@
 // 阶段 02——事件总线。
 //
-// 这个文件是整个仓库的架构声明：
+// 这个文件是整个仓库的架构主张：
 //
-//	Agent 核心**什么都不**打印。它发出事件。你能看到的一切——
-//	纯终端输出、JSONL **trace**、重放查看器，以及稍后的 TUI——
-//	都是一个订阅者。
+//	Agent 核心**什么都不打印**。它只发事件。你能看见的一切——
+//	朴素的终端输出、JSONL trace、重放查看器，以及后面的 TUI——
+//	都是订阅者。
 //
-// 那一个约束为其余项目所需的大部分东西买单。**trace** 文件是
-// 一个订阅者，历史记录因此白白到手。重放是通过相同渲染器读回
-// 的 **trace**，所以不需要 API 密钥，就能研究一个会话。`--plain`
-// 还是 TUI，是订阅者的选择，不是代码的分支。测试针对事件序列
-// 进行断言，而不是抓取 stdout。
+// 这一条约束，就把项目后面要用的东西买下了大半。trace 文件是订阅者，
+// 历史就这么免费记下了。重放就是把 trace 从同一个渲染器读回去，所以
+// 没有 API key 也能研究一段会话。`--plain` 还是 TUI，选的是订阅者，不是
+// 把代码分成两份。测试断言的是事件序列，不是去刮 stdout。
 //
-// 值得带走的教训不是"使用事件总线"。而是：可观测性，是你在
-// 一开始就选定的一种形状，不是你在末尾才撒上去的日志。阶段
-// 00 和 01 把 fmt.Printf 写进了主循环，每一次调用，都是这样一个
-// 地方——发生过什么的唯一记录，只是终端上一个转瞬即逝、滚动
-// 消失的字符。
+// 值得带走的教训不是"用事件总线"，而是：可观测性是开头就定下来的形状，
+// 不是收尾时撒上去的日志。阶段 00 和 01 把 fmt.Printf 写进了主循环，那里
+// 每一次调用都是这么一处：发生过什么，唯一的记录就是终端上的字符，
+// 滚过去就没了。
 package main
 
 import (
@@ -26,40 +24,39 @@ import (
 	"time"
 )
 
-// Kind 识别发生了什么。保持这些稳定：它们被写入 **trace** 文件，
-// 对 kind 重命名会无声地破坏重放——改名之前记录的每一个会话
-// 都会受影响。
+// Kind 标明发生了什么。这些值要稳住：它们会写进 trace 文件，改个名字，
+// 改名之前录下的每一段会话就都重放不了，而且一声不响。
 type Kind string
 
 const (
-	// 对话形状
-	KindUserMessage Kind = "user_message" // 人类说了点什么
-	KindTurnStart   Kind = "turn_start"   // 一个模型回合开始
-	KindTurnEnd     Kind = "turn_end"     // 模型停止请求工具
+	// 对话的形状
+	KindUserMessage Kind = "user_message" // 人说了句话
+	KindTurnStart   Kind = "turn_start"   // 一轮模型调用开始
+	KindTurnEnd     Kind = "turn_end"     // 模型不再要工具了
 
 	// 模型调用
-	KindRequest        Kind = "request"         // 即将发送的确切字节
-	KindFirstToken     Kind = "first_token"     // TTFT 在这里到达
-	KindTextDelta      Kind = "text_delta"      // 可见的助手文本
-	KindReasoningDelta Kind = "reasoning_delta" // 思考，模型流式传输的地方
-	KindUsage          Kind = "usage"           // 一次调用的 token 会计
-	KindResponseEnd    Kind = "response_end"    // finish_reason 和计时
+	KindRequest        Kind = "request"         // 即将发出去的确切字节
+	KindFirstToken     Kind = "first_token"     // TTFT 落在这里
+	KindTextDelta      Kind = "text_delta"      // 看得见的 assistant 文本
+	KindReasoningDelta Kind = "reasoning_delta" // 思考过程，前提是模型会流式发出来
+	KindUsage          Kind = "usage"           // 单次调用的 token 账
+	KindResponseEnd    Kind = "response_end"    // finish_reason 和各项耗时
 
 	// 工具使用
-	KindToolCallStart Kind = "tool_call_start" // id + name 到达（一次，早期）
-	KindToolArgsDelta Kind = "tool_args_delta" // 原始参数片段
-	KindToolCallReady Kind = "tool_call_ready" // 参数完成且已验证
-	KindGateVerdict   Kind = "gate_verdict"    // 允许 / 拒绝 / 中止
+	KindToolCallStart Kind = "tool_call_start" // id + name 到齐（只此一次，很早）
+	KindToolArgsDelta Kind = "tool_args_delta" // 参数的原始碎片
+	KindToolCallReady Kind = "tool_call_ready" // 参数收齐并校验通过
+	KindGateVerdict   Kind = "gate_verdict"    // 放行 / 拒绝 / 中止
 	KindCommandStart  Kind = "command_start"
 	KindCommandEnd    Kind = "command_end"
-	KindToolResult    Kind = "tool_result" // 模型会被告知的确切内容
+	KindToolResult    Kind = "tool_result" // 告诉模型的东西，一字不差
 
-	// 嵌入的 shell（阶段 08）。
+	// 内嵌的 shell（阶段 08）。
 	//
-	// sandbox_exec 会对 shell 运行的**每个**程序触发一次，包括没人手动敲出
-	// 来的那些程序 —— 也就是一个 pipeline、一个循环、一个 glob 或一个
-	// `eval` 展开出来的程序。一个命令能对应出这么多事件，这正是它全部的价
-	// 值所在：这是"知道被要求做什么"和"知道实际运行了什么"之间的差别。
+	// shell 跑的**每一个**程序都会触发 sandbox_exec，包括没人敲过的那
+	// 些——管道、循环、glob 或者 `eval` 展开成的东西。一条命令带出这么多
+	// 事件，而这正是全部的价值：它就是"知道别人要什么"和"知道实际跑了什
+	// 么"之间的差别。
 	KindSandboxExec  Kind = "sandbox_exec"
 	KindSandboxOpen  Kind = "sandbox_open"
 	KindSandboxBlock Kind = "sandbox_block"
@@ -67,72 +64,67 @@ const (
 	// 子 Agent 和技能（阶段 07）
 	KindSubagentStart Kind = "subagent_start"
 	KindSubagentEnd   Kind = "subagent_end"
-	KindSkillsIndexed Kind = "skills_indexed" // 有多少技能，以及索引成本是多少
+	KindSkillsIndexed Kind = "skills_indexed" // 有多少个技能，以及这份索引花了多少
 
-	// 记忆和上下文注入（阶段 05）
-	KindMemoryLoaded Kind = "memory_loaded" // 记忆文件被读入系统提示词
+	// 记忆与上下文注入（阶段 05）
+	KindMemoryLoaded Kind = "memory_loaded" // 记忆文件被读进了系统提示词
 
-	// 压缩（阶段 05）。三个事件，
-	// 不是一个，因为它们回答三个不同
-	// 问题：它发生了、成本是多少，
-	// 以及它破坏了什么。第三个是
-	// 每个其他实现都省略的。
+	// 上下文压缩（阶段 05）。三个事件而不是一个，因为它们回答三个不同的问
+	// 题：压缩正在发生、它花了多少、它弄坏了什么。第三个是别人的实现全都
+	// 不给的。
 	KindCompactStart     Kind = "compact_start"
 	KindCompactEnd       Kind = "compact_end"
 	KindCacheInvalidated Kind = "cache_invalidated"
 
-	// 其他一切
-	KindNotice Kind = "notice" // 用户应该知道的东西，不是错误
+	// 其余的
+	KindNotice Kind = "notice" // 用户该知道的事，不是错误
 	KindError  Kind = "error"
 )
 
-// Usage 是一次调用的 token 会计，采用的是唯一不撒谎的那种
-// 形态。
+// Usage 是单次调用的 token 账，而且用的是唯一不撒谎的那种形状。
 //
-// 这个结构存在要避免的陷阱：在 Anthropic 风格的协议上，
-// `input_tokens` **只是未缓存剩下的那部分**——运行了一小时的
-// Agent，可以报告 18 个输入 token，而实际发送了 18,000 个。
-// 总计是 Input + CacheWrite + CacheRead，渲染器必须显示拆分，
-// 因为这三者的成本差异很大（大约 1x、1.25x 和 0.1x）。
+// 这个 struct 是为了躲坑才有的，坑在这儿：Anthropic 那一路的协议里，
+// `input_tokens` **只是没命中缓存的那点余量**——跑了一小时的 Agent 可以
+// 报出 18 个 input token，实际发出去的是 18,000。总数是
+// Input + CacheWrite + CacheRead，而渲染器必须把这三份分开显示，因为
+// 它们的价钱差得离谱（大约 1x、1.25x 和 0.1x）。
 //
-// 换成 OpenAI 风格的协议，方向正好相反：prompt_tokens 是完整
-// 数字，cached_tokens 嵌套**在**其中。阶段 03 就是这个转换发生
-// 的地方；这个结构已经是标准化之后的形式，这也是为什么它没有
-// 一个叫"prompt_tokens"的字段。
+// OpenAI 那一路的协议记账方向正好相反：prompt_tokens 是全量，
+// cached_tokens **嵌在它里面**。这个转换在阶段 03；这个 struct 已经是
+// 归一化之后的形状，所以它没有叫 "prompt_tokens" 的字段。
 type Usage struct {
 	Input      int `json:"input"`                 // 按全价计费
 	CacheWrite int `json:"cache_write,omitempty"` // ~1.25x
 	CacheRead  int `json:"cache_read,omitempty"`  // ~0.1x
 	Output     int `json:"output"`
-	Reasoning  int `json:"reasoning,omitempty"` // Output 的子集，报告时
+	Reasoning  int `json:"reasoning,omitempty"` // Output 的子集，前提是供应商报了
 }
 
-// Prompt 返回发送的所有东西，这是人们问"我的上下文现在有
-// 多大"时，心里想的那个数字——也是你没法只靠读取 API 返回的
-// 某一个字段，就拿到手的数字。
+// Prompt 返回发出去的全部。别人问"我现在上下文多大"，说的就是这个数；
+// 而这个数，你读 API 返回的任何单个字段都读不出来。
 func (u Usage) Prompt() int { return u.Input + u.CacheWrite + u.CacheRead }
 
-// Event 有意是一个平面结构，而不是接口层次。
+// Event 故意做成扁平的单个 struct，而不是接口层次。
 //
-// 求和类型在 Go 中会更优雅，在这里会差得多：它需要自定义 JSON
-// 解组来重放，还会把数据的形状藏到一个类型开关背后。平面
-// 意味着一行 **trace** 肉眼可读，`jq` 不用 schema 就能处理它，
-// 添加字段是一行。`omitempty` 使行保持简短。
+// sum type 在 Go 里更优雅，放在这里却糟得多：重放要为它写自定义的 JSON
+// 反序列化，而且它把数据的形状藏在了 type switch 后面。扁平的好处是，
+// trace 里的一行用眼睛就能读，`jq` 不用 schema 就能处理，加个字段只要
+// 一行。`omitempty` 让这些行不至于太长。
 type Event struct {
-	Seq  int       `json:"seq"` // 单调递增；你唯一应该信任的顺序
+	Seq  int       `json:"seq"` // 单调递增；唯一该信的顺序
 	T    time.Time `json:"t"`
 	Kind Kind      `json:"kind"`
 
-	Turn int `json:"turn,omitempty"` // 当前用户消息内的哪个模型回合
+	Turn int `json:"turn,omitempty"` // 当前这条用户消息里的第几轮模型调用
 
-	// 哪个 Agent 发出这个。深度 0 是与人类交谈的那个；子 Agent 是深度 1，
-	// 以此类推。由总线标记，而不是由调用者，理由与 Seq 相同：调用者能伪造
-	// 的字段是 trace 无法作为证据的字段。
+	// 这条是哪个 Agent 发的。深度 0 是人正在对话的那个；子 Agent 是深度 1，
+	// 以此类推。由 Bus 盖章，不由调用方填，理由跟 Seq 一样：调用方伪造得了
+	// 的字段，trace 就没法拿它当证据。
 	Depth int    `json:"depth,omitempty"`
 	Agent string `json:"agent,omitempty"`
 
-	// Text 携带的，是这个 kind 具体关于什么：可能是一个 delta
-	// 片段、一条通知、一条错误消息，或者用户的消息。
+	// Text 装的是这个 kind 讲的那件事：delta 碎片、提示、错误信息、
+	// 用户发来的话。
 	Text string `json:"text,omitempty"`
 
 	// 工具使用
@@ -141,68 +133,63 @@ type Event struct {
 	Command  string `json:"command,omitempty"`
 	Verdict  string `json:"verdict,omitempty"`
 
-	// 命令结果
+	// 命令的结果
 	ExitCode  int  `json:"exit_code,omitempty"`
 	TimedOut  bool `json:"timed_out,omitempty"`
 	Truncated bool `json:"truncated,omitempty"`
 	Bytes     int  `json:"bytes,omitempty"`
 
-	// 模型调用结果
+	// 模型调用的结果
 	FinishReason string `json:"finish_reason,omitempty"`
 	Usage        *Usage `json:"usage,omitempty"`
 
-	// 压缩计费。前/后对而不是增量，
-	// 因为增量无法告诉你一个释放了
-	// 8,000 token 的压缩从 40,000
-	// 还是从 9,000 开始——这些分别
-	// 是成功和配置错误。
+	// 压缩的账。记的是前后成对的数，不是差值，因为差值没法告诉你：一次腾出
+	// 8,000 token 的压缩，起点是 40,000 还是 9,000——前者是成功，后者
+	// 是配错了。
 	MsgsBefore   int `json:"msgs_before,omitempty"`
 	MsgsAfter    int `json:"msgs_after,omitempty"`
 	TokensBefore int `json:"tokens_before,omitempty"`
 	TokensAfter  int `json:"tokens_after,omitempty"`
 
-	// Path 为此事件相关的文件命名
-	// （到目前为止是记忆文件）。
+	// Path 点名这个事件涉及的文件（到目前为止都是记忆文件）。
 	Path string `json:"path,omitempty"`
 
-	// Millis 是这个事件报告的持续时间：first_token 上是 TTFT，
-	// command_end 和 response_end 上是挂钟时间。
+	// Millis 是这条事件报的时长：first_token 上是 TTFT，command_end 和
+	// response_end 上是挂钟时间。
 	Millis int64 `json:"ms,omitempty"`
 
-	// Request 是即将发送的完整 JSON 体。它使请求检查器成为可能，
-	// 当你试图弄清为什么模型做了某事时，它是 **trace** 中最有用的
-	// 一样东西：它是模型实际看到的唯一记录。
+	// Request 是即将发出的完整 JSON body。请求检查器靠它才成立；而当你
+	// 想弄明白模型为什么那么干的时候，它是 trace 里最有用的一样东西：
+	// 模型究竟看到了什么，只有它记着。
 	Request json.RawMessage `json:"request,omitempty"`
 }
 
-// Subscriber 按顺序接收每个事件。
+// Subscriber 收到每一条事件，按顺序。
 type Subscriber interface {
 	OnEvent(Event)
 }
 
-// 总线将事件扇出到订阅者。
+// Bus 把事件扇出给各个订阅者。
 //
-// 分发是同步的，并且在锁的保护下进行，这是一个深思熟虑的选择：它让顺序
-// 对每个订阅者来说，都是同一个全序，所以 trace 文件和终端永远不会对"什么
-// 先发生"产生分歧。一个给每个订阅者单开队列的异步总线，伸缩性会更好，
-// 但也会让 trace 不再能充当证据。真需要放慢速度的渲染器，应该自己在内部
-// 做缓冲。
+// 分发是同步的，而且在锁里做，这是有意的选择：它让顺序是全序的，而且对每
+// 个订阅者都一样，所以 trace 文件和终端永远不会在"谁先发生"上打架。带每订
+// 阅者队列的异步总线扩展性更好，也会让 trace 不再是证据。渲染器要是需要
+// 慢，那就自己在内部缓冲。
 //
-// 阶段 07 正是这个选择开始回本的地方，而且值得注意的是，这笔投入其实
-// 提前三章就已经付出了。子 Agent 并发运行，所以现在有好几个 goroutine
-// 在同时产生事件。一把锁、一个计数器，就让 trace 依然是唯一一条全序的
-// 事件流——每个事件都有一个 Seq，精确标出它相对于所有其他事件、跨越
-// 所有 Agent，是在什么时刻发生的。一个给每个订阅者单开队列的异步总线，
-// 会让每个订阅者看到关于这个并发会话的不同版本——而这恰恰就是那种，
-// 没有一条全序流就没法推理清楚的会话。
+// 阶段 07 就是这个选择开始回本的地方，而值得注意的是，这笔钱是提前三章付
+// 的。子 Agent 是并发跑的，所以现在有好几个 goroutine 同时在产事件。一把锁
+// 加一个计数器，就意味着 trace 仍然是一条单一的全序流——每个事件都有一个
+// Seq，精确说明它相对于其他每一个事件、跨每一个 Agent 是什么时候发生的。
+// 换成每订阅者一条队列的异步总线，每个订阅者拿到的会是一场并发会话的不同
+// 版本，而那恰恰就是没有全序你就没法推理的那种会话。
 type busCore struct {
 	mu   sync.Mutex
 	seq  int
 	subs []Subscriber
 }
 
-// 总线是对核心的一个**视图**：相同的计数器和相同的订阅者，深度和 Agent
-// 名称盖在它发出的所有东西上。
+// Bus 是一个 core 上的**视图**：同一个计数器、同一批订阅者，只是给它发出的
+// 每样东西都盖上一个深度和一个 Agent 名字。
 type Bus struct {
 	core  *busCore
 	depth int
@@ -213,13 +200,13 @@ func NewBus(subs ...Subscriber) *Bus {
 	return &Bus{core: &busCore{subs: subs}}
 }
 
-// Fork 返回子 Agent 应该发到的那条总线。
+// Fork 返回子 Agent 该往上发事件的那条总线。
 //
-// 没有任何重复：子 Agent 写入的是和父 Agent 同一条有序流，所以一个
-// trace 文件就装得下整棵树，`seq` 给它排好顺序。另一种做法——每个
-// Agent 一份 trace——是大多数实现的选择，但它会让你真正想问的那个
-// 问题（"子 Agent 运行期间，父 Agent 在做什么？"）变得没法回答，
-// 除非按时间戳合并文件——而按时间戳合并，恰恰是时间戳最不擅长的事。
+// 什么都没有复制一份：子 Agent 写进的是跟父 Agent 同一条有序流，所以一个
+// trace 文件装着整棵树，`seq` 给它排序。另一条路——一个 Agent 一份 trace
+// ——是大多数实现的做法，而它会让你真正想问的那个问题（"子 Agent 在跑的时
+// 候，父 Agent 在干什么？"）没法回答，除非你按时间戳把文件合并起来，而那
+// 正是时间戳最不擅长的事。
 func (b *Bus) Fork(agent string) *Bus {
 	return &Bus{core: b.core, depth: b.depth + 1, agent: agent}
 }
@@ -232,9 +219,8 @@ func (b *Bus) Subscribe(s Subscriber) {
 	b.core.subs = append(b.core.subs, s)
 }
 
-// Emit 给事件盖上戳记，然后把它发出去。Seq、T、Depth 和 Agent 都是在
-// 这里赋值的，这样任何调用者都伪造不了它们，重放的 trace 也才能和一次
-// 真实运行逐个事件地比对。
+// Emit 给事件盖章，然后送出去。Seq、T、Depth 和 Agent 都在这里赋值，这样调
+// 用方就伪造不了，也让重放出来的 trace 能跟一次真实运行逐个事件地对照。
 func (b *Bus) Emit(e Event) {
 	b.core.mu.Lock()
 	defer b.core.mu.Unlock()
@@ -249,8 +235,8 @@ func (b *Bus) Emit(e Event) {
 	}
 }
 
-// 常见形状的辅助函数，所以 Agent 核心读起来像散文而不像
-// 结构字面量。
+// 常见形状的小助手，好让 Agent 核心读起来像散文，而不是一堆 struct
+// 字面量。
 
 func (b *Bus) Notice(format string, args ...any) {
 	b.Emit(Event{Kind: KindNotice, Text: fmt.Sprintf(format, args...)})

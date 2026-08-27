@@ -9,14 +9,14 @@ import (
 	"time"
 )
 
-// 这一章的证据是生成出来的，不是凭记忆断言的。
+// 这一章的证据，是跑出来的，不是凭记忆断言的。
 //
-// 一个规则 —— "不要读 .env" —— 和每个命令一个问题：绕过真的有效吗，三个
-// 检查器中哪一个抓住它？
+// 一条规则——"不许读 .env"——每条命令一个问题：这次绕过真的成了吗，
+// 三个检查器里哪一个抓住了它？
 //
-// 每个用例都要**先验证确实是一个真实的绕过**：把策略关掉后运行一遍，确
-// 认文件内容真的被读了出来。一张满是从未真正奏效过的命令的绕过表，什么
-// 都证明不了，而这正是这类表格最常出错的地方。
+// 每个案例都*先验证过它是真的绕过*：把策略关掉跑一遍，确认文件内容
+// 真的出来了。一张全是从来没成功过的命令的绕过表，什么也证明不了，
+// 而这正是这类表格最常见的错法。
 
 const canary = "CANARY_dc41f0b7"
 
@@ -44,8 +44,8 @@ var bypassCases = []bypassCase{
 	{"nested shell", `sh -c 'cat .env'`, "a whole program smuggled in one argument"},
 }
 
-// runIn 在一个拿着金丝雀文件的临时目录中执行一个命令，报告秘密是否逃逸和
-// 沙箱是否阻挡了什么。
+// runIn 在放着 canary 文件的临时目录里执行命令，报告秘密有没有跑出
+// 去、沙箱有没有拦下什么。
 func runIn(t *testing.T, dir, command string, enforce bool) (leaked, blocked bool, out string) {
 	t.Helper()
 	sb := newSandbox(dir, NewBus(), enforce)
@@ -63,11 +63,12 @@ func bypassDir(t *testing.T) string {
 	return dir
 }
 
-// TestTheBypassTable 就是这一章。它打印它测到的表。
+// TestTheBypassTable 就是这一章。它把自己量出来的表打印出来。
 func TestTheBypassTable(t *testing.T) {
 	dir := bypassDir(t)
 
-	// 如果环境不能运行基线，其他的都没有任何意义。大声跳过而不是报告一个零表。
+	// 环境要是连基线都跑不了，后面的全都没意义。大声跳过，而不是报一
+	// 张全是零的表。
 	if leaked, _, out := runIn(t, dir, "cat .env", false); !leaked {
 		t.Skipf("this machine cannot run `cat` through the interpreter, so the table cannot be measured: %s", out)
 	}
@@ -83,14 +84,14 @@ func TestTheBypassTable(t *testing.T) {
 		var r row
 		r.c = c
 
-		// 1. 绕过真的在什么都挡不住的情况下有效吗？
+		// 1. 什么都不拦的时候，这次绕过真的成得了吗？
 		r.works, _, r.outputWhenNotEnforcing = runIn(t, dir, c.command, false)
 
 		// 2. 两个静态检查器。
 		r.l1 = inspectString(c.command) != nil
 		r.l2 = inspectAST(c.command) != nil
 
-		// 3. 解释器，执行策略。
+		// 3. 解释器，开着强制。
 		leaked, blocked, _ := runIn(t, dir, c.command, true)
 		r.l3 = blocked && !leaked
 
@@ -111,12 +112,12 @@ func TestTheBypassTable(t *testing.T) {
 	}
 	t.Log("")
 
-	// --- 表必须满足的断言 -------------------------
+	// --- 表格必须满足的断言 ----------------------------------------------
 
 	var stringMissed, astMissed int
 	for _, r := range rows {
 		if !r.works {
-			// 一个不读文件的用例不是绕过，不应该在表中假装是一个。
+			// 读不到文件的案例就不是绕过，不该待在表里冒充绕过。
 			t.Errorf("%q did not actually read the file, so it is not a bypass — fix or remove the case.\noutput: %s",
 				r.c.command, r.outputWhenNotEnforcing)
 			continue
@@ -134,17 +135,17 @@ func TestTheBypassTable(t *testing.T) {
 		}
 	}
 
-	// 两个静态检查都必须失败——而且，比这张表本来要证明的东西更有趣的
-	// 是——它们必须在**不同的命令**上失败。
+	// 两个静态检查都必须输，而且——比这张表本来要展示的结论更有意思的
+	// 一点——它们必须输在**不同**的命令上。
 	//
-	// 字符串检查错过 `cat ".e""nv"` 因为文本被分割了。AST 检查抓住那个，错过
-	// `eval "cat .env"`，文本就在那里但这个词属于一个还不存在的程序。两个集
-	// 合互不包含。
+	// 字符串检查漏掉 `cat ".e""nv"`，因为文本被切开了。AST 检查抓得住这
+	// 一条，却漏掉 `eval "cat .env"`：文本明明就在那儿，可那个词属于一
+	// 个还不存在的程序。两个集合谁也不包含谁。
 	//
-	// 这就堵死了看完这一章后最容易冒出来的想法 —— "那就两个检查都跑一遍" ——
-	// 因为攻击者不需要同时打败两个条件。每个命令一次只需要击败一个属性，挑
-	// 哪一个，shell 语法本身就留了空间。TestExpansionBeatsParsing 就是同时
-	// 击败两者的那一行代码。
+	// 这就把对本章最顺口的回应——"两个检查都跑"——打死了，因为攻击者不
+	// 必同时击破两条。每条命令只需要一次击破一个性质，而 shell 语法给了
+	// 你挑哪一个的自由。TestExpansionBeatsParsing 就是一行同时击破两者
+	// 的命令。
 	if stringMissed == 0 {
 		t.Error("the regexp check caught every bypass, which would mean shell quoting does not exist; the table is wrong")
 	}
@@ -154,10 +155,10 @@ func TestTheBypassTable(t *testing.T) {
 	stringOnly, astOnly := 0, 0
 	for _, r := range rows {
 		if !r.l1 && r.l2 {
-			astOnly++ // 解析抓住了模式匹配错过的
+			astOnly++ // 解析抓住了模式匹配漏掉的
 		}
 		if r.l1 && !r.l2 {
-			stringOnly++ // 模式匹配抓住了解析错过的
+			stringOnly++ // 模式匹配抓住了解析漏掉的
 		}
 	}
 	t.Logf("string missed %d · ast missed %d · caught only by ast: %d · caught only by string: %d",
@@ -169,13 +170,12 @@ func TestTheBypassTable(t *testing.T) {
 	}
 }
 
-// 这一章里最用力倚靠的这一对，被单独断言了一遍，这样一旦失败，报出
-// 来的是机制的名字，而不是表里的第几行。
+// 这一章倚得最重的就是这一对，单独断言出来，这样它挂了的时候报出
+// 来的是机制，不是某个行号。
 func TestExpansionBeatsParsing(t *testing.T) {
-	// 文件名在文本里压根没有出现（所以字符串检查无从匹配），而这个词是
-	// `${X}v`——一个粘在字面值上的参数展开（所以 AST 检查正确给出"我现在
-	// 还不知道这个"）。一行代码，两个静态检查全都被击败，文件照样被读了出
-	// 来。
+	// 文件名在文本里根本不出现（所以字符串检查没东西可匹配），而那个词
+	// 是 `${X}v`，参数展开粘上一个字面量（所以 AST 检查很正确地报告"这
+	// 个我还没法知道"）。一行，两个静态检查全破，文件被读了出来。
 	const command = `X=.en; eval 'cat ${X}v'`
 	if inspectString(command) != nil {
 		t.Error("the string check matched a command in which the filename never appears; the case is not testing what it claims")
@@ -191,9 +191,9 @@ func TestExpansionBeatsParsing(t *testing.T) {
 	}
 }
 
-// 重定向这个用例专门有自己的测试，因为它是那个能在**每个级别**都击败
-// argv-only 策略的用例，包括沙箱 —— 除非沙箱也处理文件打开。`cat < .env`
-// 运行 cat 时完全不带参数。
+// 重定向这一条单独有个测试，因为它在**每一层**上都能击破只看 argv
+// 的策略，沙箱也不例外——除非沙箱连文件打开也管。`cat < .env` 跑起
+// cat 来，压根没有任何参数。
 func TestRedirectIsNotVisibleInArgv(t *testing.T) {
 	sb := newSandbox(bypassDir(t), NewBus(), true)
 	_ = sb.run("cat < .env", 10*time.Second)
@@ -209,21 +209,21 @@ func TestRedirectIsNotVisibleInArgv(t *testing.T) {
 	}
 }
 
-// 还有这条诚实的边界，是用断言证明的，不只是嘴上承认一下。这个测试会
-// 在沙箱未能拦住命令时**通过**，这正是重点所在：解释器看得到每一个命
-// 令，却看不进任何一个的内部。
+// 还有那条诚实的界限，是断言出来的，不只是嘴上承认。沙箱拦不住这条
+// 命令时，这个测试**通过**，而这正是要害：解释器看得见每一条命令，
+// 却看不进任何一条命令的里面。
 func TestTheSandboxCannotSeeInsideAProgram(t *testing.T) {
 	dir := bypassDir(t)
 
-	// 任何一个把程序当参数接收的解释器都行，文件名是在那个程序参数**内
-	// 部**拼出来的，所以它永远不会出现在 argv 里。沙箱看到的是 `awk -v
-	// a=.en <a program>`，它对程序里的内容没有意见——有意见就等于要重新实
-	// 现一遍 awk。
+	// 只要是把程序当参数收的解释器就行，而文件名是在程序**内部**拼出来
+	// 的，这样它永远不会出现在 argv 里。沙箱看到的是
+	// `awk -v a=.en <a program>`，对程序的内容毫无意见，因为要有意见就
+	// 得把 awk 实现一遍。
 	//
-	// 候选者按照"在 Git Bash 旁边能找到"的可能性大小排好了顺序。选中的那
-	// 个必须验证真的能用 —— 在 Windows 上，exec.LookPath("python") 高兴地
-	// 就找到一个会打印微软商店广告的 App Execution Alias 存根，用它搭起来
-	// 的测试会报出一个假阴性。
+	// 候选按它们出现在 Git Bash 旁边的可能性排序。选中的那个必须验证过
+	// 真的能用——在 Windows 上，exec.LookPath("python") 会欢天喜地地找到
+	// 一个 App Execution Alias 桩，那玩意儿只会打印一条 Microsoft Store
+	// 的广告，而建在它上面的测试会报出假阴性。
 	candidates := []struct{ name, command string }{
 		{"awk", `awk -v a=.en 'BEGIN{f=a"v"; while((getline l < f)>0) print l}'`},
 		{"perl", `perl -e '$f=".en"."v"; open(F,"<",$f); print <F>;'`},

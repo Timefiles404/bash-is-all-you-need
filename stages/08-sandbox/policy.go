@@ -1,23 +1,22 @@
-// 阶段 08 —— 为什么你不能通过读命令来保护一个 shell。
+// 阶段 08——为什么读命令字符串保护不了 shell。
 //
-// 这个文件是同一条规则的三种实现，一个比一个更好，而三个都留着的意义
-// 在于：前两个正是谁都会直接拿去上线的东西，两个都在一行代码内就被击
-// 败了。
+// 这个文件里是同一条规则的三种实现，一个比一个强；三个都留着，是因为前两
+// 种正是所有人真在用的，而且都能被一行命令绕过。
 //
-// 这个规则，故意这么小所以它能完全被推理：
+// 规则故意定得极小，好让它能被彻底想清楚：
 //
-//	**Agent 不得读取 .env**
+//	**Agent 不得读 .env**
 //
-// 不是"Agent 不得做危险的事" —— 一个那么模糊的规则无法被测试，一个你
-// 无法测试的策略是一个你在猜测的策略。一个文件，一个动词。
+// 不是"Agent 不得做危险的事"——含糊到这个程度的规则没法测，而测不了的策
+// 略，就是你在猜的策略。一个文件，一个动作。
 //
-//	inspectString   看命令文本            被引用击败
-//	inspectAST      解析它看单词          被展开击败
-//	sandbox.exec    **做** shell 看 argv      看 shell.go
+//	inspectString   看命令文本                 被引号绕过
+//	inspectAST      解析它，看解析出的词       被展开绕过
+//	sandbox.exec    **成为** shell，看 argv    见 shell.go
 //
-// 这个进展不是"增加更多模式"。每个级别把检查移到一个更多真理可用的
-// 地方，最后一个把它移到真理完整的唯一地方：在展开之后，当参数向量是
-// 最终的，而没有什么剩下可以用来躲在后面了。
+// 这三级的递进不是"再多加几条模式"。每一级都把检查搬到能看见更多真相的地
+// 方，最后一级搬到了真相唯一完整的地方：展开之后——那时参数向量已经定
+// 了，再没有东西可以藏在语法背后。
 package main
 
 import (
@@ -29,14 +28,15 @@ import (
 	"mvdan.cc/sh/v3/syntax"
 )
 
-// secretName 是这个策略保护的文件。
+// secretName 就是策略要保护的那个文件。
 const secretName = ".env"
 
-// refusal 是一个被阻止的操作和理由，用模型将读到的词。一个说"拒绝"的策略
-// 只教模型再尝试；一个说它反对什么的策略让模型用另一种方式做任务。
+// refusal 是一次被拦下的操作，加上理由——而且是用模型将会读到的措辞写
+// 的。只说"拒绝"的策略，除了让模型再试一次之外什么也没教给它；说清自己反
+// 对什么的策略，才让模型能换条路把事办完。
 type refusal struct {
-	Level string // 哪个检查器抓住它
-	What  string // 匹配的确切文本或参数
+	Level string // 哪一级检查抓到的
+	What  string // 命中的那段原文或那个参数
 	Why   string
 }
 
@@ -44,13 +44,13 @@ func (r *refusal) Error() string {
 	return fmt.Sprintf("blocked by the %s policy: %s (matched %q)", r.Level, r.Why, r.What)
 }
 
-// isSecretPath 报告一个路径是否指向受保护的文件。
+// isSecretPath 判断一个路径指的是不是那个受保护的文件。
 //
-// 基础名称匹配，限制是刻意的，也值得说清楚：这不解析 symlink，不规范化
-// `..`，不知道 `/proc/self/cwd/.env` 是同一个文件。一个真实的策略需要
-// filepath.EvalSymlinks 和一个针对根目录的包含检查 —— 即使那样也还是有
-// 竞态，因为一个路径能在检查和打开之间被替换。TOCTOU 不是沙箱中的边界
-// 情况，它是标准攻击。
+// 只比对 base name，这个局限是故意的，也值得说出来：它不解析 symlink，不
+// 规范化 `..`，也不知道 `/proc/self/cwd/.env` 是同一个文件。真正的策略需
+// 要 filepath.EvalSymlinks，还需要拿根目录做一次包含性检查——就算做了也
+// 还是有竞态，因为检查和 open 之间，路径可以被换掉。TOCTOU 在沙箱里不是
+// 边角情况，它就是标准攻击手法。
 func isSecretPath(p string) bool {
 	p = strings.TrimSpace(p)
 	if p == "" {
@@ -60,20 +60,20 @@ func isSecretPath(p string) bool {
 }
 
 // ---------------------------------------------------------------------------
-// 级别 1：看这个字符串
+// 第 1 级：看字符串
 // ---------------------------------------------------------------------------
 
-// denyPattern 就是一个最初版本的实现总会长成的样子。
+// denyPattern 就是第一版实现永远长的那个样子。
 var denyPattern = regexp.MustCompile(`\.env\b`)
 
-// inspectString 是几乎每个 Agent 宿主都会以某种形式上线的检查。
+// inspectString 是几乎每个 Agent 宿主都以某种形式带着的那道检查。
 //
-// 它对你想到的命令有效。它被 shell 自己的语法击败 —— 不是靠什么聪明的手
-// 段，只是靠这个字符串所写的语言里那些稀松平常的特性。`cat ".e""nv"` 对
-// bash 是同一个命令，对这个函数却是不同的字符串，模式再怎么完善也修不好
-// 这一点，因为模式看的是源文本，而 shell 看的是源文本**意味着**什么。
+// 它对你想到过的命令有效。绕过它的是 shell 自己的语法——不需要什么高明
+// 手段，就是那个字符串所用语言的普通特性。`cat ".e""nv"` 对 bash 来说是
+// 同一条命令，对这个函数来说是另一个字符串；再怎么打磨模式也补不上，因
+// 为模式看的是源文本，而 shell 看的是源文本*意味着什么*。
 //
-// 测过的完整列表见 bypass_test.go。
+// 实测清单见 bypass_test.go。
 func inspectString(command string) *refusal {
 	if m := denyPattern.FindString(command); m != "" {
 		return &refusal{Level: "string", What: m, Why: "the command mentions " + secretName}
@@ -82,25 +82,24 @@ func inspectString(command string) *refusal {
 }
 
 // ---------------------------------------------------------------------------
-// 级别 2：解析它
+// 第 2 级：解析它
 // ---------------------------------------------------------------------------
 
-// inspectAST 解析命令，检查一个真实的 shell 解析器产生出来的词。
+// inspectAST 把命令解析一遍，检查真正的 shell 解析器产出的那些词。
 //
-// 这是一个真正的改进，不是装饰性的。解析器知道 `".e""nv"` 是一个单词，
-// 其字面部分连接起来是 `.env`；知道 `'.env'` 是一个带引号的字面值；也
-// 知道 `cat<.env` 即使没有空格也带着一个重定向。每个击败级别 1 的引用
-// 技巧，到这里都会失效，因为解析器做的事和 shell 做的一样。
+// 这是实打实的改进，不是装样子。解析器知道 `".e""nv"` 是一个词，它的字面
+// 部分拼起来就是 `.env`；知道 `'.env'` 是带引号的字面量；也知道 `cat<.env`
+// 里有重定向，哪怕中间没空格。凡是能干掉第 1 级的引号花招，到这里全死，
+// 因为解析器干的正是 shell 干的那件事。
 //
-// 它没法知道的，是任何还不存在的值。`$X`、`$(...)`、`${x:-...}` 和
-// `eval` 全都表示"这个值要晚一点才算出来"，而解析的那一刻，"后面"这件
-// 事还没发生。这不是实现上的欠缺，而是这门语言本身的属性：shell 不是一
-// 种语法，它是一个求值器，而求值器输入的解析树，并不能告诉你这个求值
-// 器将会做什么。
+// 它没法知道的，是任何还不存在的值。`$X`、`$(...)`、`${x:-...}` 和 `eval`
+// 说的都是"这个值待会儿才算出来"，而解析的时刻，待会儿还没到。这不是实现
+// 上的欠缺，这是语言的性质：shell 不是一套语法，它是个求值器；而求值器输
+// 入的语法树，说不出求值器会做什么。
 //
-// 一个解析错误被当作一个拒绝而不是一个通过。一个这无法解析的命令是一
-// 个这无法判断的命令，对于一个整个工作就是"做判断"的检查来说，"我看
-// 不懂，所以我放行"是错误的默认选择。
+// 解析失败按拒绝处理，而不是放行。这里解析不了的命令，就是它判断不了的命
+// 令；而"我没看懂，所以我放它过去"，对一道整个职责就是判断的检查来说，是
+// 错的默认行为。
 func inspectAST(command string) *refusal {
 	f, err := syntax.NewParser().Parse(strings.NewReader(command), "cmd")
 	if err != nil {
@@ -122,9 +121,10 @@ func inspectAST(command string) *refusal {
 				}
 			}
 		case *syntax.Redirect:
-			// 字符串检查会完全错过、argv 检查也会错过的那一个：`cat < .env` 运行
-			// `cat` **没有参数**。文件由 shell 打开，不是程序，所以一个只看 argv
-			// 的策略，压根看不到文件名。
+			// 这一种字符串检查完全看不见，argv 检查也照样看不见：
+			// `cat < .env` 跑 `cat` 的时候**一个参数都没有**。文件是
+			// shell 打开的，不是程序打开的，所以只看 argv 的策略，根
+			// 本就没见过那个文件名。
 			if n.Word != nil {
 				if lit, ok := literalWord(n.Word); ok && isSecretPath(lit) {
 					found = &refusal{Level: "ast", What: lit,
@@ -138,13 +138,12 @@ func inspectAST(command string) *refusal {
 	return found
 }
 
-// 只有当整个单词都是字面值时 —— 仅当如此 —— literalWord 才会返回这个单
-// 词的值。
+// literalWord 返回一个词的值——当且仅当整个词都是字面量。
 //
-// 第二个返回值是诚实的部分。一个包含参数展开或命令替换的单词，在解析
-// 时没有值，而 literalWord 会如实说明这一点，不会去返回它碰巧看懂的那
-// 部分。对 `.en$X` 返回 `".en"`，会比什么都不返回还糟糕，因为调用者接
-// 下来会拿这个不完整的值去跟策略比较，然后认定它是安全的。
+// 第二个返回值才是诚实的那一半。含参数展开或命令替换的词，在解析时刻没
+// 有值，这个函数就照实说，而不是把自己碰巧看懂的那几段返回出去。给
+// `.en$X` 返回 `".en"` 比什么都不返回更糟：调用方会拿一个不完整的值去比
+// 策略，然后断定它是安全的。
 func literalWord(w *syntax.Word) (string, bool) {
 	var b strings.Builder
 	for _, part := range w.Parts {
@@ -153,10 +152,10 @@ func literalWord(w *syntax.Word) (string, bool) {
 			b.WriteString(p.Value)
 		case *syntax.SglQuoted:
 			if p.Dollar {
-				// '...' 是 C 风格的转义：\x2eenv' 是 .env，解析器存储的是转义文本，不
-				// 是解码后的字节。这里不对它解码 —— 那样就是在策略里面重新实现一部分
-				// shell，而这正是这一章通篇要讲的陷阱。报告"不是字面"，让级别 3 去看
-				// 真实的值。
+				// $'...' 是 C 风格转义：$'\x2eenv' 就是 .env，而解析器
+				// 存的是转义文本，不是解码后的字节。这里不去解码——那
+				// 等于在策略里重新实现一小块 shell，而这正是本章要讲的
+				// 那个陷阱。报"不是字面量"，让第 3 级去看真正的值。
 				return "", false
 			}
 			b.WriteString(p.Value)
@@ -164,12 +163,12 @@ func literalWord(w *syntax.Word) (string, bool) {
 			for _, q := range p.Parts {
 				lit, ok := q.(*syntax.Lit)
 				if !ok {
-					return "", false // 引号中的一个展开
+					return "", false // 引号里面有个展开
 				}
 				b.WriteString(lit.Value)
 			}
 		default:
-			return "", false // ParamExp、CmdSubst、ArithmExp、ExtGlob、…
+			return "", false // ParamExp、CmdSubst、ArithmExp、ExtGlob……
 		}
 	}
 	return b.String(), true

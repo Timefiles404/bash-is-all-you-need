@@ -1,15 +1,13 @@
 // 阶段 02——重放。
 //
-// 一份 **trace**，经由实时 Agent 当初用过的那个相同 Subscriber
-// 读回。那就是整个诀窍所在，而它之所以可能，只是因为核心
-// 什么都不打印：如果渲染器接收的是**事件**、而不是打印语句，
-// 那么一个记录下来的事件，和一个实时发生的事件，就无法
-// 区分——重放就只是五十行代码，而不必是 UI 的第二套实现。
+// 把 trace 通过实跑 Agent 用的那同一个 Subscriber 读回去。全部的诀窍就
+// 在这儿，而它成立的唯一原因是核心什么都不打印：渲染器收的既然是**事件**
+// 而不是 print 语句，那么录下来的事件和实时的事件就分不出差别，重放于是
+// 只要五十行，而不是把 UI 再实现一遍。
 //
-// 它也是这个仓库里唯一一个，不需要 API 密钥、不需要网络、
-// 也不需要花钱，就能运作的部分，这让它成为对"我想研究一次
-// 真实的 Agent 会话"这个愿望，唯一诚实的答案——包括你从未
-// 为之付费的会话。
+// 它也是这个仓库里唯一不用 API key、不用联网、不用花钱就能跑的部分，
+// 所以对"我想研究一段真实的 Agent 会话"这句话，它是老实的答案——包括
+// 那些你从来没付过钱的会话。
 
 package main
 
@@ -25,44 +23,38 @@ import (
 	"time"
 )
 
-// TraceNoticePrefix 标记的，是 ReadTrace **合成**、而非读取
-// 出来的事件，这样渲染器（或测试）就能分清，这句话是 **trace**
-// 自己说的，还是 Agent 说的。
+// TraceNoticePrefix 用来标记那些 ReadTrace **合成**出来、而不是读出来的
+// 事件，好让渲染器（或者测试）能把"这是 trace 说的"和"这是 Agent 说的"
+// 分开。
 const TraceNoticePrefix = "[trace] "
 
-// maxReplayGap 限制重放在两个记录事件间等多久。
+// maxReplayGap 给重放在两条录下的事件之间等多久设了上限。
 //
-// 一个 **trace** 记录真实的间隙，一个真实的会话，可能包含
-// 一个在两次 prompt 之间去吃了午饭的人。忠实地重现一个
-// 41 分钟的间隙不是保真，它是挂起：学生看到一个冻结的终端，
-// 然后杀掉它。
+// trace 记的是真实的间隔，而真实的会话里有个人在两次 prompt 之间去吃了
+// 午饭。把 41 分钟的间隔忠实地重现出来，那不是保真，那是卡死：学生看到
+// 终端冻住，就把它杀了。
 //
-// 选定五秒，是为了让重放要传达的东西原封不动地保留下来
-// ——TTFT（0.3–2s）、文本 delta 的节奏（毫秒）、命令的挂钟
-// （通常在 5 秒以内）——而超出这个时间的部分，就是一个人
-// 正在发呆——这种情况，时间戳本身就能比干等着更好地说明。
-// 限制应用在**记录**下来的间隙上，发生在 Speed 缩放它之前，
-// 所以 `--speed 2` 仍然会把它减半，刻意设置的 `--speed 0.5`
-// 仍然能把它拉伸到十秒。
+// 选五秒，是为了让重放要传达的一切都原封不动地活下来——TTFT（0.3–2 秒）、
+// 文本 delta 的节奏（毫秒级）、命令的挂钟时间（通常不到 5 秒）——而超过
+// 五秒的都是人在发呆，那种事时间戳本来就报得比干等更清楚。上限卡的是
+// **录下来的**间隔，在 Speed 缩放它之前，所以 `--speed 2` 照样把它减半，
+// 而故意写的 `--speed 0.5` 还能把它撑到十秒。
 const maxReplayGap = 5 * time.Second
 
 // ---------------------------------------------------------------------------
-// 阅读
+// 读取
 // ---------------------------------------------------------------------------
 
-// ReadTrace 加载一份 **trace** 文件。
+// ReadTrace 加载一份 trace 文件。
 //
-// 错误返回，针对的是完全无法读取的文件。一份最后一行停在
-// 对象中间的 **trace，不**属于这些情况之一——它是被杀死
-// 的 Agent 的正常形状，这正是你最想看的那个会话。在那里
-// 返回错误，会诱使人写出条件反射式的 `if err != nil { fatal }`，
-// 并把解释崩溃的那四百个事件一并扔掉。
+// 返回 error 是留给根本读不了的文件的。trace 的最后一行停在对象中间，
+// **不**属于这种情况——那是 Agent 被杀掉之后的正常样子，而那恰恰是你最
+// 想看的那次会话。在那里返回 error，等于招来 `if err != nil { fatal }`
+// 这个条件反射，把解释崩溃的那四百条事件全扔了。
 //
-// 所以伤害改为**在事件流里**报告：所有可以恢复的事件都会
-// 回来，后面跟着一条合成的 KindNotice，说明哪里出了问题、
-// 恢复了多少个事件。随后，重放会把它显示在它自然所属的
-// 位置——会话的末尾，也就是学生在读重放时，真正会看到它
-// 的地方。
+// 所以损坏是**改在事件流里**报的：所有还能救回来的都还回去，后面跟一条
+// 合成的 KindNotice，说清楚哪里不对、救回了多少条事件。重放于是把它摆在
+// 它本来该在的位置，会话的末尾——读重放的学生在那里真的会看见它。
 func ReadTrace(path string) ([]Event, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -70,19 +62,17 @@ func ReadTrace(path string) ([]Event, error) {
 	}
 	defer f.Close()
 
-	// bufio.Reader，不是 bufio.Scanner。Scanner 把单个 token 限制
-	// 在 64KB，一旦某一行超出这个上限，就会用 ErrTooLong 让
-	// **整个读取失败——而任何 trace** 里最有价值的那一行——
-	// 请求体——恰恰正是那种，会在大约第三十回合前后，体积就
-	// 长过 64KB 的行。ReadBytes 没有这个限制，它会返回一个没有
-	// 尾随 '\n' 的最后一行，并伴随 io.EOF 一起出现，这正是一个
-	// 写入方在行的中途死掉的信号。
+	// 用 bufio.Reader，不用 bufio.Scanner。Scanner 把单个 token 卡在 64KB，
+	// 碰到第一行超限就用 ErrTooLong 让**整次**读取失败——而任何 trace 里最
+	// 值钱的那一行，request body，恰恰就是在第三十个回合前后涨过 64KB 的那
+	// 一行。ReadBytes 没有上限，而且它会把末尾没有 '\n' 的最后一行连同
+	// io.EOF 一起返回，那正是"写入方写到一半死了"的信号。
 	r := bufio.NewReaderSize(f, 64*1024)
 
 	var (
 		events    []Event
-		corrupt   int // 解析失败的完整行：真正的伤害
-		truncated int // 没有终止符的最后一行里的字节：普通的崩溃
+		corrupt   int // 解析不了的完整行：真正的损坏
+		truncated int // 末行没写完的字节数：寻常的崩溃
 	)
 	for {
 		line, rerr := r.ReadBytes('\n')
@@ -92,40 +82,40 @@ func ReadTrace(path string) ([]Event, error) {
 			var e Event
 			switch {
 			case trimmed[0] != '{':
-				// JSONL 行是对象。其他任何东西，都是某个人的日志输出，
-				// 碰巧落进了同一个文件里。
+				// JSONL 的行都是对象。不是对象的，就是谁的日志
+				// 输出跑到同一个文件里来了。
 				corrupt++
 
 			case json.Unmarshal(trimmed, &e) != nil:
 				if atEOF {
-					// 无尾随换行，**且**它不解析。写入方会在单次写入中，发出
-					// "对象+'\n'"，所以这是一次写入——内核在进程死掉之前，只
-					// 提交了一部分。预期，不是损坏。
+					// 末尾没有换行，**而且**解析不了。写入方是把
+					// object+'\n' 一次写出去的，所以这次写内核只提交
+					// 了一部分，进程就死了。是预期之内，不是损坏。
 					truncated = len(trimmed)
 				} else {
-					// 一个解析失败的完整行，情况不一样：它后面的字节都完好地
-					// 保留了下来，所以这是伤害，出现在一份原本完好无损的文件
-					// 正中间。跳过它，并把这一点报告出来。
+					// 完整的一行却解析不了，那是另一回事：它后面的
+					// 字节都还在，所以这是原本完好的文件中间烂了一块。
+					// 跳过它，并且把这事说出来。
 					corrupt++
 				}
 
 			default:
-				// 注意这里有意**不**检查的东西：e.Kind 从来没有对照 events.go
-				// 里的常量做过验证。一份由更新的构建写出的 **trace**，可能
-				// 携带着这个二进制从未听说过的 kind，如果拒绝这些 kind，就
-				// 意味着以后每一个新增的 kind，都会无声无息地破坏它出现
-				// 之后所有记录下来的文件的重放。未知的 kind 一样能加载、能
-				// 重放、能到达渲染器，渲染器可以选择把它们原样打印出来。
-				// （唯一真正的限制：未知**字段**会在解码时被丢弃——这无害，
-				// 因为这里没有任何东西会重新序列化。）
+				// 注意这里故意**不**检查什么：e.Kind 从不拿 events.go
+				// 里的常量去校验。更新的构建写出来的 trace，会带着这个
+				// 二进制程序从没听说过的 kind；把它们拒掉，就等于以后
+				// 每出一种新 kind，都会悄没声地让此后录下的每个文件
+				// 都重放不了。不认识的 kind 照样加载、照样重放、照样
+				// 送到渲染器手里，渲染器爱怎么原样打印就怎么打印。
+				// （唯一真正的限制：不认识的**字段**在解码时会被丢掉
+				// ——只要这里没有谁重新序列化，就无害。）
 				events = append(events, e)
 			}
 		}
 
 		if rerr != nil {
 			if !atEOF {
-				// 一个真实的 I/O 失败。无论如何，都要把已经恢复的部分交
-				// 回去；部分证据总好过没有证据。
+				// 真正的 I/O 失败。救回来的照样交回去；有一部分证据，
+				// 也好过一点没有。
 				return events, fmt.Errorf("trace: reading %s after %d events: %w", path, len(events), rerr)
 			}
 			break
@@ -138,10 +128,9 @@ func ReadTrace(path string) ([]Event, error) {
 	return events, nil
 }
 
-// traceDamageNotice 构建出一个合成事件，告诉读者这份文件
-// 缺失了什么。它借用最后一个真实事件的时间戳和回合数，
-// 这样一个按时间顺序排列的渲染器，才会把它放在它该在的
-// 位置，而不是放到纪元起点。
+// traceDamageNotice 造出那条合成事件，告诉读者这个文件缺了什么。它借用
+// 最后一条真事件的时间戳和回合数，这样按时间排序的渲染器会把它放在它
+// 该在的地方，而不是放到纪元零点。
 func traceDamageNotice(path string, events []Event, truncated, corrupt int) Event {
 	e := Event{Kind: KindNotice}
 	if n := len(events); n > 0 {
@@ -166,27 +155,27 @@ func traceDamageNotice(path string, events []Event, truncated, corrupt int) Even
 }
 
 // ---------------------------------------------------------------------------
-// 总结
+// 汇总
 // ---------------------------------------------------------------------------
 
-// TraceSummary 是在重放开始前显示的、可以一眼看完的表头。
+// TraceSummary 是重放开始前显示的表头，一眼看完。
 type TraceSummary struct {
 	Events     int
 	Turns      int
 	Commands   int
 	Duration   time.Duration
-	TotalUsage Usage // 对所有 KindUsage 事件求和
+	TotalUsage Usage // 把所有 KindUsage 事件加起来
 	Errors     int
 
-	// 阶段 09。刻意和 Errors 分开计数：一个被重试、随后成功了的 call_error，不
-	// 是会话遭受的错误，而是会话吸收掉的失败。把两者并在一起，会让每个健壮的会
-	// 话都看起来像坏了，而一个没人相信的表头，就是一个没人读的表头。
+	// 阶段 09。故意和 Errors 分开数：重试之后成功了的 call_error，不是会话
+	// 挨到的错误，而是会话吸收掉的失败。把两者并在一起，会让每一场健壮的会
+	// 话看上去都像坏了；而没人信的表头，就是没人读的表头。
 	CallErrors int
 	Retries    int
 	Fallbacks  int
 }
 
-// Summarize 把一整个会话，浓缩成最值得先看的六个数字。
+// Summarize 把整段会话压成最值得先看的六个数。
 func Summarize(events []Event) TraceSummary {
 	var s TraceSummary
 	s.Events = len(events)
@@ -195,18 +184,18 @@ func Summarize(events []Event) TraceSummary {
 	for _, e := range events {
 		switch e.Kind {
 		case KindTurnStart:
-			// 在**开始时计数，不是结束时。值得读的 trace** 是在回合
-			// 中间停的那些：一个在第 12 回合中途被杀死的会话，实际做了
-			// 十二个回合，而统计 turn_end 只会报告十一，还会把你打开
-			// 这份文件正是想看的那一个回合，藏起来。
+			// 在**开头**计数，不在结尾。值得读的 trace，恰恰是停在回合
+			// 中间的那些：会话在第 12 回合被杀，它做了十二个回合；数
+			// turn_end 会报十一个，而你打开这个文件要看的，正好是被
+			// 藏掉的那一个。
 			//
-			// 也不是"不同 e.Turn 值的数量"：Turn 在每一条用户消息处都会
-			// 重新从 1 开始（参见 events.go），所以，对任何长度超过一条
-			// prompt 的会话，用不同值计数都会偏少。
+			// 也不是"e.Turn 有多少个不同的值"：每来一条用户消息 Turn
+			// 就从 1 重来（见 events.go），所以只要会话超过一次 prompt，
+			// 按不同值去数就数少了。
 			s.Turns++
 
 		case KindCommandStart:
-			s.Commands++ // 同样的道理：永远没有返回的命令，也算数
+			s.Commands++ // 同样的道理：没返回的那条命令也算
 
 		case KindError:
 			s.Errors++
@@ -218,30 +207,29 @@ func Summarize(events []Event) TraceSummary {
 			s.Retries++
 
 		case KindProvider:
-			// 会话开始的那个事件不带分诊裁决，只有降级才带。把每个 provider 事件
-			// 都数进来，会让每一条曾经记录下来的干净会话都报出一次降级。
+			// 会话开始那个事件不带分诊裁决，只有降级才带。要是把每个
+			// provider 事件都数进去，那么有记录以来的每一场干净会话，都
+			// 会被报成发生过一次降级。
 			if e.Triage != "" {
 				s.Fallbacks++
 			}
 
 		case KindUsage:
-			// 以 kind 作为判断依据，而不只是看 Usage != nil，这样一来，
-			// 未来某个事件如果在携带别的东西的同时，也搭带了一份
-			// usage 快照，也不会无声无息地把总数算重复。
+			// 是按 kind 卡的，不只是按 Usage != nil 卡，这样以后要是有别
+			// 的事件顺带捎上一份 usage 快照，也不会悄没声地把总数翻倍。
 			if e.Usage != nil {
-				// 每个字段各自单独求和，prompt 的总数，是之后再从它们
-				// 派生出来的。对"输入 token"求和，正是 Usage 文档注释警告
-				// 过的那个 bug：一个缓存回合报告输入 18，而实际发送了
-				// 18,000，所以一个只靠 Input 构建出来的总数，会偏差达三个
-				// 数量级——而且这个数字看起来又足够合理，以至于从来没有
-				// 人回头去复查它。
+				// 每个字段分开求和，prompt 总数事后再从它们推出来。
+				// 把"input tokens"加起来，正是 Usage 那段文档注释警
+				// 告的那个 bug：命中缓存的回合报 Input 18，实际发出
+				// 去的是 18,000，所以只用 Input 堆出来的总数会差三个
+				// 数量级——而且这数字看着够合理，压根没人回头核对。
 				s.TotalUsage = addUsage(s.TotalUsage, *e.Usage)
 			}
 		}
 
-		// 最小/最大值，而不是第一个和最后一个元素：一个 T 为零
-		// 的事件（手动构建的，或者来自某个将来会省略它的写入方），
-		// 否则就会让持续时间变成一个 55 年的负数。
+		// 取最小最大，不取首尾两个元素：万一有条事件的 T 是零值
+		// （手工造的，或者来自将来某个不写它的写入方），时长就会
+		// 变成负的 55 年。
 		if !e.T.IsZero() {
 			if first.IsZero() || e.T.Before(first) {
 				first = e.T
@@ -257,16 +245,14 @@ func Summarize(events []Event) TraceSummary {
 	return s
 }
 
-// PromptTokens 是人们问"这个会话到底发送了多少"时，真正
-// 想问的那个数字。
+// 别人问这段会话发出去了多少，问的就是 PromptTokens。
 //
-// 它是 Prompt()，从不是 Input。参见 events.go 中 Usage 的文档
-// 注释：Input 只是未缓存剩下的那部分，把它当成总数来读，
-// 是 Agent 自身的 token 会计变成一句谎话的最常见单一原因。
+// 它是 Prompt()，绝不是 Input。见 events.go 里 Usage 的文档注释：
+// Input 只是没命中缓存的那点余量，把它当成总数来读，是 Agent 自报的
+// token 账变成谎话最常见的方式。
 func (s TraceSummary) PromptTokens() int { return s.TotalUsage.Prompt() }
 
-// String 渲染出表头。两行，不带颜色：它必须在学生把重放
-// 的输出用管道接进文件时，依然可读。
+// String 渲染表头。两行，不上色：学生把 replay 管进文件的时候，它得能读。
 func (s TraceSummary) String() string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "trace · %s · %s · %s · %s",
@@ -279,8 +265,8 @@ func (s TraceSummary) String() string {
 		fmt.Fprintf(&b, " · %s", tracePlural(s.CallErrors, "failed call"))
 	}
 	if s.Retries > 0 {
-		// 这里是把词写死的，而不是走 tracePlural——那个会加一个 "s"：表头里的
-		// "2 retrys" 正是那种会让读者不再相信旁边那些数字的细节。
+		// 这里是写死的，没走 tracePlural——那个函数会加个 "s"。表头上出现
+		// "2 retrys"，恰好就是那类细节：读者从此不再相信印在它旁边的数字。
 		word := "retries"
 		if s.Retries == 1 {
 			word = "retry"
@@ -291,9 +277,8 @@ func (s TraceSummary) String() string {
 		fmt.Fprintf(&b, " · %s", tracePlural(s.Fallbacks, "fallback"))
 	}
 	if s.PromptTokens() > 0 || s.TotalUsage.Output > 0 {
-		// 拆分，总是。一个"prompt token: 18231"这样的数字，会
-		// 掩盖这些 token 到底是按三种价格中的哪一种计费的，而这
-		// 三者之间的差距超过十倍。
+		// 永远给出切分。只报一句 "prompt tokens: 18231"，就藏住了这些
+		// token 到底按三种价钱里的哪一种计费，而三者差着 10x 以上。
 		fmt.Fprintf(&b, "\ntokens · prompt %d (full %d · write %d · read %d) · output %d",
 			s.PromptTokens(), s.TotalUsage.Input, s.TotalUsage.CacheWrite,
 			s.TotalUsage.CacheRead, s.TotalUsage.Output)
@@ -301,10 +286,9 @@ func (s TraceSummary) String() string {
 	return b.String()
 }
 
-// tracePlural 不让表头说出"1 commands"这种话。为了一个
-// 字符，付出这么多心思，多少有点可笑，但它也是学生在这个
-// 仓库唯一宣传为无需 API 密钥就能用的那个功能里，看到的
-// 第一行。
+// tracePlural 不让表头写出 "1 commands"。为一个字符操这么多心，是有点
+// 傻；可这个仓库宣传说不用 API key 就能用的功能只有这一个，而这是学生
+// 在里面看到的第一行。
 func tracePlural(n int, singular string) string {
 	if n == 1 {
 		return "1 " + singular
@@ -328,20 +312,18 @@ func traceDur(d time.Duration) string {
 // ---------------------------------------------------------------------------
 
 type ReplayOpts struct {
-	Speed  float64          // 0 = 立即，1 = 原始挂钟计时，2 = 双速
-	Step   bool             // 在每个事件前等待回车
-	Filter func(Event) bool // nil = 一切
+	Speed  float64          // 0 = 瞬间放完，1 = 原本的挂钟节奏，2 = 双倍速
+	Step   bool             // 每条事件之前等一次 Enter
+	Filter func(Event) bool // nil = 全都要
 }
 
-// Replay 把已经记录下来的事件，喂给 Subscriber，就好像它们
-// 是现在正在发生的一样。
+// Replay 把录下的事件喂给 Subscriber，就像它们此刻正在发生。
 //
-// 它故意不做的一件事，是重新给 Event.T 盖时间戳。"就好像
-// 它们是现在发生的"，说的是节奏，不是撒谎：记录下来的
-// 时间戳才是证据，一个显示 TTFT 或命令挂钟耗时的渲染器，
-// 读的正是它们。重放控制的是 OnEvent **何时**被调用，从来
-// 不控制调用它时传的是什么内容——这也正是为什么测试能够
-// 把一次重放运行，和一次实时运行，逐个事件地拿来比较。
+// 它故意不做的一件事，是给 Event.T 重新盖时间戳。"就像此刻正在发生"
+// 说的是节奏，不是撒谎：录下的时间戳就是证据，而显示 TTFT 或者命令
+// 挂钟时间的渲染器，读的正是它们。Replay 控制的是 OnEvent
+// **什么时候**被调用，从不控制调用时传的是什么——测试能拿重放的一次
+// 运行和实跑的一次逐条对照，靠的也是这一点。
 func Replay(events []Event, sub Subscriber, opts ReplayOpts, in io.Reader, out io.Writer) error {
 	if sub == nil {
 		return fmt.Errorf("replay: no subscriber to replay into")
@@ -360,10 +342,9 @@ func Replay(events []Event, sub Subscriber, opts ReplayOpts, in io.Reader, out i
 		}
 	}
 
-	// 表头总结的是**整个 trace**，即便某个过滤器正开着，
-	// 因为"这个会话一共发起了 47 次模型调用，而你正在看的只是
-	// 其中 3 次"这句话，正是防止一个被过滤过的视图，被误认成
-	// 整个会话的那个上下文信息。
+	// 就算开了过滤，表头汇总的也是**整份** trace。因为有了"这段会话调了
+	// 47 次模型，你现在看的是其中 3 次"这句话，才不会有人把过滤后的视图
+	// 当成整段会话。
 	fmt.Fprintln(out, Summarize(events))
 	fmt.Fprintf(out, "replay · %s", replayMode(opts))
 	if len(shown) != len(events) {
@@ -376,9 +357,9 @@ func Replay(events []Event, sub Subscriber, opts ReplayOpts, in io.Reader, out i
 		if in == nil {
 			in = strings.NewReader("")
 		}
-		// 构建一次，在循环外。如果每个事件都用一个全新的
-		// bufio.Reader，就会预读进它自己的缓冲区，把第一行之后的
-		// 所有内容都扔掉，无声无息地吃掉用户接下来敲的按键。
+		// 只在循环外面建一次。每条事件都新建一次 bufio.Reader，它就会
+		// 预读进自己的 buffer，把第一行之后的东西全扔掉，一声不响地吃
+		// 掉用户接下来的按键。
 		stepIn = bufio.NewReader(in)
 	}
 
@@ -386,8 +367,8 @@ func Replay(events []Event, sub Subscriber, opts ReplayOpts, in io.Reader, out i
 	for i, e := range shown {
 		switch {
 		case opts.Step:
-			// Step 赢过 Speed。等一个人类，然后又把记录下来的间隙睡
-			// 一遍，只是用更慢的方式，等同一个人类罢了。
+			// Step 压过 Speed。先等人，再把录下的间隔也睡一遍，那不过是
+			// 换个更慢的法子等同一个人。
 			fmt.Fprintf(out, "[%d/%d %s] ", i+1, len(shown), e.Kind)
 			cont, err := readStep(stepIn)
 			if err != nil {
@@ -404,10 +385,9 @@ func Replay(events []Event, sub Subscriber, opts ReplayOpts, in io.Reader, out i
 				gap = maxReplayGap
 			}
 			if gap > 0 {
-				// 负间隙是可能的，且不是一个需要在这里修复的 bug：两个
-				// 事件能共享一个时间戳，一份从两个进程合并而成的 **trace**，
-				// 时间戳可能会倒退。把它钳位在零，能让重放不管时钟做了
-				// 什么，都继续向前推进。
+				// 间隔为负是可能的，也不是该在这里修的 bug：两条事件
+				// 可以共用一个时间戳，两个进程合并出来的 trace 也可能
+				// 往回走。夹到零，不管时钟干了什么，重放都只往前走。
 				time.Sleep(time.Duration(float64(gap) / opts.Speed))
 			}
 		}
@@ -420,20 +400,18 @@ func Replay(events []Event, sub Subscriber, opts ReplayOpts, in io.Reader, out i
 	return nil
 }
 
-// readStep 消费正好一行，并报告重放是否应该继续。
+// readStep 正好吃掉一行，并报告重放该不该继续。
 //
-// 正好一行：如果单次回车会被读成两步，一份有 4,000 个文本
-// delta 的 **trace** 就没法用；如果读完一步要按两次回车，
-// 它就没法读。
+// 正好一行：有 4,000 条文本 delta 的 trace，要是一次 Enter 会被读成两步，
+// 就没法用了；要是一步得按两次 Enter，就没法读了。
 func readStep(r *bufio.Reader) (bool, error) {
 	line, err := r.ReadString('\n')
 	if err != nil && err != io.EOF {
 		return false, err
 	}
 	if err == io.EOF && strings.TrimSpace(line) == "" {
-		// Ctrl-D，或者一个输入用完了的脚本。停止，是对"用户关闭
-		// 了输入"这件事，最诚实的解读；在无人看管的情况下，播放
-		// 剩下的内容，则会是一个意外。
+		// Ctrl-D，或者脚本的输入用完了。把"用户关掉了输入"读成"停下来"，
+		// 是老实的读法；没人看着还把剩下的放完，那就太意外了。
 		return false, nil
 	}
 	switch strings.ToLower(strings.TrimSpace(line)) {

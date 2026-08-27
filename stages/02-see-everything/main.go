@@ -1,15 +1,15 @@
 // 阶段 02——看见一切。
 //
-// 和阶段 01 是同一个 Agent，只有一处结构上的改变：它什么都不
-// 打印。它发出事件，你能看到的东西订阅它们。
+// 还是阶段 01 那个 Agent，结构上只改一处：它什么都不打印。它发事件，
+// 你能看见的那些东西去订阅。
 //
-//	Agent 核心 ──发出──▶ 总线 ──┬──▶ 渲染器   （终端，已插桩）
-//	                           └──▶ TraceWriter（session.jsonl，每行一个事件）
+//	agent core ──emit──▶ Bus ──┬──▶ renderer   (装了仪表的终端)
+//	                           └──▶ TraceWriter (session.jsonl，一行一条事件)
 //
-//	重放：session.jsonl ──▶ Replay ──▶ 相同的渲染器，无网络，无密钥
+//	replay: session.jsonl ──▶ Replay ──▶ 还是那个渲染器，不联网，不要 key
 //
-// 这个阶段所有的新东西，都源于那一个决定。读 events.go 了解
-// 论证，再读这个文件了解接线，最后读 render.go 了解数字的含义。
+// 这一阶段所有的新东西，都是从那一个决定里长出来的。先读 events.go 看
+// 论证，再读这个文件看接线，再读 render.go 看那些数字是什么意思。
 package main
 
 import (
@@ -46,8 +46,10 @@ either find another way or ask.
 
 When the task is done, reply with a short plain-text summary and no tool call.`
 
-// 线上类型。仍然手写，仍然只有 OpenAI 协议——到了阶段 03，
-// 第二个协议加入进来，这些类型就会挪到中立核心背后。
+// ---------------------------------------------------------------------------
+// 线上类型。还是手写的，还是只有 OpenAI 协议——第二种协议阶段 03 才到，
+// 到那时这些类型会挪到中立内核后面去。
+// ---------------------------------------------------------------------------
 
 type message struct {
 	Role       string     `json:"role"`
@@ -72,11 +74,10 @@ type chatRequest struct {
 	Tools     []toolDef `json:"tools"`
 	Stream    bool      `json:"stream"`
 
-	// 如果没有这个字段，真正的 OpenAI 端点不会流式返回 usage。这个
-	// 仓库据以开发的那个网关，无论如何都会发送 usage——参见
-	// docs/wire-notes.md §B5，那里实测证实这个标志是无操作的。但
-	// 还是要发送它：这不花一分钱，不发的代价是某天有人把 Agent
-	// 指向另一个供应商时，它会开始报告零 token。
+	// 真正的 OpenAI 端点不加这个就不会流式发 usage。本仓库开发时对着的那个
+	// 网关，加不加都发——见 docs/wire-notes.md §B5，那里实测这个 flag 就是
+	// 空操作。还是加上：它不花什么代价，而不加的下场是，哪天有人把它指向
+	// 别的供应商，Agent 就报零 token。
 	StreamOptions *streamOptions `json:"stream_options,omitempty"`
 }
 
@@ -130,10 +131,9 @@ type client struct {
 	http *http.Client
 }
 
-// stream 发送一个请求，让 **SSE** 解析器把响应变成事件。注意
-// 这个函数**不**做的事：它从不为人类格式化任何东西。它之所以
-// 能在一屏之内读完，唯一的原因就是这里完全不管"怎么展示给
-// 人看"。
+// stream 发一次请求，然后让 SSE 解析器把响应变成事件。注意这个函数
+// **不做**什么：它从不为人排版。它之所以一屏就能读完，是因为呈现层已经
+// 搬走了。
 func (c *client) stream(msgs []message, bus *Bus, turn int) (*streamResult, error) {
 	body, err := json.Marshal(chatRequest{
 		Model:         c.cfg.model,
@@ -147,8 +147,8 @@ func (c *client) stream(msgs []message, bus *Bus, turn int) (*streamResult, erro
 		return nil, err
 	}
 
-	// 请求检查器，以及任何 **trace** 中最有用的单行：
-	// 模型实际看到的唯一记录。转录中的其他东西都是重建。
+	// 请求检查器就靠它，它也是任何 trace 里最有用的一行：模型究竟看到了
+	// 什么，只有它记着。会话记录里其余的一切，都是重建出来的。
 	bus.Emit(Event{Kind: KindRequest, Turn: turn, Request: body})
 
 	req, err := http.NewRequest("POST", c.cfg.baseURL+"/chat/completions", bytes.NewReader(body))
@@ -159,8 +159,8 @@ func (c *client) stream(msgs []message, bus *Bus, turn int) (*streamResult, erro
 	req.Header.Set("Authorization", "Bearer "+c.cfg.apiKey)
 	req.Header.Set("Accept", "text/event-stream")
 
-	// Started 尽可能晚地加时间戳，这样 TTFT 衡量的是用户实际体验到的
-	// ——把网络耗时也算在内——而不是模型自己做了什么。
+	// Started 尽可能晚地打上时间戳，这样 TTFT 量的是用户实际的体感——网络
+	// 也算在里面——而不是模型干了多久。
 	started := time.Now()
 	resp, err := c.http.Do(req)
 	if err != nil {
@@ -170,18 +170,17 @@ func (c *client) stream(msgs []message, bus *Bus, turn int) (*streamResult, erro
 
 	if resp.StatusCode != http.StatusOK {
 		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 8<<10))
-		// 在写重试策略之前，有一件事值得知道：在这个网关上，未知的
-		// 模型 id 返回 401，畸形体返回 500。朴素的"重试所有 5xx"循环
-		// 会永远重试客户端 bug。
+		// 写重试策略之前值得知道：在这个网关上，不认识的 model id 返回
+		// 401，body 格式不对返回 500。天真的"5xx 全都重试"循环，会拿着
+		// 客户端的 bug 一直重试下去。
 		return nil, fmt.Errorf("http %d: %s", resp.StatusCode, strings.TrimSpace(string(raw)))
 	}
 	return parseOpenAIStream(resp.Body, bus, turn, started)
 }
 
 // ---------------------------------------------------------------------------
-// 权限闸。较之阶段 01，实质上没有变化；它现在把裁决报告
-// 为一个事件，这样一次拒绝在六个月后仍然能在 **trace** 中
-// 看到。
+// 权限闸。实质上和阶段 01 一样；现在它把裁决作为事件报出去，半年后翻
+// trace 也能看见某次拒绝。
 // ---------------------------------------------------------------------------
 
 type gate struct {
@@ -253,9 +252,8 @@ func main() {
 	view := newRenderer(os.Stdout, colorEnabled(os.Stdout), prices, *window)
 	view.showRequest = *showReq
 
-	// 重放不需要密钥、shell，也不需要网络。这就是意义所在：一个
-	// 学生能够研究一次自己完全没有付费的真实会话，你也能直接用
-	// 用户发给你的文件，调试他们的那次运行。
+	// 重放不要 key，不要 shell，也不要网。这正是重点：学生可以研究一段
+	// 自己没花钱的真实会话，你也可以拿用户寄来的文件调他那一次运行。
 	if *replayPath != "" {
 		events, err := ReadTrace(*replayPath)
 		if err != nil {
@@ -331,8 +329,8 @@ func main() {
 	view.SessionSummary(lastPrompt)
 }
 
-// runTurn 把一条用户消息推进到完成，返回增长后的历史，
-// 以及发送的最后一个 prompt 的大小（这是上下文水位线）。
+// runTurn 把一条用户消息推到收尾，返回长大之后的历史，以及最后发出的
+// 那次 prompt 有多大（那就是上下文水位线）。
 func runTurn(c *client, g *gate, bus *Bus, cfg config, msgs []message, lastPrompt int) ([]message, int) {
 	for turn := 1; ; turn++ {
 		if turn > cfg.maxTurns {
@@ -348,9 +346,9 @@ func runTurn(c *client, g *gate, bus *Bus, cfg config, msgs []message, lastPromp
 		}
 		lastPrompt = res.Usage.Prompt()
 
-		// 重建 API 在非流式情况下本应返回的那条 assistant 消息，因为
-		// 回到历史里的，必须是这个版本。重新组装，是你为流式付出的
-		// 税，忘掉这一点，就是流式 Agent 会"丢"工具调用的原因。
+		// 把 assistant 消息重新拼出来，拼成 API 不走流式时会返回的样子，
+		// 因为要回填进历史的正是这个东西。重组是流式要交的税；忘了交，
+		// 流式 Agent 就会"弄丢"自己的工具调用。
 		am := message{Role: "assistant", Content: res.Text}
 		for _, tc := range res.ToolCalls {
 			var call toolCall
@@ -360,12 +358,12 @@ func runTurn(c *client, g *gate, bus *Bus, cfg config, msgs []message, lastPromp
 		}
 		msgs = append(msgs, am)
 
-		// 注意这里**没有**什么：一个 KindResponseEnd。流解析器已经
-		// 发出了一个，因为知道响应到底什么时候结束、结束得干不干净
-		// 的，正是这个组件。从这里再发出第二个，就是这条注释想要
-		// 阻止你重新引入的那个 bug——两个组件各自都以为自己拥有
-		// 某个事件，是事件驱动设计出错最常见的方式，它显示为一个
-		// 复制的、半空的面板，而不是崩溃。
+		// 注意这里**没有**什么：没有 KindResponseEnd。流解析器已经发过一
+		// 条了，因为响应究竟什么时候结束、结束得干不干净，只有它这个组
+		// 件知道。在这里再发第二条，就是这条注释要拦住你重新引入的那个
+		// bug——两个组件都以为某条事件归自己管，这是事件驱动设计最常见
+		// 的翻车方式，而它露出来的样子不是崩溃，是一块重复的、半空的
+		// 面板。
 
 		switch res.FinishReason {
 		case "length", "max_tokens":
@@ -388,9 +386,8 @@ func runTurn(c *client, g *gate, bus *Bus, cfg config, msgs []message, lastPromp
 			return msgs, lastPrompt
 		}
 
-		// 每个工具调用都会得到一个结果，包括我们拒绝的那些。未回答
-		// 的调用会让**下一个**请求变得畸形——可能是好几条用户消息
-		// 之后的事。
+		// 每一次工具调用都要有结果，被我们拒掉的也一样。有调用没答复，
+		// **下一次**请求就是畸形的，而那可能是好几条用户消息之后了。
 		stop := false
 		for _, tc := range res.ToolCalls {
 			if stop {
@@ -433,8 +430,8 @@ func runTurn(c *client, g *gate, bus *Bus, cfg config, msgs []message, lastPromp
 	}
 }
 
-// toolResult 发出结果，并返回待追加的那条消息，这样用户看到
-// 的东西和模型被告知的东西，就永远不会彼此漂移开。
+// toolResult 把结果发出去，同时返回要追加的消息，用户看到的东西和告诉
+// 模型的东西就永远不会跑偏成两样。
 func toolResult(bus *Bus, turn int, callID, content string) message {
 	bus.Emit(Event{Kind: KindToolResult, Turn: turn, ToolID: callID, Text: content})
 	return message{Role: "tool", ToolCallID: callID, Content: content}

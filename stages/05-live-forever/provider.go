@@ -1,19 +1,17 @@
-// Stage 03——Babel。
+// 阶段 03——Babel。
 //
-// 两个协议，一个 Agent。这个文件就是 Agent 说的语言；适配器
-// （openai.go、anthropic.go）在线上把它翻译过去。
+// 两个协议，一个 Agent。这个文件是 Agent 说的语言；适配器
+// （openai.go、anthropic.go）负责在线上翻译它。
 //
-// 让它成立的规则是：**Agent 循环里永远不能出现供应商自己的
-// 措辞。** 没有 `tool_calls`、没有 `stop_reason`、没有
-// `input_tokens`。一旦有一个泄漏进 main.go，第二个协议就
-// 不再是适配器了，会变成一个 `if` 语句，然后是一百个 `if`
-// 语句。
+// 让它成立的那条规矩：**主循环里绝不能出现任何厂商的词。**不许有
+// `tool_calls`，不许有 `stop_reason`，不许有 `input_tokens`。只要漏
+// 一个进 main.go，第二个协议就不再是适配器，而是一条 `if`，接着就是
+// 一百条 `if`。
 //
-// 适配器需要调和的东西，不是表面文章。两个协议在这些事情上
-// 意见不合：系统提示词放哪里、工具结果怎么寻址、工具参数是
-// 字符串还是对象、stop 原因叫什么——以及最费钱的一点，token
-// 计费按哪个方向算。docs/03-babel.md 里的表格列出了全部
-// 这些，附带观察到的证据。
+// 适配器要调和的东西不是表面功夫。两个协议在这些事上谈不拢：系统提
+// 示词放哪儿、工具结果怎么寻址、工具参数是字符串还是对象、停止原因
+// 叫什么，还有最烧钱的一条——token 记账往哪个方向走。
+// docs/03-babel.md 里的表格把它们连同观测到的证据全列了出来。
 package main
 
 import (
@@ -23,7 +21,7 @@ import (
 )
 
 // ---------------------------------------------------------------------------
-// 中立对话
+// 中立的对话
 // ---------------------------------------------------------------------------
 
 type Role string
@@ -34,16 +32,14 @@ const (
 	RoleAssistant Role = "assistant"
 )
 
-// 注意什么缺失：没有 RoleTool。
+// 注意这里少了什么：没有 RoleTool。
 //
-// OpenAI 协议用它自己的 `role:"tool"` 消息
-// 回答一个工具调用，每次调用一个。Anthropic
-// 协议用一个**用户**消息内的 `tool_result`
-// 块来回答。选择任一作为中立形式会把一个
-// 供应商的设计走私到核心，所以中立形式
-// 既没有：一个工具结果是一个*块*，每个
-// 适配器决定什么消息形状携带它。那个选择
-// 就是这个文件使用块的全部原因。
+// OpenAI 协议回答工具调用，用的是自己的 `role:"tool"` 消息，一次调
+// 用一条。Anthropic 协议的回答，是塞在一条 **user** 消息里的
+// `tool_result` 块。选哪一边当中立形式，都是把某家厂商的设计偷运进
+// 内核，所以中立形式两个都不选：工具结果是**块**，至于用什么形状的
+// 消息装它，各个适配器自己定。这个选择，就是这个文件为什么要用块的
+// 全部原因。
 
 type BlockKind string
 
@@ -57,24 +53,20 @@ const (
 type Block struct {
 	Kind BlockKind
 
-	// Text 携带 text、thinking 或 tool_result
-	// 块的内容。
+	// Text 装的是 text、thinking 或者 tool_result 块的内容。
 	Text string
 
-	// ID 是工具调用的 id——在 BlockToolCall
-	// 上设置，在 BlockToolResult 上说它
-	// 回答哪个调用。
+	// ID 是工具调用的 id——在 BlockToolCall 上设，在 BlockToolResult 上
+	// 也设，用来说明它回答的是哪次调用。
 	ID   string
-	Name string // 工具名字，在 BlockToolCall 上
+	Name string // 工具名，在 BlockToolCall 上
 
-	// Args 是工具调用的参数作为原始 JSON 字符串。
+	// Args 是工具调用的参数，以原始 JSON 字符串的形式存着。
 	//
-	// 一个字符串，不是已解码的 map，那是有意的。
-	// 一个协议将参数作为 JSON 字符串发送，另一个
-	// 作为 JSON 对象；唯一可以通过两者往返而
-	// 无需重新序列化的形式是原始字节。重新序列化
-	// 也会破坏字节级 prompt 缓存，因为 Go 的
-	// map 迭代顺序不稳定。
+	// 是字符串，不是解码后的 map，这是故意的。一个协议把参数当 JSON 字
+	// 符串发，另一个当 JSON 对象发；能在两边都往返一圈还不用重新序列化
+	// 的形式，只有原始字节。重新序列化还会破坏字节级的 prompt 缓存，因
+	// 为 Go 的 map 遍历顺序不稳定。
 	Args string
 }
 
@@ -83,8 +75,7 @@ type Msg struct {
 	Blocks []Block
 }
 
-// 便利构造函数，所以 Agent 循环读起来
-// 像散文。
+// 几个便利构造函数，让主循环读起来像散文。
 
 func TextMsg(role Role, text string) Msg {
 	return Msg{Role: role, Blocks: []Block{{Kind: BlockText, Text: text}}}
@@ -94,8 +85,7 @@ func ToolResultBlock(callID, content string) Block {
 	return Block{Kind: BlockToolResult, ID: callID, Text: content}
 }
 
-// Text 返回连接的文本块，忽略 thinking
-// 和工具。
+// Text 返回拼好的 text 块，忽略 thinking 和工具。
 func (m Msg) Text() string {
 	var s string
 	for _, b := range m.Blocks {
@@ -117,9 +107,8 @@ func (m Msg) ToolCalls() []Block {
 	return out
 }
 
-// Tool 是中立形式的工具定义。每个适配器
-// 把它呈现到自己的 schema 信封中——一个
-// 在 `function` 下嵌套它，另一个不。
+// Tool 是中立形式的工具定义。各个适配器把它渲染进自家的 schema 信
+// 封：一个嵌在 `function` 底下，另一个不嵌。
 type Tool struct {
 	Name        string
 	Description string
@@ -127,22 +116,21 @@ type Tool struct {
 }
 
 // ---------------------------------------------------------------------------
-// 中立响应
+// 中立的响应
 // ---------------------------------------------------------------------------
 
-// StopReason 是为什么生成停止了，规范化后。
+// StopReason 是生成为什么停下来，归一化之后的。
 type StopReason string
 
 const (
-	StopEndTurn   StopReason = "end_turn"   // 模型完成了说话
-	StopToolUse   StopReason = "tool_use"   // 它想要工具运行
+	StopEndTurn   StopReason = "end_turn"   // 模型话说完了
+	StopToolUse   StopReason = "tool_use"   // 它要跑工具
 	StopMaxTokens StopReason = "max_tokens" // 被截断了
-	StopFiltered  StopReason = "filtered"   // 供应商阻止了它
-	StopUnknown   StopReason = "unknown"    // 一个我们从未见过的字符串
+	StopFiltered  StopReason = "filtered"   // 供应商拦下了
+	StopUnknown   StopReason = "unknown"    // 没见过的字符串
 )
 
-// CallResult 是一个模型调用，用 Agent
-// 循环理解的形状。
+// CallResult 是一次模型调用，形状是主循环认得的那种。
 type CallResult struct {
 	Text     string
 	Thinking string
@@ -152,15 +140,14 @@ type CallResult struct {
 
 	Stop StopReason
 
-	// RawStop 是供应商的字面字符串，和规范化后的值一起保留，
-	// 并写入 trace 中。
+	// RawStop 是供应商给的字面字符串，和归一化后的值一起留着，并写进
+	// trace。
 	//
-	// 这不是冗余。在这个仓库据以开发的网关上，一个在 max_tokens
-	// 处截断的工具调用会带着 stop_reason "tool_use" 和一个
-	// 不可用的 body 回来（docs/wire-notes.md §A3c）——信封在
-	// 说谎。当会话出错时，规范化值告诉你 Agent 当时相信什么，
-	// RawStop 告诉你它当时被告知什么，两者之间的落差就是 bug。
-	// 永不能把你仅有的证据给规范化掉。
+	// 这不是冗余。在这个仓库对着开发的那个网关上，工具调用被 max_tokens
+	// 截断，回来的 stop_reason 是 "tool_use"，body 根本没法用
+	// （docs/wire-notes.md §A3c）——信封在撒谎。会话出岔子的时候，归一化
+	// 后的值告诉你 Agent 信了什么，RawStop 告诉你别人跟它说了什么，两者
+	// 之间的差距就是那个 bug。永远不要把你唯一的证据归一化掉。
 	RawStop string
 }
 
@@ -168,37 +155,32 @@ type CallResult struct {
 // 接口
 // ---------------------------------------------------------------------------
 
-// Provider 是一个协议。两个实现，每个
-// 约 350 行，Agent 循环无法区分它们。
+// Provider 就是一个协议。两份实现，各约 350 行，主循环分不出谁是谁。
 type Provider interface {
-	// Protocol 标明线上格式（"openai"、"anthropic"），
-	// 用于显示，也用于 trace。
+	// Protocol 给线上格式起名（"openai"、"anthropic"），用于显示，也用
+	// 于 trace。
 	Protocol() string
 
 	// Model 是被调用的模型 id。
 	Model() string
 
-	// BuildRequest 把对话呈现为 HTTP 请求。
-	// 系统提示词被单独传递，因为协议对它
-	// 属于哪里不同——一个上的顶级字段，另一个
-	// 的第一条消息——而那个分歧不能到达调用者。
+	// BuildRequest 把一段对话渲染成 HTTP 请求。系统提示词单独传，因为两
+	// 个协议对它该待在哪儿谈不拢——一个说是顶层字段，另一个说是第一条消
+	// 息——而这种分歧不能捅到调用方那儿去。
 	BuildRequest(system string, msgs []Msg, tools []Tool, maxTokens int) (*http.Request, []byte, error)
 
-	// ParseStream 消费一个 SSE body，当它们
-	// 到达时发出事件，并返回组装的结果。
-	// 两个实现都使用 sse.go 中的 readSSE：
-	// framing 被共享，有效负载不共享。
+	// ParseStream 吃掉 SSE body，事件到一个发一个，最后返回组装好的
+	// 结果。两份实现都用 sse.go 里的 readSSE：分帧是共用的，payload
+	// 不是。
 	ParseStream(r io.Reader, bus *Bus, turn int, started time.Time) (*CallResult, error)
 }
 
-// normaliseStop 把供应商的字面 stop
-// 字符串映射到中立集上。
+// normaliseStop 把供应商给的字面 stop 字符串映射到中立那一套上。
 //
-// 未知字符串映射到 StopUnknown 而不是
-// StopEndTurn，Agent 循环报告它们而不是
-// 继续。一个状态机，把任何未识别的
-// 映射到"可能没事"最终会把拒绝、配额事件
-// 或新的安全 stop 映射到"可能没事"。
+// 不认识的字符串映射成 StopUnknown，不是 StopEndTurn；主循环会把它
+// 们报出来，而不是接着往下走。状态机只要把认不出来的东西一律映射成
+// "八成没事"，早晚会把一次拒绝、一次配额事件、或者一种新的安全停止
+// 也映射成"八成没事"。
 func normaliseStop(raw string) StopReason {
 	switch raw {
 	case "stop", "end_turn":

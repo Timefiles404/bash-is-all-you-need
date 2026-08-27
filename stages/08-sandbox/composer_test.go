@@ -12,28 +12,28 @@ import (
 	"unicode/utf8"
 )
 
-// 这个文件测试第 06 阶段的 TUI 一半：将记录的请求转回可读内容的解码器、
-// 将扁平事件流切片为调用的索引、三个视图、按键处理器，以及决定帧是否
-// 落在屏幕上或损坏它的两个字符串函数。
+// 这个文件测的是阶段 06 的 TUI 那一半：解码器，把录下来的请求还原成
+// 读得懂的东西；索引，把扁平的事件流切成一次次调用；三个视角；按键
+// 处理；还有那两个字符串函数——一帧是落到屏幕上还是把屏幕搞花，由
+// 它们说了算。
 //
-// 这里没有一处会打开终端。被测试的每一个函数，要么是数据上的纯变换
-// （views.go、frameBytes、joinEnds），要么是一次只处理一个按键的状态机
-// （composer.handle）——这正是 tui.go 要把"状态 + 键 → 状态"、
-// "状态 → 行"、"行 → 字节"这三层彻底分开的全部原因。
+// 这里不打开终端。被测的函数只有两类：数据的纯变换（views.go、
+// frameBytes、joinEnds），或者一次只吃一个按键的状态机
+// （composer.handle）。tui.go 把"状态 + 按键 → 状态"、"状态 → 行"、
+// "行 → 字节"分成三层，就是为了这个。
 
 // ---------------------------------------------------------------------------
-// 夹具
+// Fixtures
 // ---------------------------------------------------------------------------
 
-// cspArgs 刻意使用**紧凑** JSON。
+// cspArgs 是故意写成**紧凑** JSON 的。
 //
-// OpenAI 适配器将 Block.Args 逐字节地通过作为 JSON 字符串；
-// Anthropic 适配器将相同的字节拼接为对象，encoding/json
-// 在这个过程中压缩无关的空白。冒号后的空格将
-// 是两个线上格式合法不同意的唯一东西，
-// 而这个文件是关于其他所有内容。`2>&1` 有意在那里：
-// 两个适配器都使用 SetEscapeHTML(false) 编组，
-// 所以 shell 重定向必须原样存活而不是作为 >&。
+// OpenAI 适配器把 Block.Args 当 JSON 字符串逐字节透传；Anthropic
+// 适配器把同样的字节当对象拼进去，encoding/json 顺路把无意义的空白
+// 压掉。所以冒号后面那个空格，恰好是两种线上格式可以正当分歧的唯一
+// 一处，而这个文件要管的是别的一切。`2>&1` 也是故意放的：两个适配器
+// 都用 SetEscapeHTML(false) 做 marshal，所以 shell 重定向必须原样活
+// 下来，而不是变成 \u003e\u0026。
 const cspArgs = `{"command":"ls -la /srv/app 2>&1"}`
 
 const (
@@ -43,10 +43,9 @@ const (
 	cspToolText = "总计 4\ndrwxr-xr-x  2 app app 4096 Aug 27 04:00 .\n[exit 0]"
 )
 
-// cspConversation 是一个真实的 Agent 回合：人类提问，模型说点什么
-// 并调用一个工具，工具给出回答。两个协议之间的每一处分歧，都会被它
-// 演练到——系统提示词放在哪里、什么形态承载工具结果、
-// 参数是字符串还是对象。
+// cspConversation 就是一次真实的 Agent 回合：人问，模型说两句话并调
+// 用工具，工具回答。两套协议之间的每一处分歧它都踩到了——系统提示
+// 词放在哪、工具结果用什么形状装、参数是字符串还是对象。
 func cspConversation() []Msg {
 	return []Msg{
 		TextMsg(RoleUser, cspUserText),
@@ -66,10 +65,9 @@ func cspTools() []Tool {
 	}}
 }
 
-// cspBodies 用的是适配器本身，而不是手写的正文，把 cspConversation
-// 呈现到两条线上。手写实例测试的是解码器有没有符合解码器作者自己
-// 对协议的理解；而这个测试，测的是解码器能不能处理 Agent
-// 实际发出的字节。
+// cspBodies 把 cspConversation 渲染到两条线上，用的是适配器本身，不
+// 是手写的 body。手写 fixture 测出来的，是解码器跟它作者心里那份协
+// 议合不合；这里测的是它跟 Agent 真正 POST 出去的字节合不合。
 func cspBodies(t *testing.T) (openaiBody, anthropicBody json.RawMessage) {
 	t.Helper()
 	msgs, tools := cspConversation(), cspTools()
@@ -88,11 +86,11 @@ func cspBodies(t *testing.T) (openaiBody, anthropicBody json.RawMessage) {
 	return ob, ab
 }
 
-// cspEvents 是一个综合会话，形状像这个查看器存在的会话：
-// 三个模型调用，其中一个是上下文压缩内的总结调用，
-// 其中一个在报告使用情况前就已死亡，
-// 增量的流式运行所以显示不是事件，没有有效负载的使用情况事件，
-// 以及 CJK 在查看器必须测量而不是计数的每个地方。
+// cspEvents 是一次合成的 session，形状照着这个查看器真正要面对的那
+// 种：三次模型调用，其中一次是上下文压缩里的总结调用，另一次在报出
+// usage 之前就死了；一串流式 delta，好让 Display 不等于 Events；一个
+// 没有 payload 的 usage 事件；以及在每个查看器必须"量"而不是"数"的位
+// 置上，都放上 CJK。
 func cspEvents(t *testing.T) []Event {
 	t.Helper()
 	oai, anth := cspBodies(t)
@@ -115,7 +113,7 @@ func cspEvents(t *testing.T) []Event {
 		ev(Event{Kind: KindMemoryLoaded, Path: "记忆/AGENT.md", Bytes: 1234}),
 		ev(Event{Kind: KindTurnStart}),
 
-		// 调用 1：普通的那个。
+		// 调用 1：普通的那次。
 		ev(Event{Kind: KindRequest, Request: oai}),
 		ev(Event{Kind: KindFirstToken, Millis: 412}),
 		ev(Event{Kind: KindTextDelta, Text: "好的"}),
@@ -133,12 +131,12 @@ func cspEvents(t *testing.T) []Event {
 		ev(Event{Kind: KindUsage, Usage: &Usage{Input: 300, CacheWrite: 9000, CacheRead: 0, Output: 26}}),
 		ev(Event{Kind: KindResponseEnd, FinishReason: "tool_use", Millis: 900}),
 
-		// 没有有效负载的使用情况事件。godLine 为其返回**零**行，
-		// 所以 TUI 中的每个行索引遍历都必须处理占用零行的事件——
-		// 这正是 clickAt 会遇到的差一错误。
+		// 没有 payload 的 usage 事件。godLine 对它返回**零**行，所以 TUI
+		// 里每一处按行号走的遍历，都得应付一个不占任何行的事件——
+		// clickAt 会踩的那个 off-by-one 正是它。
 		ev(Event{Kind: KindUsage}),
 
-		// 调用 2：compact_start 和 compact_end 之间的总结器。
+		// 调用 2：总结那次，夹在 compact_start 和 compact_end 之间。
 		ev(Event{Kind: KindCompactStart, MsgsBefore: 30, TokensBefore: 40000, Text: "over budget"}),
 		ev(Event{Kind: KindRequest, Request: anth, Turn: 2}),
 		ev(Event{Kind: KindUsage, Turn: 2, Usage: &Usage{Input: 12000, CacheRead: 8000, Output: 400}}),
@@ -146,8 +144,8 @@ func cspEvents(t *testing.T) []Event {
 			TokensBefore: 40000, TokensAfter: 900, Millis: 1500}),
 		ev(Event{Kind: KindCacheInvalidated, Turn: 2, Text: "prefix rewritten; 9,775 tokens lost"}),
 
-		// 调用 3：在调用中途崩溃。只有一个请求，别的什么都没有——没有使用情况，
-		// 没有 response_end。这正是查看器绝不能丢弃的那个调用。
+		// 调用 3：调用中途崩了。只有一条 request，别的什么都没有——没有
+		// usage，没有 response_end。这正是查看器绝不能丢掉的那次调用。
 		ev(Event{Kind: KindRequest, Request: anth, Turn: 3}),
 		ev(Event{Kind: KindReasoningDelta, Turn: 3, Text: "the user asked "}),
 		ev(Event{Kind: KindReasoningDelta, Turn: 3, Text: "for a listing"}),
@@ -169,11 +167,11 @@ func cspComposer(t *testing.T, v viewKind, w, h int) *composer {
 	return c
 }
 
-// cspStripCache 清空每个 Cached 标记并报告它清除了多少个。
+// cspStripCache 把每个 Cached 标志清空，并报告清掉了几个。
 //
-// 标记是两个协议可能合法不同意的**唯一**东西——
-// CacheMarks 实际上是它们的和——所以它们被作为数字比较，
-// 然后移除，让视图的其余部分被真正比较。
+// 这些标志是两套协议**唯一**可以正当分歧的地方——CacheMarks 就是它
+// 们的和——所以先按数字对一遍，再把它们摘掉，剩下的视图部分才好真
+// 刀真枪地比。
 func cspStripCache(v *wireView) int {
 	n := 0
 	clear := func(bs []wireBlock) {
@@ -191,11 +189,11 @@ func cspStripCache(v *wireView) int {
 	return n
 }
 
-// cspWithin 在自己的 goroutine 上运行 fn，如果它没有完成就失败。
+// cspWithin 把 fn 放到自己的 goroutine 上跑，跑不完就算失败。
 //
-// 挂起的渲染器，没有堆栈跟踪，也没有谁会去留意的 CPU 尖峰：
-// 症状只是一个冻住的用户界面。width_test.go 出于同样的原因这样
-// 保护 wrapCols，而下面的每一个视图，最终都会汇入 wrapCols。
+// 渲染器卡住的时候，没有 stack trace，也没有 CPU 尖峰会让人想到去
+// 看：症状就是界面冻住。width_test.go 用同样的办法守 wrapCols，理由
+// 一样；而下面每个视角最后都会汇进 wrapCols。
 func cspWithin(t *testing.T, what string, fn func() []string) []string {
 	t.Helper()
 	done := make(chan []string, 1)
@@ -220,14 +218,14 @@ func cspWithin(t *testing.T, what string, fn func() []string) []string {
 }
 
 // ---------------------------------------------------------------------------
-// decodeRequest——整个章节所依赖的往返
+// decodeRequest——整章都压在这一次往返上
 // ---------------------------------------------------------------------------
 
-// TestDecodeRequestReadsBothProtocols 是中心部分。
+// TestDecodeRequestReadsBothProtocols 是重头戏。
 //
-// 第 06 阶段的主张是两个完全不同的线上格式生成**一个**可读视图。
-// 那个主张的价值完全取决于它的证据，所以这个测试构建真实对话，
-// 将它发送到两个适配器，并通过相同的解码器读回两个正文。
+// 阶段 06 的主张是：两种差得没边的线上格式，能出**同一份**可读的视
+// 图。主张值多少钱，全看证据值多少钱，所以这个测试造一段真实的对
+// 话，从两个适配器各发一遍，再把两份 body 塞回同一个解码器读出来。
 func TestDecodeRequestReadsBothProtocols(t *testing.T) {
 	oaiBody, anthBody := cspBodies(t)
 
@@ -263,8 +261,8 @@ func TestDecodeRequestReadsBothProtocols(t *testing.T) {
 					"size of the request", v.Bytes, len(c.body))
 			}
 
-			// **分歧 1**：一个协议把系统提示词放在 messages[0] 里，另一个协议
-			// 把它放在一个顶层字段里。两者都必须在这里着陆。
+			// **分歧 1**：一种协议把系统提示词放在 messages[0]，另一种放
+			// 在顶层字段。两种都必须落到这里。
 			if len(v.System) != 1 || v.System[0].Text != cspSystem {
 				t.Fatalf("System = %+v, want one block %q — the system prompt is the largest "+
 					"and least visible part of what the model saw; a view that drops it on one "+
@@ -286,8 +284,8 @@ func TestDecodeRequestReadsBothProtocols(t *testing.T) {
 				}
 			}
 
-			// 工具调用，以及**分歧 4**：一条线上的 JSON 字符串，
-			// 另一条线上的 JSON 对象，无论哪种方式都是相同的字节。
+			// 工具调用，以及**分歧 4**：一条线上是 JSON 字符串，另一条是
+			// JSON 对象，两边的字节一模一样。
 			tc := cspFindBlock(v, "tool_call")
 			if tc == nil {
 				t.Fatalf("no tool_call block in %+v — the single most useful thing in a "+
@@ -344,20 +342,19 @@ func cspFindBlock(v wireView, kind string) *wireBlock {
 	return nil
 }
 
-// TestDecodeRequestGivesBothProtocolsTheSameView 断言的就是这个
-// 主张本身，而不是描述它。
+// TestDecodeRequestGivesBothProtocolsTheSameView 就是那个主张本身，
+// 是断言出来的，不是描述出来的。
 //
-// Protocol、Model、Bytes 和 CacheMarks 允许不一样——它们是**关于**
-// 线上情况的陈述。除此之外的一切都是对话内容，如果两个解码出来的
-// 视图在其中任何一点上有分歧，那么模型视角向你展示的，就会是一个
-// 随你恰好调用了哪个端点而变的、不一样的会话——这就让它在自己
-// 唯一的本职工作上变得毫无用处。
+// Protocol、Model、Bytes 和 CacheMarks 允许不一样——它们说的是线上
+// 格式**本身**的事。别的全都是对话内容；两份解码出来的视图只要在这
+// 上面有一处对不上，模型视角给你看的就会随你恰好调了哪个 endpoint
+// 而变成另一个 session，那它在自己唯一该干的那件事上也就没用了。
 func TestDecodeRequestGivesBothProtocolsTheSameView(t *testing.T) {
 	oaiBody, anthBody := cspBodies(t)
 	o, a := decodeRequest(oaiBody), decodeRequest(anthBody)
 
-	// 每个块的 Cached 标记**就是** CacheMarks，
-	// 所以它们被作为计数比较然后移除。剩下的任何东西都是真正的分歧。
+	// 每个块上的 Cached 标志**就是** CacheMarks，所以先按个数对一遍再摘
+	// 掉。摘完还剩下的，才是真的分歧。
 	oCached, aCached := cspStripCache(&o), cspStripCache(&a)
 	if oCached != o.CacheMarks || aCached != a.CacheMarks {
 		t.Errorf("CacheMarks (%d openai / %d anthropic) does not equal the number of blocks "+
@@ -385,9 +382,8 @@ func TestDecodeRequestGivesBothProtocolsTheSameView(t *testing.T) {
 	}
 }
 
-// cspDump 为一条失败消息渲染出一个 wireView。%+v 用在嵌套的结构体
-// 切片上，打印出来的是没法读的一整行；而这个函数打印出来的，
-// 是它的形状。
+// cspDump 把 wireView 渲染成失败信息里能看的样子。%+v 打嵌套的结构
+// 体切片，只会打出一行没人读得下去的东西；这个打的是形状。
 func cspDump(v wireView) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "\n  max_tokens=%d tools=%v err=%q", v.MaxTokens, v.Tools, v.Err)
@@ -404,12 +400,12 @@ func cspDump(v wireView) string {
 	return b.String()
 }
 
-// TestDecodeRequestSniffsOnTheTopLevelSystemKey 固定了辨别器。
+// TestDecodeRequestSniffsOnTheTopLevelSystemKey 把判别依据钉死。
 //
-// 诱人的替代方案——"messages[0].role == system 表示 OpenAI"——
-// 在两个方向都是错误的，并且无声地错误：
-// 它用 Anthropic 解码器读取 OpenAI 正文（其 `content` 是数组，
-// 不是字符串）反之亦然，你只看到空视图。
+// 看着很顺手的那个替代方案——"messages[0].role == system 就是
+// OpenAI"——两个方向都错，而且错得一声不响：它会拿 Anthropic 解码
+// 器去读 OpenAI 的 body（那边的 `content` 是数组，不是字符串），反
+// 过来也一样，而你看到的只是一片空视图。
 func TestDecodeRequestSniffsOnTheTopLevelSystemKey(t *testing.T) {
 	cases := []struct {
 		name string
@@ -451,11 +447,10 @@ func TestDecodeRequestSniffsOnTheTopLevelSystemKey(t *testing.T) {
 	}
 }
 
-// TestDecodeRequestSurvivesRubbish。trace 是崩溃留下的证据，
-// 所以查看器读到的，是这个仓库里任何编码器都不会生成的正文：
-// 写了一半的行、手改过的文件、三个版本前的旧构建。这些情况
-// 一个都不能引发恐慌，而且都必须在屏幕上说清楚出了什么问题，
-// 而不是甩出一个堆栈跟踪。
+// TestDecodeRequestSurvivesRubbish。trace 是崩溃现场留下的证据，所以
+// 查看器会读到本仓库任何编码器都没产出过的 body：写了一半的行、手改
+// 过的文件、三个版本前的构建。这些都不许 panic，而且都得把哪里出了
+// 错说在屏幕上，不是说在 stack trace 里。
 func TestDecodeRequestSurvivesRubbish(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -501,8 +496,8 @@ func TestDecodeRequestSurvivesRubbish(t *testing.T) {
 // collapseDeltas
 // ---------------------------------------------------------------------------
 
-// TestCollapseDeltasMergesARun。一次流式回复，是一千个四字符事件；
-// 一个逐行渲染、一行一个事件的查看器，是没人能滚动得动的查看器。
+// TestCollapseDeltasMergesARun。流式回复是上千个四字符的事件；一个事
+// 件渲染一行，谁也滚不动。
 func TestCollapseDeltasMergesARun(t *testing.T) {
 	const n = 200
 	var events []Event
@@ -533,9 +528,9 @@ func TestCollapseDeltasMergesARun(t *testing.T) {
 	}
 }
 
-// TestCollapseDeltasKeepsTheSeqOfTheFirstDelta，让 views.go 里的
-// 那条注释变得真正**举足轻重**。它说的是：合并后的事件，保留的是
-// **第一个** seq，原因就是单击处理器；这两层意思，在这里都被断言到了。
+// TestCollapseDeltasKeepsTheSeqOfTheFirstDelta 让 views.go 里的注释
+// 真正承重。那条注释说合并后的事件保留**第一个** seq，理由是点击处
+// 理；这两半在这里都断言了。
 func TestCollapseDeltasKeepsTheSeqOfTheFirstDelta(t *testing.T) {
 	got := collapseDeltas([]Event{
 		{Seq: 10, Kind: KindTextDelta, Text: "a"},
@@ -552,13 +547,13 @@ func TestCollapseDeltasKeepsTheSeqOfTheFirstDelta(t *testing.T) {
 	}
 }
 
-// TestClickOnACollapsedRunSelectsTheCallItStartedIn 是后果。
+// TestClickOnACollapsedRunSelectsTheCallItStartedIn 就是那个后果。
 //
-// Seq 是文件中行的标签，不是关于它们之前的行的承诺：trace.go
-// 打开文件 O_APPEND 就是为了两个写入者可以共享它，并且恢复的会话
-// 扩展了一个它没有写的 trace。所以一个请求事件的 seq，完全可能
-// 落在前一段增量运行的跨度内——这时"取第一个还是取最后一个"
-// 就不再只是个细节，而是变成了"你到底在看哪一个调用"这个问题本身。
+// seq 是文件里给行贴的标签，不是对它前一行的承诺：trace.go 用
+// O_APPEND 打开文件，正是为了让两个写入方能共用它，而续跑的 session
+// 会往一份不是自己写的 trace 上接着写。所以一个 request 事件的 seq
+// 完全可能落进它前面那串 delta 的区间里——这时候"取第一个还是最后
+// 一个"就不再是细节，而是你正在看哪次调用。
 func TestClickOnACollapsedRunSelectsTheCallItStartedIn(t *testing.T) {
 	body := json.RawMessage(`{"model":"m","messages":[]}`)
 	s := indexSession("x", []Event{
@@ -577,9 +572,9 @@ func TestClickOnACollapsedRunSelectsTheCallItStartedIn(t *testing.T) {
 
 	c := &composer{path: "x", s: s, view: viewGod, w: 80, h: 24, call: 1}
 	c.relayout()
-	// clickAt 接受的是一个屏幕行号：第 1 行是标题，第 2 行是分隔线，
-	// 所以第 3 行才是**第一条**正文行（也就是请求），第 4 行是第二条——
-	// 也就是折叠后的增量运行。
+	// clickAt 收的是屏幕行号：第 1 行是表头，第 2 行是分隔线，所以第 3
+	// 行是正文的**第一**行（也就是 request），第 4 行是第二行——合并起
+	// 来的那串 delta。
 	c.clickAt(4)
 
 	if c.call != 0 {
@@ -589,7 +584,7 @@ func TestClickOnACollapsedRunSelectsTheCallItStartedIn(t *testing.T) {
 	}
 }
 
-// TestCollapseDeltasBoundaries，覆盖的是"不算一次运行"的所有情况。
+// TestCollapseDeltasBoundaries 把"什么不算一串"全覆盖了。
 func TestCollapseDeltasBoundaries(t *testing.T) {
 	cases := []struct {
 		name  string
@@ -683,10 +678,10 @@ func cspKinds(events []Event) []Kind {
 	return out
 }
 
-// TestCollapseDeltasLeavesNonDeltasByteIdentical。凡是不属于增量的
-// 内容，都必须原样从另一头出来——字段相同，顺序相同。要是某次折叠
-// 悄悄把 command_end 上的 Bytes 清零了，那就是在无声地篡改
-// 上帝视角打印出来的数字。
+// TestCollapseDeltasLeavesNonDeltasByteIdentical。凡不是 delta 的，都
+// 得原封不动地从另一头出来——字段一样，顺序一样。合并的时候悄悄把
+// 某个 command_end 的 Bytes 抹成 0，上帝视角打出来的数字就被改写
+// 了，一声不响。
 func TestCollapseDeltasLeavesNonDeltasUntouched(t *testing.T) {
 	in := []Event{
 		{Seq: 1, Kind: KindCommandEnd, ExitCode: 2, Millis: 40, Bytes: 4096, Truncated: true},
@@ -710,11 +705,11 @@ func TestCollapseDeltasLeavesNonDeltasUntouched(t *testing.T) {
 // indexSession
 // ---------------------------------------------------------------------------
 
-// TestIndexSessionAnchorsCallsOnTheRequest，包括那个已经死掉的调用。
+// TestIndexSessionAnchorsCallsOnTheRequest，包括那次死掉的调用。
 //
-// 失败路径是这里唯一要紧的路径：一个在拿到第一个 token 之前就崩溃的
-// 调用，仍然会发出一个请求；而一个把锚点定在 usage 或 response_end
-// 上的查看器，恰恰会在你打开它最想看的那些会话上，变成一片空白。
+// 这里只有失败路径要紧：在第一个 token 之前就崩掉的调用，照样发出过
+// request；而以 usage 或 response_end 为锚的查看器，恰恰会在你专门打
+// 开它去看的那些 session 上一片空白。
 func TestIndexSessionAnchorsCallsOnTheRequest(t *testing.T) {
 	s := cspSession(t)
 
@@ -768,8 +763,9 @@ func TestIndexSessionAttachesUsageAndTotals(t *testing.T) {
 
 // TestIndexSessionMarksTheCompactingCall。
 //
-// 总结调用不是 Agent：其请求包含被丢弃的对话，不是 Agent 正在进行的
-// 对话。混淆两者会使模型视角向你显示已被删除的历史记录。
+// 总结调用不是 Agent：它的 request 里装的是正被扔掉的那段对话，不是
+// Agent 正在进行的对话。把两者搞混，模型视角就会把一段已经删掉的历
+// 史摆给你看。
 func TestIndexSessionMarksTheCompactingCall(t *testing.T) {
 	s := cspSession(t)
 
@@ -787,9 +783,9 @@ func TestIndexSessionMarksTheCompactingCall(t *testing.T) {
 	}
 }
 
-// TestIndexSessionKeepsEventsBeforeTheFirstRequest。
-// 用户的消息、加载的记忆文件、回合标记——
-// 所有这些都在任何调用存在之前发生，所有这些都属于上帝视角。
+// TestIndexSessionKeepsEventsBeforeTheFirstRequest。用户的消息、加载
+// 进来的记忆文件、回合标记——这些都发生在任何调用出现之前，也都该
+// 出现在上帝视角里。
 func TestIndexSessionKeepsEventsBeforeTheFirstRequest(t *testing.T) {
 	events := cspEvents(t)
 	s := indexSession("x", events)
@@ -806,7 +802,7 @@ func TestIndexSessionKeepsEventsBeforeTheFirstRequest(t *testing.T) {
 		t.Errorf("Start = %v, want %v — every God-view offset is measured from it", s.Start, events[0].T)
 	}
 
-	// 它们不属于任何调用，这是同一陈述的另一半。
+	// 它们不属于任何一次调用，这是同一句话的另一半。
 	inCalls := 0
 	for _, c := range s.Calls {
 		inCalls += len(c.Events)
@@ -817,8 +813,8 @@ func TestIndexSessionKeepsEventsBeforeTheFirstRequest(t *testing.T) {
 	}
 }
 
-// TestIndexSessionOnAnEmptyStream。`r` 重新加载另一个进程仍在创建的
-// trace，所以零事件读是寻常的日子。
+// TestIndexSessionOnAnEmptyStream。`r` 重新加载的那份 trace，可能还有
+// 另一个进程正在写，所以读到零个事件，是再平常不过的事。
 func TestIndexSessionOnAnEmptyStream(t *testing.T) {
 	s := indexSession("x", nil)
 	if s == nil {
@@ -833,15 +829,15 @@ func TestIndexSessionOnAnEmptyStream(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 视图，在没人设计的窗口大小处
+// 各个视角，在没人替它们设计过的窗口尺寸下
 // ---------------------------------------------------------------------------
 
 // TestViewsSurviveHostileWidths。
 //
-// 宽度 1 不是开玩笑：它是一个被拖到边缘的分割窗格，也是会把一个
-// 天真的换行逻辑直接挂死的场景——因为一个 CJK 字形占两列，永远
-// 放不下——于是"清空这一行，重试这个 rune"就会永远重试下去。
-// 宽度 400 是一个超宽终端，算术会朝相反的方向出错。
+// 宽度 1 不是玩笑：那是被拖到边上的分屏，也正是能把天真的折行器挂死
+// 的那种情况——CJK 字形占两列，永远塞不进去，于是"把这行冲出去，这
+// 个 rune 重试一遍"就永远重试下去。宽度 400 是超宽终端，算术往另一个
+// 方向翻车。
 func TestViewsSurviveHostileWidths(t *testing.T) {
 	s := cspSession(t)
 	widths := []int{1, 5, 20, 100, 400}
@@ -886,11 +882,11 @@ func TestViewsSurviveHostileWidths(t *testing.T) {
 	}
 }
 
-// TestViewsAtWidthOneWithCJK 隔离了挂起。
+// TestViewsAtWidthOneWithCJK 把这个挂死单独拎出来。
 //
-// 实例携带的每个字符串——用户的消息、记忆路径、
-// 工具输出——都是中文，所以在宽度 1 处，每个视图中的每个
-// 换行决定都是不可满足的那个。
+// fixture 带的每个字符串——用户的消息、记忆路径、工具输出——都是中
+// 文，所以在宽度 1 下，每个视角里的每一次折行判断都是那个无解的判
+// 断。
 func TestViewsAtWidthOneWithCJK(t *testing.T) {
 	s := cspSession(t)
 	if !strings.Contains(cspUserText, "列") {
@@ -901,10 +897,9 @@ func TestViewsAtWidthOneWithCJK(t *testing.T) {
 	cspWithin(t, "wireView at width 1", func() []string { return s.wireView(0, 1) })
 }
 
-// TestModelAndWireViewsOutOfRange。`n` 在列表的末尾，
-// 一个缩短 trace 的重新加载，一个由人类键入的 --call 标记：
-// 索引从三个方向超出范围，重新绘制内的切片索引恐慌
-// 会把终端拖下去。
+// TestModelAndWireViewsOutOfRange。在列表末尾按 `n`、一次让 trace 变
+// 短的重新加载、人手敲进去的 --call：下标从三个方向越界过来，而重绘
+// 里的切片越界 panic 会把终端一起带走。
 func TestModelAndWireViewsOutOfRange(t *testing.T) {
 	body := json.RawMessage(`{"model":"m","messages":[]}`)
 	s := indexSession("x", []Event{
@@ -938,7 +933,7 @@ func TestModelAndWireViewsOutOfRange(t *testing.T) {
 		}
 	}
 
-	// 范围内仍然工作，所以保护不是简单的始终打开。
+	// 范围内的照样能用，所以这道保护不是一直开着不放。
 	for idx := 0; idx < 2; idx++ {
 		if got := s.modelView(idx, 80); strings.Contains(got[0], "no calls") {
 			t.Errorf("modelView(%d, 80) reported no calls, but call %d exists", idx, idx+1)
@@ -946,9 +941,8 @@ func TestModelAndWireViewsOutOfRange(t *testing.T) {
 	}
 }
 
-// TestModelViewHeaderShowsTheDivergence。标题就是这一章的核心：
-// 那些发生在模型能看到的消息旁边的事件，以及两者一旦分道扬镳，
-// 随之而来的警告。
+// TestModelViewHeaderShowsTheDivergence。表头就是这一章：发生过的事
+// 件，挨着模型能看见的消息；两边一旦分道扬镳，就给出警告。
 func TestModelViewHeaderShowsTheDivergence(t *testing.T) {
 	s := cspSession(t)
 
@@ -974,9 +968,9 @@ func TestModelViewHeaderShowsTheDivergence(t *testing.T) {
 	}
 }
 
-// TestWireViewShowsTheRawBody。线上视角之所以存在，是因为模型视角
-// 说了一个诚实的小谎（它把 OpenAI 的 system 消息提到了 System 里），
-// 所以这一个视角必须做到逐字节忠实。
+// TestWireViewShowsTheRawBody。线上视角之所以存在，是因为模型视角说
+// 了一个善意的小谎（它把 OpenAI 的 system 消息提进了 System），所以
+// 这一个必须逐字节忠实。
 func TestWireViewShowsTheRawBody(t *testing.T) {
 	s := cspSession(t)
 	out := strings.Join(s.wireView(0, 200), "\n")
@@ -989,7 +983,7 @@ func TestWireViewShowsTheRawBody(t *testing.T) {
 			"when the answer is in the punctuation, this is the only view that has it:\n%s", out)
 	}
 
-	// 根本不是 JSON 的正文仍然必须被显示，不被吞没。
+	// 根本不是 JSON 的 body 也必须显示出来，不能咽掉。
 	bad := indexSession("x", []Event{{Seq: 1, Kind: KindRequest, Request: json.RawMessage("not json")}})
 	lines := bad.wireView(0, 80)
 	if len(lines) < 2 || !strings.Contains(lines[0], "not valid JSON") {
@@ -999,9 +993,8 @@ func TestWireViewShowsTheRawBody(t *testing.T) {
 	}
 }
 
-// TestOneLineNeverSwallowsANewline。"这个字符串里有换行符"，
-// 常常就是那个 bug，所以它们会变成一个可见的标记，而不是直接
-// 消失不见。
+// TestOneLineNeverSwallowsANewline。"这个字符串里有换行"经常就是那个
+// bug，所以换行要变成看得见的标记，而不是凭空消失。
 func TestOneLineNeverSwallowsANewline(t *testing.T) {
 	cases := []struct {
 		name string
@@ -1031,12 +1024,12 @@ func TestOneLineNeverSwallowsANewline(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// composer.handle——状态机，无头
+// composer.handle——状态机，无头地跑一遍
 // ---------------------------------------------------------------------------
 
-// TestHandleQuitKeys。三条出路，其他一切都必须留在里面。
-// 意外退出的键会失去读者在两千行 trace 中的滚动位置；
-// 不退出的退出键让他们被困在备用屏中。
+// TestHandleQuitKeys。三个出口，其余的一律不许出去。误退的按键会让读
+// 者在两千行的 trace 里丢掉滚动位置；而退不出去的退出键，会把人卡在
+// 备用屏里。
 func TestHandleQuitKeys(t *testing.T) {
 	quits := []struct {
 		name string
@@ -1112,9 +1105,9 @@ func TestHandleQuitKeys(t *testing.T) {
 	}
 }
 
-// TestEscapeIsTwoKeys。一个按键绑定，两种行为，两者之间的分支，
-// 是一个没人会去看的字段：帮助面板打开时，Escape 必须关闭帮助；
-// 只有在帮助没打开的时候，它才会真正离开。
+// TestEscapeIsTwoKeys。一个绑定，两种行为，而分岔的依据是个没人会去
+// 看的字段：帮助开着的时候 Escape 必须关掉帮助，只有在别的时候它才
+// 退出。
 func TestEscapeIsTwoKeys(t *testing.T) {
 	cmp := cspComposer(t, viewGod, 80, 24)
 
@@ -1134,12 +1127,12 @@ func TestEscapeIsTwoKeys(t *testing.T) {
 	}
 }
 
-// TestScrollingStaysInBounds，反复锤打这套夹紧机制。
+// TestScrollingStaysInBounds 对着这个 clamp 猛敲。
 //
-// top 是 c.lines 上的一个索引，绘制循环读取的是 c.lines[c.top+i]。
-// 它可能持有的每一个值，都必须落在 [0, len(lines)-bodyHeight] 这个
-// 区间内，而且必须在**每一个**按键之后都成立，不只是等尘埃落定了
-// 才成立——因为帧，就是在这些按键之间被画出来的。
+// top 是 c.lines 的下标，绘制循环读的是 c.lines[c.top+i]。它可能取到
+// 的每个值都必须落在 [0, len(lines)-bodyHeight] 里，而且这件事在
+// **每一个**按键之后都得成立，不是等尘埃落定才成立——两次按键之间
+// 那一帧，是要画出去的。
 func TestScrollingStaysInBounds(t *testing.T) {
 	for _, v := range []viewKind{viewGod, viewModel, viewWire} {
 		v := v
@@ -1186,8 +1179,8 @@ func TestScrollingStaysInBounds(t *testing.T) {
 				}
 			}
 
-			// 并且两端实际上是可以到达的，所以这套夹紧机制，并不是简简单单
-			// 把 top 钉死在零上。
+			// 而且两头是真能走到的，所以这个 clamp 不是简单把 top 钉死
+			// 在零上。
 			for i := 0; i < 100; i++ {
 				cmp.handle(key{Kind: keyPageDown})
 			}
@@ -1207,9 +1200,9 @@ func TestScrollingStaysInBounds(t *testing.T) {
 
 // TestSwitchingViewsResetsScrollButOnlyWhenTheViewChanges。
 //
-// 上帝视角的第 400 行和模型视角的第 400 行彼此无关，
-// 所以开关必须从顶部开始。在已经处于上帝视角时按 `g`
-// 不是开关，并且为此丢弃读者的位置是那种小背叛，
+// 上帝视角的第 400 行和模型视角的第 400 行毫无关系，所以切换必须从顶
+// 上开始。已经在上帝视角里再按 `g` 不算切换，为这个把读者的位置扔
+// 掉，就是那种让工具变讨厌的小小背叛。
 func TestSwitchingViewsResetsScrollButOnlyWhenTheViewChanges(t *testing.T) {
 	cmp := cspComposer(t, viewGod, 80, 10)
 	for i := 0; i < 4; i++ {
@@ -1240,7 +1233,7 @@ func TestSwitchingViewsResetsScrollButOnlyWhenTheViewChanges(t *testing.T) {
 			"the middle of a different document for no reason they can see", cmp.top)
 	}
 
-	// Tab 循环，循环是像任何其他一样的开关。
+	// Tab 是轮转，而轮转跟别的切换一样，也是切换。
 	order := []viewKind{viewWire, viewGod, viewModel}
 	for _, want := range order {
 		cmp.handle(key{Kind: keyDown})
@@ -1256,9 +1249,9 @@ func TestSwitchingViewsResetsScrollButOnlyWhenTheViewChanges(t *testing.T) {
 
 // TestNextAndPreviousCallClampRatherThanWrap。
 //
-// 对读者来说，绕回开头是错误的行为：`n` 在会话末尾一直按下去，
-// 应该停在末尾，而不是无声地传送回调用 1，给你看一个二十分钟前的
-// 请求，看着还挺像那么回事。
+// 对读者来说，回绕是错的：在 session 末尾按住 `n`，就该停在末尾，而
+// 不是一声不响传送回调用 1，拿一份二十分钟前的、看着还挺像回事的
+// request 给你看。
 func TestNextAndPreviousCallClampRatherThanWrap(t *testing.T) {
 	cmp := cspComposer(t, viewModel, 80, 24)
 	last := len(cmp.s.Calls) - 1
@@ -1287,7 +1280,7 @@ func TestNextAndPreviousCallClampRatherThanWrap(t *testing.T) {
 		}
 	}
 
-	// 并且它在有地方去时确实移动。
+	// 有地方可去的时候，它是真的会动。
 	cmp.call = 0
 	cmp.handle(key{Kind: keyRune, Rune: 'n'})
 	if cmp.call != 1 {
@@ -1296,8 +1289,8 @@ func TestNextAndPreviousCallClampRatherThanWrap(t *testing.T) {
 	}
 }
 
-// TestWheelScrollsThree。数字是惯例，不是偏好：一个只移动一行的
-// 轮槽，会让人觉得不对劲；一个直接翻页的，又会让你找不着自己的位置。
+// TestWheelScrollsThree。这个数字是惯例，不是偏好：滚一格只走一行会
+// 让人觉得坏了，滚一格走一页则让你丢掉自己看到哪儿了。
 func TestWheelScrollsThree(t *testing.T) {
 	cmp := cspComposer(t, viewGod, 80, 10)
 	cmp.top = 10
@@ -1317,9 +1310,9 @@ func TestWheelScrollsThree(t *testing.T) {
 
 // TestClickSelectsACallOnlyInTheGodView。
 //
-// 上帝视角是唯一一种"一行就代表一个事件"的视角；在模型视角和线上
-// 视角里，一行只是一次请求里被换行截断的一小段，把它映射到某次
-// 调用上，就会在读者阅读的当口，把选中项从他们眼皮底下换掉。
+// 只有上帝视角里的行带着"一个事件"这层含义；在模型视角和线上视角
+// 里，一行只是某个 request 折行后的片段，把它映射到某次调用，就会在
+// 读者眼皮底下把选中项挪走。
 func TestClickSelectsACallOnlyInTheGodView(t *testing.T) {
 	click := key{Kind: keyMouse, Mouse: mouseEvent{Button: 0, X: 10, Y: 6, Press: true}}
 
@@ -1340,7 +1333,7 @@ func TestClickSelectsACallOnlyInTheGodView(t *testing.T) {
 
 	god := cspComposer(t, viewGod, 80, 24)
 	god.call = 0
-	// 向崩溃调用的请求滚动并单击其行。
+	// 滚到那次崩掉的调用的 request，点它那一行。
 	god.top = 0
 	target := -1
 	line := 0
@@ -1367,8 +1360,8 @@ func TestClickSelectsACallOnlyInTheGodView(t *testing.T) {
 			"reader has no idea it worked")
 	}
 
-	// 低于最后一行的单击超出范围，必须被忽略，
-	// 不被夹到最后一个调用。
+	// 点在最后一行下面属于越界，必须忽略，不能夹到最后一次调用
+	// 上。
 	god.call = 0
 	god.note = ""
 	if !god.handle(key{Kind: keyMouse, Mouse: mouseEvent{Button: 0, X: 1, Y: 9999, Press: true}}) {
@@ -1378,7 +1371,7 @@ func TestClickSelectsACallOnlyInTheGodView(t *testing.T) {
 		t.Errorf("clicking row 9999 selected call %d, want no change", god.call+1)
 	}
 
-	// 释放不是按。
+	// 松开不算按下。
 	god.call = 0
 	god.handle(key{Kind: keyMouse, Mouse: mouseEvent{Button: 0, X: 1, Y: target + 2, Press: false}})
 	if god.call != 0 {
@@ -1387,8 +1380,8 @@ func TestClickSelectsACallOnlyInTheGodView(t *testing.T) {
 	}
 }
 
-// TestRelayoutFollowsTheSelectedCall。换一个调用，就必须换掉模型
-// 视角和线上视角所呈现的内容，不然 n/p 就只是摆设。
+// TestRelayoutFollowsTheSelectedCall。换了调用，模型视角和线上视角渲
+// 染出来的东西就必须跟着换，否则 n/p 只是装饰。
 func TestRelayoutFollowsTheSelectedCall(t *testing.T) {
 	cmp := cspComposer(t, viewModel, 100, 24)
 	first := strings.Join(cmp.lines, "\n")
@@ -1407,8 +1400,8 @@ func TestRelayoutFollowsTheSelectedCall(t *testing.T) {
 // frameBytes
 // ---------------------------------------------------------------------------
 
-// cspFrameRows 检查帧的外层结构，返回的是已经剥掉了尾部擦除序列的
-// h 行正文。
+// cspFrameRows 检查帧的外壳，再把 h 行的行体交回来，末尾的擦行序列
+// 已经剥掉。
 func cspFrameRows(t *testing.T, lines []string, w, h int) []string {
 	t.Helper()
 	got := frameBytes(lines, w, h)
@@ -1501,8 +1494,8 @@ func TestFrameBytesShape(t *testing.T) {
 	}
 }
 
-// TestFrameBytesTruncatesInColumnsNotBytes 是损坏整个帧的 bug，
-// 以及 term.go 调用 truncCols 而不是切片的原因。
+// TestFrameBytesTruncatesInColumnsNotBytes 对的是那个能毁掉一整帧的
+// bug，也是 term.go 调 truncCols 而不是直接切片的原因。
 func TestFrameBytesTruncatesInColumnsNotBytes(t *testing.T) {
 	cases := []struct {
 		name  string
@@ -1512,8 +1505,8 @@ func TestFrameBytesTruncatesInColumnsNotBytes(t *testing.T) {
 	}{
 		{"plain ASCII overflow", strings.Repeat("x", 200), 10, 10},
 		{"CJK, even boundary", "你好世界你好世界", 8, 8},
-		// 3 列无法容纳两个宽字形，所以一个适合，孤立列是空格。
-		// 字节切片会将 你 切成两半。
+		// 3 列装不下两个宽字形，所以只进去一个，多出来的那列填空格。
+		// 按字节切会把 你 切成两半。
 		{"CJK, odd boundary", "你好世界", 3, 3},
 		{"CJK, nothing fits", "你好", 1, 1},
 		{"mixed", "ab你好cd", 4, 4},
@@ -1543,7 +1536,7 @@ func TestFrameBytesTruncatesInColumnsNotBytes(t *testing.T) {
 				t.Errorf("frameBytes row = %q but truncCols(%q, %d) = %q — the frame builder "+
 					"is not using the column-aware truncator", got, c.line, c.w, truncCols(c.line, c.w))
 			}
-			// 反例，拼出来：字节切片会产生什么。
+			// 把反例摊开写：按字节切会切出什么。
 			if len(c.line) >= c.w {
 				if byteCut := c.line[:c.w]; byteCut == got && dispWidth(byteCut) != c.wantW {
 					t.Errorf("the row equals the BYTE slice %q, which is %d columns",
@@ -1554,8 +1547,8 @@ func TestFrameBytesTruncatesInColumnsNotBytes(t *testing.T) {
 	}
 }
 
-// TestFrameBytesLineCount 单独固定行算术，因为这里的差一错误，
-// 截图里看不出来，终端上却扎眼得很：每次重绘，帧都会往下滚一行。
+// TestFrameBytesLineCount 单独把行数算术钉住，因为这里差一行，在截图
+// 上看不出来，在真终端上却错不了：每重画一次，帧就往上滚一行。
 func TestFrameBytesLineCount(t *testing.T) {
 	for _, h := range []int{1, 2, 3, 24, 60} {
 		got := frameBytes([]string{"a", "b", "c"}, 10, h)
@@ -1570,10 +1563,9 @@ func TestFrameBytesLineCount(t *testing.T) {
 	}
 }
 
-// TestFrameBytesRedrawsOverThePreviousFrame。帧永远不会清屏
-// （这就是经典的闪烁成因），所以每个格子都必须要么被重新写过，
-// 要么被明确擦除。具体来说：一个长帧后面跟着一个短帧时，
-// 不能在屏幕上留下长帧多出来的尾巴。
+// TestFrameBytesRedrawsOverThePreviousFrame。帧从不清屏（清屏就是那
+// 种经典的闪烁），所以每个格子要么被覆盖，要么被显式擦掉。说具体
+// 点：长的一帧后面跟一短帧，长帧的尾巴不能还留在屏幕上。
 func TestFrameBytesRedrawsOverThePreviousFrame(t *testing.T) {
 	rows := cspFrameRows(t, []string{"the previous frame was taller"}, 30, 6)
 	for i := 1; i < len(rows); i++ {
@@ -1581,8 +1573,8 @@ func TestFrameBytesRedrawsOverThePreviousFrame(t *testing.T) {
 			t.Fatalf("row %d = %q, want empty", i, rows[i])
 		}
 	}
-	// 每个空行依然带着它的擦除序列，这一点由 cspFrameRows 检查；
-	// 这里断言的是，帧不会抄提前停止这条近道。
+	// 每个空行也都带着自己的擦除，这一点 cspFrameRows 已经查过；这里断言
+	// 的是帧没有偷懒提前收工。
 	full := frameBytes([]string{"one"}, 30, 6)
 	if strings.Count(full, clearLine) != 6 {
 		t.Errorf("a 6-row frame with one line of content erases %d rows, want 6 — the other "+
@@ -1594,9 +1586,9 @@ func TestFrameBytesRedrawsOverThePreviousFrame(t *testing.T) {
 // joinEnds
 // ---------------------------------------------------------------------------
 
-// TestJoinEnds。标题的两个部分和页脚的两个部分都通过这个。
-// 以字节而不是列测量，右侧落在屏幕中间的某处——而标题里的路径，
-// 正是最可能带有 CJK 目录名的那个字符串。
+// TestJoinEnds。表头的两半和表尾的两半都要过这里。按字节而不是按列去
+// 量，右边那半会落在屏幕中间附近——而表头里的那个路径，恰恰是最可能
+// 带上中文目录名的字符串。
 func TestJoinEnds(t *testing.T) {
 	cases := []struct {
 		name  string
@@ -1613,9 +1605,9 @@ func TestJoinEnds(t *testing.T) {
 			"\x1b[1mcomposer\x1b[0m       \x1b[2m[GOD]\x1b[0m",
 		},
 		{
-			// 记忆 是四列、两个 rune；其余部分是九列，所以左侧宽 13、长 17
-			// 字节。如果改用 len() 来填充，间隙就会变成零，整个事情就会退回去
-			// 靠"切"来解决。
+			// 记忆 是四列两个 rune，剩下的是九列，所以左边这半宽 13 列、
+			// 长 17 字节。用 len() 来补空格，间隙会算成零，整件事就退化成
+			// 一刀切。
 			"a CJK path on the left is measured in columns",
 			"记忆/AGENT.md", "42%", 20,
 			"记忆/AGENT.md    42%",
@@ -1644,9 +1636,9 @@ func TestJoinEnds(t *testing.T) {
 	}
 }
 
-// TestJoinEndsWhenItDoesNotFit。狭窄窗口是分割窗格的常见情况，
-// 唯一安全的答案是切割。填充到负间隙会恐慌；
-// 让它溢出会将标题换到第二行并将整个正文推下来。
+// TestJoinEndsWhenItDoesNotFit。窄窗口在分屏里是常态，唯一安全的答案
+// 就是切。按负数的间隙去补空格会 panic；放着让它溢出，表头就折到第
+// 二行，把整个正文往下顶。
 func TestJoinEndsWhenItDoesNotFit(t *testing.T) {
 	cases := []struct {
 		name  string
@@ -1678,8 +1670,8 @@ func TestJoinEndsWhenItDoesNotFit(t *testing.T) {
 	}
 }
 
-// TestDrawnChromeFitsTheWindow 把真正的页眉和页脚，一起送进
-// frameBytes，送到那些足以把它们弄坏的尺寸上去。
+// TestDrawnChromeFitsTheWindow 把真正的表头和表尾，按能弄坏它们的那
+// 些尺寸，过一遍 frameBytes。
 func TestDrawnChromeFitsTheWindow(t *testing.T) {
 	s := cspSession(t)
 	for _, w := range []int{1, 3, 10, 40, 200} {
@@ -1700,11 +1692,11 @@ func TestDrawnChromeFitsTheWindow(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// dumpComposer——无头模式，端到端
+// dumpComposer——无头模式，从头到尾
 // ---------------------------------------------------------------------------
 
-// cspWriteTrace 通过真实的 TraceWriter 记录实例，所以这个测试
-// 读到的文件，生成方式跟一次真实会话产生文件的方式一模一样。
+// cspWriteTrace 用真的 TraceWriter 把 fixture 记下来，这样测试读到的
+// 文件，就是 session 平时产出的那种文件。
 func cspWriteTrace(t *testing.T) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "2026-08-27", "session-1.jsonl")
@@ -1723,9 +1715,9 @@ func cspWriteTrace(t *testing.T) string {
 
 // TestDumpComposerRendersEveryView。
 //
-// 一个只能靠按键才能产生输出的用户界面，就是一个没有测试的用户
-// 界面，所以 composer 会渲染到一个完全不涉及终端的 io.Writer。
-// 这就是那条路：从磁盘上的一个文件，到缓冲区里的字节。
+// 输出得靠按键才拿得到，这样的 UI 等于没有测试；所以 composer 往
+// io.Writer 上渲染，全程不碰终端。这条路走的就是它：从磁盘上一个文
+// 件，到缓冲区里的一串字节。
 func TestDumpComposerRendersEveryView(t *testing.T) {
 	path := cspWriteTrace(t)
 
@@ -1762,8 +1754,8 @@ func TestDumpComposerRendersEveryView(t *testing.T) {
 	}
 }
 
-// TestDumpComposerRejectsBadInput。两个失败都到达普通终端上的人，
-// 所以两个都必须是错误而不是恐慌或空文件。
+// TestDumpComposerRejectsBadInput。两种失败都会在普通终端上被人看
+// 到，所以两种都得是错误，不能是 panic，也不能是一个空文件。
 func TestDumpComposerRejectsBadInput(t *testing.T) {
 	path := cspWriteTrace(t)
 
@@ -1793,8 +1785,8 @@ func TestDumpComposerRejectsBadInput(t *testing.T) {
 		}
 	}()
 
-	// 超出范围的调用不是错误：视图在屏幕上说出来，
-	// 这对于用 n 分页通过的读者来说是更有用的行为。
+	// 调用越界不算错误：视角会在屏幕上说出来——对正拿 n 一页页翻的读者
+	// 来说，这样更有用。
 	buf.Reset()
 	if err := dumpComposer(path, "model", 99, 80, &buf); err != nil {
 		t.Errorf("dumpComposer(model, call 99) = %v, want the \"no calls\" line instead", err)
@@ -1805,21 +1797,21 @@ func TestDumpComposerRejectsBadInput(t *testing.T) {
 	}
 }
 
-// cspCanonArgs 把每个 tool_call 的 Args 都重写成一种规范编码。
+// cspCanonArgs 把每个 tool_call 的 Args 重写成规范编码。
 //
-// 它的存在，是因为这个文件**之外**有一个缺陷，而这个缺陷值得在
-// 读者会被它绊倒的地方挑明。TraceWriter 用普通的 json.Marshal
-// 记录事件，这会把 `<`、`>` 和 `&` 做 HTML 转义——包括在装着请求
-// 正文的那个 json.RawMessage 内部，而两个适配器都是特意用
-// SetEscapeHTML(false) 编码的。字符串本身没事（解码回来还是对的），
-// 但 Anthropic 视图是把工具调用的参数当成 `input` 的**原始**字节
-// 来读的，所以记录下来的 `2>&1`，读出来还是 `2>&1`。trace 因此在
-// 字节上，和被 POST 出去的内容并不一致，而 Wire 视角——它唯一的
-// 承诺就是"逐字节"——显示的是转义之后的样子。
+// 它存在，是因为这个文件**之外**有个缺陷，而这个缺陷值得写在读者会
+// 绊到它的地方。TraceWriter 记事件用的是光秃秃的 json.Marshal，它会
+// 把 `<`、`>` 和 `&` 做 HTML 转义——包括装着请求 body 的那个
+// json.RawMessage 里面，而那份 body 是两个适配器特意用
+// SetEscapeHTML(false) 编出来的。字符串没事（它们能解回来），但
+// Anthropic 视图把工具调用的参数当成 `input` 的**原始**字节来读，于
+// 是录下来的 `2>&1` 回来时成了 `2\u003e\u00261`。所以 trace 跟当初
+// POST 出去的字节并不逐字节相同，而线上视角——它的全部承诺就是
+// "逐字节"——显示的是转义后的形态。
 //
-// 这里做规范化，是为了让这个测试始终只关心它要测的那个往返，
-// 而不是那个 bug；它没有把 bug 藏起来——等 trace.go 不再转义的
-// 那天，这个测试还会照样通过，不用改。
+// 在这里做规范化，是为了让这个测试谈的还是它要测的那次往返，而不是
+// 那个 bug；它没有把 bug 藏起来，而且等 trace.go 不再转义之后，它照
+// 样不用改就能过。
 func cspCanonArgs(v *wireView) {
 	for i := range v.Messages {
 		for j := range v.Messages[i].Blocks {
@@ -1839,8 +1831,8 @@ func cspCanonArgs(v *wireView) {
 }
 
 // TestDumpComposerRoundTripsThroughTheTraceFile。文件就是接口——
-// 这是 reload() 和整个无头模式赖以成立的主张——所以从里面读出来的，
-// 必须是当初写进去的那个会话。
+// reload() 和整个无头模式都压在这个主张上——所以从文件里出来的，必
+// 须还是当初进去的那个 session。
 func TestDumpComposerRoundTripsThroughTheTraceFile(t *testing.T) {
 	path := cspWriteTrace(t)
 
@@ -1866,7 +1858,7 @@ func TestDumpComposerRoundTripsThroughTheTraceFile(t *testing.T) {
 		b := decodeRequest(direct.Calls[i].Request)
 		cspCanonArgs(&a)
 		cspCanonArgs(&b)
-		a.Bytes, b.Bytes = 0, 0 // 见 cspCanonArgs：转义改变长度
+		a.Bytes, b.Bytes = 0, 0 // 见 cspCanonArgs：转义会改变长度
 		if !reflect.DeepEqual(a, b) {
 			t.Errorf("call %d decodes differently after a round trip through the trace file.\n"+
 				"file: %s\nmem:  %s", i+1, cspDump(a), cspDump(b))
@@ -1874,8 +1866,8 @@ func TestDumpComposerRoundTripsThroughTheTraceFile(t *testing.T) {
 	}
 }
 
-// TestReloadPicksUpNewEvents。正是 `r`，让 composer 在第二个终端里
-// 变成一个实时监控器，全程不需要任何 IPC：文件就是接口。
+// TestReloadPicksUpNewEvents。有了 `r`，composer 才能在第二个终端里
+// 当实时监视器用，全程不需要任何 IPC：文件就是接口。
 func TestReloadPicksUpNewEvents(t *testing.T) {
 	path := cspWriteTrace(t)
 	events, err := ReadTrace(path)
@@ -1908,7 +1900,7 @@ func TestReloadPicksUpNewEvents(t *testing.T) {
 		t.Errorf("the status line says %q, want it to report how many events arrived", cmp.note)
 	}
 
-	// 发现更少调用的重新加载，不能让选择悬空。
+	// 重新加载之后调用变少了，选中项不能悬在那儿。
 	cmp.path = filepath.Join(t.TempDir(), "empty.jsonl")
 	if w, err := NewTraceWriter(cmp.path); err == nil {
 		w.OnEvent(Event{Seq: 1, Kind: KindNotice, Text: "no calls here"})
@@ -1923,7 +1915,7 @@ func TestReloadPicksUpNewEvents(t *testing.T) {
 		t.Fatal("m quit the program after a shrinking reload")
 	}
 
-	// 而如果重新加载遇到读不出来的东西，也是照实报告，而不是直接崩掉。
+	// 而重新加载一个读不了的东西，要报出来，不是死掉。
 	cmp.path = filepath.Join(t.TempDir(), "gone.jsonl")
 	if !cmp.handle(key{Kind: keyRune, Rune: 'r'}) {
 		t.Fatal("r quit the program when the trace had vanished")

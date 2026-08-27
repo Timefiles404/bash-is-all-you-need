@@ -1,13 +1,15 @@
 //go:build !windows
 
-// 原始模式，Unix 版本。
-// 这个文件与 term_windows.go 的配对方式，跟阶段 01 的 proc_unix.go /
-// proc_windows.go 是同一个形状：契约相同，机制完全不同，而这个差异不是什
-// 么实现细节——它改变的是程序能被告知什么。
-// 这里内核会通过发送 SIGWINCH 来告诉你窗口变了。在 Windows 上什么都不会
-// 主动告诉你，你必须自己去问。正是这一处不对称，才让 watchResize 返回一
-// 个通道，而不是直接暴露一个信号：通道既可以由信号处理器喂数据，也可以由
-// 轮询循环喂数据，事件循环没法分辨自己收到的究竟是哪一种。
+// 原始模式，Unix 版。
+//
+// 它和 term_windows.go 配成一对，形状跟阶段 01 的 proc_unix.go /
+// proc_windows.go 一样：约定完全相同，机制完全不同，而这个不同不是实现
+// 细节——它改变了程序能被告知什么。
+//
+// 在这边，窗口变了内核会告诉你，靠发 SIGWINCH。在 Windows 上没人告
+// 诉你，你得自己去问。就因为这一处不对称，watchResize 返回的是 channel，
+// 而不是把信号露出去：channel 既可以由信号处理函数喂，也可以由轮询循环
+// 喂，而事件循环分不出自己拿到的是哪一种。
 package main
 
 import (
@@ -18,18 +20,18 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// savedState 就是终端设置在我们碰它之前的样子。整个恢复契约，就是这个
-// struct，再加上"必须始终把它写回去"这一条纪律。
+// savedState 是我们动手之前终端的那份设置。整套还原约定，就是这个结构体，
+// 加上"总把它写回去"的纪律。
 type savedState struct {
 	termios unix.Termios
 }
 
-// enterRaw 把键盘和程序之间的每一条线纪律都关掉。
-// 下面清除的每一个标志，对应的都是一项原本由终端提供、现在必须由 TUI 自
-// 己来提供的服务；之所以一次只清一个、而不是直接赋值一个零值 struct，是
-// 因为零值 struct 会连那些不只影响行为、还关系到正确性的标志一起清掉——比
-// 如字符位数、奇偶校验——而一个被设成 5-bit 字符的终端，就是一个有趣的下
-// 午。
+// enterRaw 把键盘和程序之间的行规程一件件全关掉。
+//
+// 下面清掉的每一个标志位，都是终端本来在替你提供的一项服务，而 TUI 得
+// 自己把它提供出来。之所以一个一个地清，而不是直接赋一个清零的结构体，
+// 是因为清零的结构体连那些关乎正确性而不是行为的位也一起清了——字符位
+// 宽、校验位——而一台被设成 5 位字符的终端，够你玩一下午。
 func enterRaw(in, out *os.File) (*savedState, error) {
 	fd := int(in.Fd())
 	old, err := unix.IoctlGetTermios(fd, ioctlGetTermios)
@@ -38,30 +40,30 @@ func enterRaw(in, out *os.File) (*savedState, error) {
 	}
 	raw := *old
 
-	// 输入：停止翻译。ICRNL 是最让人栽跟头的那个——开着它，Enter 键会以 \n 的
-	// 形式到达，没法把它和粘贴内容里的字面换行符区分开。IXON 是另一个：不清
-	// 除它，Ctrl-S 会冻结终端，Ctrl-Q 才能解冻——一个按下 Ctrl-S、指望它能"保
-	// 存"的用户，只会得出结论：程序卡死了。
+	// 输入：别再做转换。ICRNL 是最多人栽进去的那个——开着它，Enter 键送到
+	// 时就是 \n，跟粘贴内容里真正的换行完全分不出来。IXON 是另一个：不清
+	// 掉它，Ctrl-S 会冻住终端、Ctrl-Q 再解冻，而用户按 Ctrl-S 本来是想
+	// "保存"，结果只会认定程序挂了。
 	raw.Iflag &^= unix.IGNBRK | unix.BRKINT | unix.PARMRK | unix.ISTRIP |
 		unix.INLCR | unix.IGNCR | unix.ICRNL | unix.IXON
 
-	// 输出：往外走的方向也停止翻译。OPOST 打开时，单独的 \n 会变成 \r\n，悄
-	// 悄破坏任何按列定位光标的帧。
+	// 输出：出去的方向也别再做转换。OPOST 开着的话，单独一个 \n 会变成
+	// \r\n，于是任何靠列来定位光标的帧都会被悄悄搞坏。
 	raw.Oflag &^= unix.OPOST
 
-	// 本地：没有 echo，没有行缓冲，以及——最要命的一条——没有信号。正是清除
-	// ISIG，才让 Ctrl-C 以字节 0x03 的形式到达，而不是作为 SIGINT。这是 TUI
-	// 想要的行为，而这也是程序自己开始要对"给用户留一条出路"负责的那一刻：这
-	// 一行之后，键处理器里但凡有一个 bug，就会变成一个用户没法退出的程序。
+	// 本地：不回显、不做行缓冲，还有——最要命的那个——不发信号。清掉 ISIG，
+	// Ctrl-C 才会以字节 0x03 的形式送来，而不是变成 SIGINT。这正是 TUI 想
+	// 要的行为，也正是从这一刻起，程序得自己负责留一条退路：这一行往后，
+	// 按键处理里的 bug，就是用户退不出去的程序。
 	raw.Lflag &^= unix.ECHO | unix.ECHONL | unix.ICANON | unix.ISIG | unix.IEXTEN
 
 	raw.Cflag &^= unix.CSIZE | unix.PARENB
 	raw.Cflag |= unix.CS8
 
-	// 阻塞，直到至少收到一个字节为止。事件循环是在它自己的 goroutine 里读取
-	// 的（见 readLoop），所以阻塞在那里不花任何代价；而且比起 VTIME 那种以十
-	// 分之一秒为单位的计时器，阻塞读取也远远更容易推理——何况那种精度，对于这
-	// 个 UI 需要的 ~50ms Escape 消歧来说也太粗了。
+	// 阻塞到至少来一个字节为止。事件循环是在自己的 goroutine 上读的（见
+	// readLoop），所以在那儿阻塞不花什么代价；而且阻塞读比 VTIME 那个以十
+	// 分之一秒为单位的计时器好想得多——后者对这个界面需要的约 50ms Escape
+	// 消歧来说，也太粗了。
 	raw.Cc[unix.VMIN] = 1
 	raw.Cc[unix.VTIME] = 0
 
@@ -80,9 +82,9 @@ func leaveRaw(in, out *os.File, s *savedState) error {
 }
 
 // termSize 问的是内核，不是环境变量。
-// $COLUMNS 和 $LINES 确实存在，但那是个陷阱：这两个变量是 shell 为自己设
-// 置的，而恰好在窗口大小改变的那一刻——也就是你最需要读它们的时候——它们的
-// 值早就过期了。
+//
+// $COLUMNS 和 $LINES 确实存在，而且是个陷阱：shell 设它们是给自己用的，
+// 窗口一改大小它们立刻就过期了——而你需要它们，恰恰就是这种时候。
 func termSize(out *os.File) (int, int, error) {
 	ws, err := unix.IoctlGetWinsize(int(out.Fd()), unix.TIOCGWINSZ)
 	if err != nil {
@@ -91,13 +93,13 @@ func termSize(out *os.File) (int, int, error) {
 	return int(ws.Col), int(ws.Row), nil
 }
 
-// watchResize 每次窗口改变大小时传送一个令牌。
+// 窗口每改一次大小，watchResize 就投一枚 token 出来。
 //
-// 通道容量为 1，满了就丢弃而不是阻塞。拖动窗口边缘时，每移动一个像素行就
-// 会产生一个 SIGWINCH，但它们的意思都一样——"大小现在不一样了，去问问现在
-// 是多少"。把这些通知排队，只会让 UI 在拖拽停止之后，把上百帧过时的画面
-// 重新画一遍。这里的合并不是什么优化手段，而是边沿触发通知本该有的正确语
-// 义——反正这个值你迟早都要去读一次。
+// channel 容量为 1，满了就丢，不阻塞。拖窗口边缘时，鼠标每移动一个像素
+// 行就来一个 SIGWINCH，而它们说的是同一件事——"现在尺寸不一样了，自己去
+// 问是多少"。把它们排成队，只会让界面在拖动停下之后再重画一百帧过期的
+// 画面。这里的合并不是优化；这种通知是边沿触发的，而那个值反正得自己去
+// 读，对它来说，合并就是正确的语义。
 func watchResize(out *os.File) (<-chan struct{}, func()) {
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGWINCH)

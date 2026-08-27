@@ -1,14 +1,12 @@
-// 阶段 03——Babel：agent 主循环。
+// 阶段 03——Babel：Agent 主循环。
 //
-// 将这个文件与阶段 02 的 main.go 进行比较。差异是
-// 整个章节：每个厂商词都消失了。没有 `tool_calls`、
-// 没有 `finish_reason`、没有 `input_tokens`、
-// 没有 `chat/completions`。主循环用 Msg、Block 和
-// StopReason 说话，Provider 在线上翻译。
+// 拿这个文件跟阶段 02 的 main.go 比一比。那份 diff 就是这一章的全部内容：所
+// 有属于厂商的词都不见了。没有 `tool_calls`，没有 `finish_reason`，没有
+// `input_tokens`，没有 `chat/completions`。主循环讲的是 Msg、Block 和
+// StopReason，翻译由 Provider 在线上完成。
 //
-// 像这样的抽象，检验标准不是它能不能编译通过，
-// 而是添加第二个协议有没有改动这个文件。结果没有——
-// 你正在读的这个主循环还是阶段 02 的那个，只是词汇表换了。
+// 这种抽象好不好，不看它能不能编译过，看的是加上第二个协议之后这个文件有没
+// 有变。它没变——你正在读的这个主循环就是阶段 02 那个，只是换掉了词汇。
 package main
 
 import (
@@ -70,8 +68,7 @@ type config struct {
 }
 
 // ---------------------------------------------------------------------------
-// 权限闸。自阶段 01 以来未改，除了它通过
-// 总线报告。
+// 权限闸。除了改成通过总线上报，从阶段 01 起就没变过。
 // ---------------------------------------------------------------------------
 
 type gate struct {
@@ -126,9 +123,9 @@ func main() {
 		step         = flag.Bool("step", false, "replay: wait for Enter before each event")
 		showReq      = flag.Bool("show-request", false, "print the full request body before each call")
 
-		// docs/04-the-cache.md 里的两个对照组。两个都不属于一个
-		// 真实的 Agent；它们存在，只是为了让这一章能把一个数字，
-		// 安在原本就只是空口白话的建议上。
+		// docs/04-the-cache.md 那组实验的两条臂。它们都不该出现在真正的
+		// Agent 里；它们存在，只是为了让这一章能给"光说不练的建议"配上
+		// 数字。
 		noCache    = flag.Bool("no-cache", false, "omit cache_control breakpoints (control arm)")
 		breakCache = flag.Bool("break-cache", false, "put a timestamp in the system prompt — the classic silent invalidator")
 	)
@@ -155,20 +152,17 @@ func main() {
 		return
 	}
 
-	// resolveErr 这里故意**不是**致命的。
+	// resolveErr 在这里故意**不**致命。
 	//
-	// 重放不需要密钥、不需要 shell、不需要网络，也不需要
-	// 供应商——那个承诺是阶段 02 的，它在 README 中，
-	// 从阶段 03 直到这行被写它是假的：resolve() 移动到
-	// 重放分支上方，并把它的 os.Exit(1) 带走了。
-	// 在一台设置了 env vars 的机器上（这是作者测试过的
-	// 每台机器），什么看起来都没错。在一台只有 trace 文件、
-	// 别无他物——这正是该功能存在的机器上——
-	// `--replay` 打印"no provider configured"。
+	// 重放不需要 key、不需要 shell、不需要网络，也不需要供应商——这是阶段 02
+	// 许下的承诺，写在 README 里；而从阶段 03 开始，直到这行代码写下之前，它一
+	// 直是假的：resolve() 挪到了重放分支的上面，把自己那句 os.Exit(1) 也一起带
+	// 了上去。在环境变量都设好的机器上（作者测过的每台机器都是这样），什么毛病
+	// 也看不出来。在只有 trace 文件、别的什么都没有的机器上——而这个功能存在的
+	// 意义正是为了这种机器——`--replay` 打出来的是 "no provider configured"。
 	//
-	// 所以错误被携带而不是被抛出，并在下面检查，
-	// 在唯一实际需要供应商的路径上。配置错误应该只对
-	// 依赖配置的代码致命，对其余代码则完全没有影响。
+	// 所以错误是被带着走的，不是当场抛出来；到下面真正需要供应商的那一条路径上
+	// 再检查。配置出错，该致命的只有依赖这份配置的代码，别的一概不该。
 	pcfg, pname, resolveErr := pf.resolve(*providerName)
 
 	view := newRenderer(os.Stdout, colorEnabled(os.Stdout),
@@ -177,9 +171,8 @@ func main() {
 		pcfg.Window)
 	view.showRequest = *showReq
 
-	// 重放不需要密钥、不需要 shell、不需要网络——
-	// 现在也不需要供应商。一个针对一个协议记录的 trace
-	// 相同地重放，因为记录的是事件，不是线上格式。
+	// 重放不需要 key、不需要 shell、不需要网络——现在也不需要供应商了。对着某
+	// 个协议录下来的 trace，重放出来一模一样，因为录下的是事件，不是线上格式。
 	if *replayPath != "" {
 		events, err := ReadTrace(*replayPath)
 		if err != nil {
@@ -233,18 +226,17 @@ func main() {
 	fmt.Printf("stage 04 · provider=%s (%s) · model=%s\ncwd=%s\n",
 		pname, provider.Protocol(), provider.Model(), wd)
 
-	// --break-cache 演示的是缓存丢失最常见的那一种方式。
+	// --break-cache 演示的是缓存最常见的丢法。
 	//
-	// 注意这是一个**函数**，在每个请求上都会重新求值，这个细节
-	// 就是整个实验的关键。这个标志的第一版，只在启动时盖一次
-	// 时间戳——缓存照样工作得完美无缺，因为一个在整个会话里
-	// 恒定的值，就是那个会话恒定的前缀。实际会被人写出来的
-	// bug，是塞在一个每次调用都会执行的 prompt 构建器里的
-	// `datetime.now()`，只有这个版本才会让东西失效。
+	// 注意这是个**函数**，每个请求都求值一次，而这个细节就是整个实验。
+	// 这个 flag 的第一版是在启动时盖一次时间戳——结果缓存照样好好的，因
+	// 为一整场会话里恒定的值，对这场会话来说就是恒定的前缀。人们真正会
+	// 写出去的 bug，是 prompt 构造器里的那句 `datetime.now()`，而那个构
+	// 造器每次调用都跑；只有那个版本才真的作废东西。
 	//
-	// 时间戳位于渲染出的前缀的**前面**，所以它在每一次请求上，
-	// 都会让 tools、system，以及它们后面的每一条消息全部失效。
-	// 不会报错，账单只会一路涨上去。
+	// 时间戳坐在渲染出的前缀**最前面**，所以它作废 tools、system，以及
+	// 它们后面的每一条消息，每一个请求都作废一次。什么都不会报错。账单
+	// 自己往上走。
 	sys := func() string { return systemPrompt }
 	if *breakCache {
 		sys = func() string {
@@ -274,17 +266,16 @@ func main() {
 	view.SessionSummary(lastPrompt)
 }
 
-// call 执行一个模型调用。注意它不命名任何协议：
-// 它要求供应商提供请求，发送它，并要求供应商解析回复。
+// call 执行一次模型调用。注意它没提到任何协议：向供应商要请求，发出去，再让
+// 供应商去解析回复。
 func call(p Provider, httpc *http.Client, bus *Bus, turn int, system func() string, msgs []Msg) (*CallResult, error) {
 	req, body, err := p.BuildRequest(system(), msgs, []Tool{bashToolDef()}, 4096)
 	if err != nil {
 		return nil, err
 	}
 
-	// 请求检查器，以及 trace 中唯一的记录是
-	// 模型实际看到的。故意在翻译后发出：有趣的字节
-	// 是在线上的那些，不是中立形式。
+	// 请求检查器；trace 里也只有它记下了模型到底看到什么。故意放在翻译之后才
+	// 发：值得看的字节是真上了线的那些，不是中立形式。
 	bus.Emit(Event{Kind: KindRequest, Turn: turn, Request: body})
 
 	started := time.Now()
@@ -296,9 +287,9 @@ func call(p Provider, httpc *http.Client, bus *Bus, turn int, system func() stri
 
 	if resp.StatusCode != http.StatusOK {
 		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 8<<10))
-		// 值得在编写重试策略前知道：在这个网关上
-		// 未知的 model id 返回 401（不是 404），格式错误的
-		// body 返回 500。"每个 5xx 重试"会永远重试客户端 bug。
+		// 写重试策略之前值得先知道：在这个网关上，认不出的模型 id 返
+		// 回的是 401（不是 404），畸形的 body 返回 500。
+		// "5xx 一律重试"会把客户端的 bug 永远重试下去。
 		return nil, fmt.Errorf("http %d: %s", resp.StatusCode, strings.TrimSpace(string(raw)))
 	}
 	return p.ParseStream(resp.Body, bus, turn, started)
@@ -319,9 +310,9 @@ func runTurn(p Provider, httpc *http.Client, g *gate, bus *Bus, cfg config, syst
 		}
 		lastPrompt = res.Usage.Prompt()
 
-		// 为历史重建助手回合。思考故意不重放：
-		// 都不要求回来，其中一个对此收费，
-		// 它在 trace 中无论如何都在。
+		// 为历史重建 assistant 这一轮。thinking 故意不回放：两个协议
+		// 都不要求把它送回去，其中一个还要为它收费，而且反正 trace 里
+		// 都有。
 		am := Msg{Role: RoleAssistant}
 		if res.Text != "" {
 			am.Blocks = append(am.Blocks, Block{Kind: BlockText, Text: res.Text})
@@ -346,15 +337,13 @@ func runTurn(p Provider, httpc *http.Client, g *gate, bus *Bus, cfg config, syst
 			return msgs, lastPrompt
 
 		case StopUnknown, "":
-			// 永远不要将无法识别的状态视为成功。RawStop
-			// 被打印因为字面字符串是唯一会告诉你
-			// 实际发生了什么的东西。
+			// 认不出来的状态，绝不当成成功。这里把 RawStop 打出来，是
+			// 因为只有那个原字符串才能告诉你到底发生了什么。
 			//
-			// 空情况不是偏执：它是 StopReason 的零值，
-			// 这是如果适配器曾经忘记调用 normaliseStop，
-			// 或流在任何 stop 理由到达前死亡，你会得到的。
-			// 没有它，"我们从没搞清楚生成为什么停止"就会落入
-			// 和"模型说完了"相同的分支。
+			// 空这一支不是疑神疑鬼：它是 StopReason 的零值。适配器哪天
+			// 忘了调 normaliseStop，或者流在任何停止原因到达之前就断
+			// 了，拿到的就是它。没有这一支，"始终没弄清生成为什么停"就
+			// 会掉进跟"模型把话说完了"同一个分支。
 			bus.Notice("unknown stop reason %q — treating the turn as finished", res.RawStop)
 			return msgs, lastPrompt
 		}
@@ -364,10 +353,10 @@ func runTurn(p Provider, httpc *http.Client, g *gate, bus *Bus, cfg config, syst
 			return msgs, lastPrompt
 		}
 
-		// 每个调用得到一个结果，包括被拒绝的：
-		// 无应答的调用使**下一个**请求格式错误，
-		// 可能几个用户消息之后。结果进入一个中立消息；
-		// 每个适配器决定那在线上看起来像什么，它们完全不同。
+		// 每次调用都要有结果，被拒的也要：调用没人应答，**下一次**请
+		// 求就是畸形的——而且可能要等好几条用户消息之后才发作。结果
+		// 都放进一条中立消息里；它在线上长什么样由各个适配器自己定，
+		// 而它们的看法完全不一致。
 		results := Msg{Role: RoleUser}
 		stop := false
 		for _, c := range res.Calls {
@@ -412,8 +401,8 @@ func runTurn(p Provider, httpc *http.Client, g *gate, bus *Bus, cfg config, syst
 	}
 }
 
-// emitResult 发布工具结果并返回块以追加，
-// 所以用户看到的和模型被告知的永远不能漂移。
+// emitResult 把工具结果发布出去，同时返回该追加的块——这样用户看到的和告诉
+// 模型的，就永远不会飘开。
 func emitResult(bus *Bus, turn int, callID, content string) Block {
 	bus.Emit(Event{Kind: KindToolResult, Turn: turn, ToolID: callID, Text: content})
 	return ToolResultBlock(callID, content)

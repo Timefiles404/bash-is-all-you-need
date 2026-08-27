@@ -5,16 +5,15 @@ import (
 	"testing"
 )
 
-// decCase 是一个"这些字节意味着这个键"的断言。
+// decCase 是一条断言："这几个字节代表这个键"。
 //
-// Raw 永远不会写在一个 case 里：根据定义它是消耗的字节，
-// 所以宿主派生它。那不仅仅是便利——它意味着每个
-// case 都双重检查消耗计数，因为一个少一个字节的 Raw
-// 和一个少一个字节的 n 是同一个 bug 被看到两次。
+// Raw 从不写进用例：它按定义就是被吃掉的那些字节，所以由测试宿主自己推
+// 出来。这不只是图省事——它让每条用例都顺带复核了消耗字节数，因为 Raw
+// 少一个字节和 n 少一个字节，本来就是同一个 bug 从两个角度看。
 type decCase struct {
 	name string
 	in   string
-	n    int // 消耗的字节；0 表示"全部"
+	n    int // 消耗的字节数；0 表示"全部"
 	want key
 }
 
@@ -25,10 +24,9 @@ func (c decCase) consumed() int {
 	return c.n
 }
 
-// runCases 根据**两个**入口点检查每个 case。这里
-// 每个 case 都是一个完整的序列，decodeKeyFinal 必须在全部
-// 情况下都与 decodeKey 一致：第二个入口点存在是为了解决
-// **不完整的**输入，且不能在其他任何地方改变一个决定。
+// runCases 拿**两个**入口分别过一遍每条用例。这里的用例都是完整序列，
+// decodeKeyFinal 必须和 decodeKey 给出一样的答案：第二个入口是为了裁定
+// **不完整**的输入才存在的，在别的地方一个决定都不许改。
 func runCases(t *testing.T, cases []decCase) {
 	t.Helper()
 	decoders := []struct {
@@ -72,22 +70,21 @@ func TestDecodeRunes(t *testing.T) {
 		{name: "ascii capital", in: "Z", want: key{Kind: keyRune, Rune: 'Z'}},
 		{name: "space", in: " ", want: key{Kind: keyRune, Rune: ' '}},
 		{name: "tilde is text not a final byte", in: "~", want: key{Kind: keyRune, Rune: '~'}},
-		// 多字节 rune 是这个解码器无法一次工作一个字节的原因。
-		// 有人用中文打字，或者一个 emoji，会从两到四个字节产生
-		// 一个按键事件。
+		// 多字节 rune 就是这个解码器不能一个字节一个字节干活的原因。有人
+		// 打中文，或者打个 emoji，两到四个字节才凑出一次按键事件。
 		{name: "two-byte rune", in: "é", n: 2, want: key{Kind: keyRune, Rune: 'é'}},
 		{name: "three-byte rune", in: "中", n: 3, want: key{Kind: keyRune, Rune: '中'}},
 		{name: "four-byte rune", in: "😀", n: 4, want: key{Kind: keyRune, Rune: '😀'}},
-		// 只有第一个键，只有它的字节。
+		// 只取第一个键，也只取它那几个字节。
 		{name: "stops at the first rune", in: "ab", n: 1, want: key{Kind: keyRune, Rune: 'a'}},
 		{name: "stops after a multi-byte rune", in: "中x", n: 3, want: key{Kind: keyRune, Rune: '中'}},
 	})
 }
 
 func TestDecodeInvalidUTF8(t *testing.T) {
-	// 一个永远不可能是 rune 开头的字节。它必须被丢弃，一次一个字节，绝不能变成
-	// U+FFFD——这里的替换字符，就是一个用户没有敲出来、却出现在了他们文档里的
-	// 字形。
+	// 永远不可能作为 rune 开头的字节。必须把它丢掉，一次丢一个，而且绝
+	// 不能变成 U+FFFD：这里冒出个替换字符，等于用户没打过的字形跑进了他
+	// 的文档。
 	runCases(t, []decCase{
 		{name: "0xff", in: "\xff", want: key{Kind: keyUnknown}},
 		{name: "0xff then text", in: "\xffa", n: 1, want: key{Kind: keyUnknown}},
@@ -106,9 +103,9 @@ func TestDecodeControlBytes(t *testing.T) {
 		{name: "Ctrl-D", in: "\x04", want: key{Kind: keyCtrlD}},
 		{name: "Ctrl-L", in: "\x0c", want: key{Kind: keyCtrlL}},
 
-		// 控制范围内的其他所有字节，都是 Ctrl-字母，会被报告成带 Ctrl 标志的字母，
-		// 而不是单独作为它自己的 Kind。"每个绑定都加一个 Kind"，正是按键枚举膨胀
-		// 到六十个条目的原因。
+		// 控制字符区里剩下的都算 Ctrl-字母，报的是那个字母加上 Ctrl 标志，
+		// 而不是各占一个 Kind。一个绑定加一个 Kind，键枚举就是这么涨到六十
+		// 项的。
 		{name: "Ctrl-A", in: "\x01", want: key{Kind: keyRune, Rune: 'a', Ctrl: true}},
 		{name: "Ctrl-Z", in: "\x1a", want: key{Kind: keyRune, Rune: 'z', Ctrl: true}},
 		{name: "Ctrl-Space is NUL", in: "\x00", want: key{Kind: keyRune, Rune: ' ', Ctrl: true}},
@@ -122,10 +119,9 @@ func TestDecodeControlBytes(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestDecodeArrowsBothForms(t *testing.T) {
-	// 这个表的 SS3 一半是重要的那个。一个只知道
-	// CSI 箭头的解码器工作得很完美，直到有一天有人在
-	// tmux 内部运行它，或通过 ssh 进入一个留下 DECCKM
-	// 打开的 shell，然后箭头键开始打字母。
+	// 这张表里 SS3 那一半才是要紧的。只认 CSI 方向键的解码器一直好好的，
+	// 直到哪天有人在 tmux 里跑它，或者 ssh 进某个开着 DECCKM 的 shell，
+	// 方向键当场开始往外打字母。
 	runCases(t, []decCase{
 		{name: "CSI up", in: "\x1b[A", want: key{Kind: keyUp}},
 		{name: "CSI down", in: "\x1b[B", want: key{Kind: keyDown}},
@@ -139,9 +135,8 @@ func TestDecodeArrowsBothForms(t *testing.T) {
 }
 
 func TestDecodeHomeAndEndEveryForm(t *testing.T) {
-	// 全部八种。四个系统从来没有一致过，也永远不会；
-	// 见 decodeCSI 中的评论。删除这里的任何一行是
-	// 删除对某个人的终端的支持。
+	// 八种全在。四条血脉从没谈拢过，以后也不会；见 decodeCSI 里的注释。
+	// 删掉这里任何一行，就是删掉某个人终端的支持。
 	runCases(t, []decCase{
 		{name: "xterm CSI H", in: "\x1b[H", want: key{Kind: keyHome}},
 		{name: "xterm CSI F", in: "\x1b[F", want: key{Kind: keyEnd}},
@@ -159,8 +154,7 @@ func TestDecodeNavigationKeys(t *testing.T) {
 		{name: "PageUp", in: "\x1b[5~", want: key{Kind: keyPageUp}},
 		{name: "PageDown", in: "\x1b[6~", want: key{Kind: keyPageDown}},
 		{name: "Delete", in: "\x1b[3~", want: key{Kind: keyDelete}},
-		// CSI Z 没有修饰符参数，所以标志保持清除：
-		// Shift 在 Kind 里。
+		// CSI Z 没有修饰键参数，所以标志位保持干净：shift 在 Kind 里。
 		{name: "Shift-Tab", in: "\x1b[Z", want: key{Kind: keyShiftTab}},
 	})
 }
@@ -173,20 +167,20 @@ func TestDecodeModifiedKeys(t *testing.T) {
 		{name: "Ctrl-Alt-Down", in: "\x1b[1;7B", want: key{Kind: keyDown, Ctrl: true, Alt: true}},
 		{name: "Ctrl-Home", in: "\x1b[1;5H", want: key{Kind: keyHome, Ctrl: true}},
 		{name: "Ctrl-End", in: "\x1b[1;5F", want: key{Kind: keyEnd, Ctrl: true}},
-		// 修饰符在波浪号结尾的同一位置。
+		// 以波浪号结尾的序列，修饰键也在同一个位置上。
 		{name: "Ctrl-Delete", in: "\x1b[3;5~", want: key{Kind: keyDelete, Ctrl: true}},
 		{name: "Shift-PageUp", in: "\x1b[5;2~", want: key{Kind: keyPageUp, Shift: true}},
-		// 一个省略的第一个参数是合法的，意味着"默认"。
+		// 第一个参数省略是合法的，意思是"取默认值"。
 		{name: "omitted first param", in: "\x1b[;5A", want: key{Kind: keyUp, Ctrl: true}},
-		// xterm modifyOtherKeys / kitty 会在冒号后附加子参数。基础键必须能在这个
-		// 我们平时并不会说的协议里活下来。
+		// xterm 的 modifyOtherKeys 和 kitty 会在冒号后面追加子参数。我们并
+		// 不说这套协议，但基础键必须活下来。
 		{name: "colon sub-parameter", in: "\x1b[1;5:3A", want: key{Kind: keyUp, Ctrl: true}},
 	})
 }
 
-// TestModifierIsBitmaskPlusOne 直接固定编码，因为弄错它
-// 不会破坏箭头——它悄悄地把每个修饰符移位一个位置，
-// 这远比箭头键停止工作更难注意到。
+// TestModifierIsBitmaskPlusOne 直接把这个编码钉死，因为搞错了并不会让
+// 方向键坏掉——它只会不声不响地把每个修饰键都错开一位，而这比方向键彻
+// 底失灵难发现得多。
 func TestModifierIsBitmaskPlusOne(t *testing.T) {
 	cases := []struct {
 		mod   int
@@ -218,30 +212,30 @@ func TestModifierIsBitmaskPlusOne(t *testing.T) {
 			t.Errorf("decodeKey(%q) = %v; a modifier must never change which key it is", in, got)
 		}
 	}
-	// 未修饰的形式必须让每个标志保持清除。
+	// 不带修饰键的形式，必须让每个标志位都保持干净。
 	if got, _, _ := decodeKey([]byte("\x1b[1;1A")); got.Shift || got.Alt || got.Ctrl {
 		t.Errorf("decodeKey(\"\\x1b[1;1A\") = %v; parameter 1 means no modifiers at all", got)
 	}
 }
 
 func TestDecodeAltPrefixedKeys(t *testing.T) {
-	// 终端实现 Alt 作为 ESC 前缀（"metaSendsEscape"），
-	// 所以 Alt-a 和"Escape 然后 a"是相同的字节。
-	// 在一个缓冲区内我们选择 Alt，这是每个编辑器做的。
+	// 终端把 Alt 实现成 ESC 前缀（"metaSendsEscape"），所以 Alt-a 和"先
+	// Escape 再 a"是同样的字节。在同一个缓冲区里我们选 Alt，所有编辑器
+	// 都是这么干的。
 	runCases(t, []decCase{
 		{name: "Alt-a", in: "\x1ba", want: key{Kind: keyRune, Rune: 'a', Alt: true}},
 		{name: "Alt-Enter", in: "\x1b\r", want: key{Kind: keyEnter, Alt: true}},
 		{name: "Alt-Backspace", in: "\x1b\x7f", want: key{Kind: keyBackspace, Alt: true}},
 		{name: "Alt-multibyte", in: "\x1b中", n: 4, want: key{Kind: keyRune, Rune: '中', Alt: true}},
-		// ESC ESC [ A 是 tmux 为 Alt-Up 转发的。
+		// Alt-Up 经 tmux 转发出来就是 ESC ESC [ A。
 		{name: "ESC ESC CSI is Alt-Up", in: "\x1b\x1b[A", want: key{Kind: keyUp, Alt: true}},
 	})
 }
 
 func TestDecodeUnknownButWellFormed(t *testing.T) {
-	// 所有这些检查的都是同一条规则：消耗整个序列，报告 keyUnknown，把字节保
-	// 留在 Raw 里。不要因为一个东西只是无法识别，就返回"需要更多字节"——那是
-	// 活锁，不是解析错误。
+	// 这些用例查的是同一条规矩：整段序列吃掉，报 keyUnknown，字节留在
+	// Raw 里。只是认不出来的东西，绝不能回"还要更多字节"——那是活锁，不
+	// 是解析错误。
 	runCases(t, []decCase{
 		{name: "Insert", in: "\x1b[2~", want: key{Kind: keyUnknown}},
 		{name: "F5", in: "\x1b[15~", want: key{Kind: keyUnknown}},
@@ -250,14 +244,14 @@ func TestDecodeUnknownButWellFormed(t *testing.T) {
 		{name: "cursor position report", in: "\x1b[24;80R", want: key{Kind: keyUnknown}},
 		{name: "focus in", in: "\x1b[I", want: key{Kind: keyUnknown}},
 		{name: "stray paste terminator", in: "\x1b[201~", want: key{Kind: keyUnknown}},
-		// 参数和最终字节之间的中间字节（0x20-0x2f）：DECSCUSR，光标形状序列。这
-		// 种字节在输入里很少见，唯一能防止它把整个流弄得不同步的，是解析器认的是
-		// 字节的类别，而不是一份形状列表。
+		// 参数和结尾字节之间夹了个中间字节（0x20-0x2f）：DECSCUSR，改光标
+		// 形状的序列。输入里很少见，而它没把字节流搞失步，靠的是解析器认
+		// 的是字节类别，不是一张形状清单。
 		{name: "intermediate byte", in: "\x1b[ q", want: key{Kind: keyUnknown}},
 		{name: "unrecognised final byte", in: "\x1b[999X", want: key{Kind: keyUnknown}},
-		// 一个在序列中间被注入的控制字节，会让这个序列中止。我们会一路消耗到控制
-		// 字节之前为止，但不包括控制字节本身，所以当另一个写入者与鼠标报告的内容
-		// 交错时，Ctrl-C 依然有效。
+		// 序列中间插进来一个控制字节，这段序列就作废。我们吃到控制字节为
+		// 止、不含它，这样当另一个往 tty 写东西的进程和鼠标上报交错时，
+		// Ctrl-C 照样管用。
 		{name: "control byte aborts CSI", in: "\x1b[1;\x03A", n: 4, want: key{Kind: keyUnknown}},
 	})
 }
@@ -278,16 +272,16 @@ func TestDecodeSGRMouse(t *testing.T) {
 			want: key{Kind: keyMouse, Mouse: mouseEvent{Button: 2, X: 3, Y: 4, Press: true}}},
 		{name: "right release", in: "\x1b[<2;3;4m",
 			want: key{Kind: keyMouse, Mouse: mouseEvent{Button: 2, X: 3, Y: 4, Press: false}}},
-		// 滚轮保留它的位：在这条线上，滚轮向上确实
-		// 是按钮 64。它只报告一次按下；没有凹口释放。
+		// 滚轮保留它那个位：在这套线上格式里，滚轮上滚**就是**按钮 64。它
+		// 只报按下；滚一格没有对应的松开。
 		{name: "wheel up", in: "\x1b[<64;5;6M",
 			want: key{Kind: keyMouse, Mouse: mouseEvent{Button: 64, X: 5, Y: 6, Press: true}}},
 		{name: "wheel down", in: "\x1b[<65;5;6M",
 			want: key{Kind: keyMouse, Mouse: mouseEvent{Button: 65, X: 5, Y: 6, Press: true}}},
-		// 运动位 0x20 被设置：这是按住左键的拖拽。它必须报告按钮 0，而不是按钮 32。
+		// 带上移动位 0x20：按着左键在拖。它必须报按钮 0，不是按钮 32。
 		{name: "drag with left button", in: "\x1b[<32;7;8M",
 			want: key{Kind: keyMouse, Mouse: mouseEvent{Button: 0, X: 7, Y: 8, Press: true}}},
-		// 修饰符位移到键的标志上，按钮本身不受影响。
+		// 修饰键的位挪到 key 的标志位上去，按钮本身不动。
 		{name: "ctrl-click", in: "\x1b[<16;9;9M",
 			want: key{Kind: keyMouse, Ctrl: true, Mouse: mouseEvent{Button: 0, X: 9, Y: 9, Press: true}}},
 		{name: "shift-click", in: "\x1b[<4;9;9M",
@@ -297,24 +291,24 @@ func TestDecodeSGRMouse(t *testing.T) {
 		{name: "ctrl-wheel-up", in: "\x1b[<80;1;1M",
 			want: key{Kind: keyMouse, Ctrl: true, Mouse: mouseEvent{Button: 64, X: 1, Y: 1, Press: true}}},
 
-		// SGR 存在的整个理由。上一代的 X10 编码把坐标塞进一个字节里，用 32 做偏
-		// 置，所以列数一旦超过 223 就没法表示——这在任何比 1980 年代终端更宽的窗
-		// 口上，都是一个真实的限制。
+		// SGR 存在的全部理由。老的 X10 编码把坐标塞进一个字节里、再偏移
+		// 32，于是它说不出 223 以后的列号——只要窗口比 1980 年代的终端宽，
+		// 这就是个真会撞上的限制。
 		{name: "column past the X10 limit", in: "\x1b[<0;300;150M",
 			want: key{Kind: keyMouse, Mouse: mouseEvent{Button: 0, X: 300, Y: 150, Press: true}}},
 		{name: "release past the X10 limit", in: "\x1b[<2;1000;500m",
 			want: key{Kind: keyMouse, Mouse: mouseEvent{Button: 2, X: 1000, Y: 500, Press: false}}},
 
-		// 格式错误但作为 CSI 格式良好：消耗完整，报告未知。
+		// 格式不对，但作为 CSI 是完整的：整段吃掉，报 unknown。
 		{name: "too few parameters", in: "\x1b[<0;10M", want: key{Kind: keyUnknown}},
 	})
 }
 
 func TestX10MouseReportIsSwallowedWhole(t *testing.T) {
-	// X10 鼠标（模式 1000，没有 1006）是 CSI M 加上三个不属于 CSI 序列本身的
-	// **原始**字节。我们不会报告这次点击——编码没法表示 223 之后的列——但仍然
-	// 必须吃掉这三个字节，否则它们会被解码成三个按键，敲进用户当时正在编辑的
-	// 东西里。
+	// X10 鼠标（开了 1000 没开 1006）是 CSI M 再加三个**裸**字节，那三个
+	// 字节不属于 CSI 序列。这次点击我们不上报——这套编码说不出 223 以后
+	// 的列号——但那三个字节还是得吃掉，否则它们会被解成三次按键，打进用
+	// 户当时正在编辑的东西里。
 	buf := []byte("\x1b[M\x20\x21\x22a")
 	k, n, ok := decodeKey(buf)
 	if !ok || n != 6 || k.Kind != keyUnknown {
@@ -326,14 +320,14 @@ func TestX10MouseReportIsSwallowedWhole(t *testing.T) {
 	if !ok || next.Kind != keyRune || next.Rune != 'a' {
 		t.Fatalf("after the X10 report the next key is %v; want the literal 'a' that followed it", next)
 	}
-	// 截断的有效载荷是一个真正的"需要更多字节"。
+	// 载荷被截断了，那是货真价实的"还要更多字节"。
 	if k, n, ok := decodeKey([]byte("\x1b[M\x20")); ok {
 		t.Errorf("decodeKey on a truncated X10 report returned %v n=%d; the payload is 3 bytes and only 1 arrived", k, n)
 	}
 }
 
 // ---------------------------------------------------------------------------
-// 括号粘贴
+// 括号粘贴模式
 // ---------------------------------------------------------------------------
 
 func TestDecodePaste(t *testing.T) {
@@ -343,17 +337,17 @@ func TestDecodePaste(t *testing.T) {
 		{name: "empty", in: "\x1b[200~\x1b[201~",
 			want: key{Kind: keyPaste, Text: ""}},
 
-		// 真正重要的那一条。包含转义序列的有效载荷，必须逐字节原样输出为文本——
-		// **不是**被解码。把有效载荷重新送回解码器跑一遍，会把粘贴的 shell 脚本
-		// 变成箭头键。
+		// 要紧的就是这条。载荷里含转义序列时，必须逐字节原样当文本吐出来
+		// ——**不许**解码。把载荷再过一遍解码器，粘进来的 shell 脚本就变成
+		// 一串方向键。
 		{name: "payload contains an escape sequence", in: "\x1b[200~x\x1b[Ay\x1b[201~",
 			want: key{Kind: keyPaste, Text: "x\x1b[Ay"}},
 		{name: "payload is a bare ESC", in: "\x1b[200~\x1b\x1b[201~",
 			want: key{Kind: keyPaste, Text: "\x1b"}},
 
-		// 另一个真正重要的那一条。在提示符 UI 里，换行符本身就会触发提交，所以一
-		// 个粘贴进来的换行符，一旦被当成 keyEnter 泄漏出去，就会把半段粘贴内容发
-		// 给模型。这正是括号粘贴发明出来要阻止的事。
+		// 另一条要紧的。在 prompt 界面里换行就是提交，所以粘贴内容里的换
+		// 行一旦漏成 keyEnter，半段粘贴就发给模型了。括号粘贴模式当初被发
+		// 明出来，防的就是这个。
 		{name: "payload contains newlines", in: "\x1b[200~line one\nline two\n\x1b[201~",
 			want: key{Kind: keyPaste, Text: "line one\nline two\n"}},
 		{name: "payload contains a carriage return", in: "\x1b[200~a\r\nb\x1b[201~",
@@ -363,23 +357,22 @@ func TestDecodePaste(t *testing.T) {
 		{name: "payload contains multi-byte runes", in: "\x1b[200~中😀\x1b[201~",
 			want: key{Kind: keyPaste, Text: "中😀"}},
 
-		// 只精确消耗标记和有效载荷本身，此后一个字节都不多拿。
+		// 只吃标记和载荷，一个字节都不多吃。
 		{name: "stops at the terminator", in: "\x1b[200~a\x1b[201~b", n: 13,
 			want: key{Kind: keyPaste, Text: "a"}},
 	})
 }
 
 func TestUnterminatedPasteNeedsMoreBytesEvenWhenFinal(t *testing.T) {
-	// 关于"decodeKeyFinal 总是有进展"这条规则，唯一有文档记录的例外。转义超
-	// 时回答的是一个关于人类手指的问题；粘贴则是一台机器在以管道速度写入，要
-	// 经过很多次读取才能到齐。粘贴过程中间出现的间隙，并不能证明粘贴已经结束，
-	// 若就此认定结束，就会把前一半有效载荷当文本发出，再把剩下的部分解码成一
-	// 个个按键。
+	// "decodeKeyFinal 总能往前走"这条规矩，明面上就这一个例外。转义超
+	// 时回答的是人的手指有多快；而粘贴是机器在按管道速度往里写，要分好
+	// 多次读才到齐。粘到一半出现停顿，并不能说明粘贴结束了，硬要裁定就
+	// 会把半截载荷当文本吐出去，剩下的当按键解掉。
 	for _, in := range []string{
 		"\x1b[200~",
 		"\x1b[200~half a payl",
 		"\x1b[200~payload with an \x1b in it",
-		"\x1b[200~almost there\x1b[201", // 终止符本身跨读取分割
+		"\x1b[200~almost there\x1b[201", // 结束标记本身被拆到了两次读里
 	} {
 		for _, d := range []struct {
 			name string
@@ -398,12 +391,12 @@ func TestUnterminatedPasteNeedsMoreBytesEvenWhenFinal(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 歧义和流式契约
+// 那处歧义，和流式的约定
 // ---------------------------------------------------------------------------
 
 func TestLoneEscapeIsAmbiguous(t *testing.T) {
-	// 这一对断言，记录了整个设计。同一个字节，两个不同的答案，区别不在字节本
-	// 身——而在于调用者有没有告诉解码器：我已经等过了。
+	// 这一对断言就是整个设计的文档。同样一个字节，两种不同的答案，而区
+	// 别不在字节里——是调用方告诉解码器：我已经等过了。
 	buf := []byte{0x1b}
 
 	k, n, ok := decodeKey(buf)
@@ -426,21 +419,21 @@ func TestLoneEscapeIsAmbiguous(t *testing.T) {
 }
 
 func TestNeedsMoreBytes(t *testing.T) {
-	// 这些全都是某个更长内容的前缀。decodeKey 必须说明这一点，并且不能消耗任
-	// 何字节，这样调用者才能把新数据追加到同一个缓冲区里，再问一次。
+	// 这里每一条都是某个更长东西的前缀。decodeKey 必须说出这一点，而且
+	// 一个字节都不能消耗，好让调用方往同一个缓冲区里续上再问一遍。
 	for _, in := range []string{
-		"",           // 根本没有
-		"\x1b",       // 歧义
-		"\x1b[",      // 只有 CSI 引入符
-		"\x1bO",      // 只有 SS3 引入符
-		"\x1b[1",     // 参数，没有最终字节
+		"",           // 什么都没有
+		"\x1b",       // 那处歧义
+		"\x1b[",      // 只有 CSI 引导符
+		"\x1bO",      // 只有 SS3 引导符
+		"\x1b[1",     // 有参数，没有结尾字节
 		"\x1b[1;",    // 同上
 		"\x1b[1;5",   // 同上
-		"\x1b[<0;10", // 鼠标报告，中间参数
+		"\x1b[<0;10", // 鼠标上报，参数还没完
 		"\x1b[<0;10;20",
-		"\x1b[ ",   // 中间字节，没有最终字节
-		"\x1b\x1b", // Alt-某，某还没到
-		"\x1b[M",   // X10 报告，没有有效载荷
+		"\x1b[ ",   // 有中间字节，没有结尾字节
+		"\x1b\x1b", // Alt-什么，那个"什么"还没到
+		"\x1b[M",   // X10 上报，载荷一个字节都没到
 		"\x1b[M\x20\x21",
 		"\xe4",         // 三字节 rune 的第一个字节
 		"\xe4\xb8",     // 三字节 rune 的前两个字节
@@ -460,10 +453,10 @@ func TestNeedsMoreBytes(t *testing.T) {
 }
 
 func TestTruncatedRuneIsNotAReplacementCharacter(t *testing.T) {
-	// 之所以要单独拎出来说，是因为这个坑太容易踩：对于一个被截断的 rune，
-	// utf8.DecodeRune 返回的 (RuneError, 1) 跟处理一个真正无效的 rune 时一模一
-	// 样，于是照直觉写的代码，会对一个只是刚好跨在读取边界上、完好无损的字符
-	// 发出 U+FFFD。而这一发，证据就被销毁了——剩下的字节只会解码出更多垃圾。
+	// 单拎出来说，是因为这个坑实在太好踩：utf8.DecodeRune 碰上截断的
+	// rune，返回的和碰上非法字节一样，都是 (RuneError, 1)，于是顺手写出
+	// 来的代码会吐出 U+FFFD——而那个字符完全正常，只是刚好跨了读边界。
+	// 证据到这一步就毁了——剩下的字节会解出更多垃圾。
 	for _, in := range []string{"\xe4", "\xe4\xb8", "\xf0", "\xf0\x9f", "\xf0\x9f\x98"} {
 		k, n, ok := decodeKey([]byte(in))
 		if ok {
@@ -471,18 +464,16 @@ func TestTruncatedRuneIsNotAReplacementCharacter(t *testing.T) {
 				"not a replacement character.", in, k, n)
 		}
 	}
-	// 同样的字节，一旦完成，就是一个键。
+	// 同样这些字节，一旦完整，就是一个键。
 	if k, n, ok := decodeKey([]byte("中")); !ok || n != 3 || k.Rune != '中' {
 		t.Errorf("decodeKey(\"中\") = %v n=%d ok=%v; want the rune, 3 bytes", k, n, ok)
 	}
 }
 
 func TestDecodeOneByteAtATime(t *testing.T) {
-	// 这是解码器真正被使用的方式。一个 tty 上的读取
-	// 返回那个时刻缓冲区中碰巧出现的任何字节，
-	// 在负载下或通过 ssh 这经常是一个字节。
-	// 每个适当的前缀必须报告"更多"，
-	// 最后一个字节必须完成键。
+	// 解码器在现实里就是这么用的。在 tty 上读一次，拿到的是那一瞬间缓冲
+	// 区里碰巧有的字节；负载一高，或者走 ssh，一次一个字节是常态。每个
+	// 真前缀都必须报"还要"，而最后一个字节必须把这个键补完。
 	for _, s := range []struct{ name, in string }{
 		{"CSI arrow", "\x1b[A"},
 		{"SS3 arrow", "\x1bOA"},
@@ -520,10 +511,10 @@ func TestDecodeOneByteAtATime(t *testing.T) {
 }
 
 func TestConsumedCountsTileTheBuffer(t *testing.T) {
-	// 一次读取经常携带多个键——按键重复、快速打字，或者一次鼠标拖拽。调用者按
-	// n 前进，再解码一次，所以这些计数加起来必须正好等于缓冲区长度。任何地方
-	// 出现一个差一错误，都会让后面每一个键都错开一个字节，而这不会大张旗鼓地
-	// 出错：它只会产生一堆看起来合理、实则错误的键。
+	// 一次读常常带着好几个键——按键重复、手快的人、或者一次鼠标拖动。调
+	// 用方按 n 往前挪再解一次，所以这些计数加起来必须正好等于缓冲区长度。
+	// 任何一处差一，后面每个键都会错开一个字节，而且不会大声报错：它给
+	// 出的是一批看着挺像样的错键。
 	buf := []byte("\x1b[1;5A" + "中" + "\x1b[<2;10;20m" + "\x1b[200~hi\x1b[201~" + "x" + "\x1b[3~")
 	want := []struct {
 		kind keyKind
@@ -561,11 +552,11 @@ func TestConsumedCountsTileTheBuffer(t *testing.T) {
 }
 
 func TestDecodeKeyFinalAlwaysMakesProgress(t *testing.T) {
-	// decodeKeyFinal 是调用者的最后手段：读取已经超时，也没有别的办法可试。
-	// 如果对一段永远不会再增长的输入，它还能回答"需要更多字节"，调用者就会永
-	// 远空转下去。所以只要缓冲区非空，它就必须至少消耗一个字节——哪怕是它没法
-	// 理解的片段，也会被报告成 keyUnknown，而不是被凭空捏造成一个按键。（括
-	// 号粘贴是唯一一个故意的例外；见
+	// decodeKeyFinal 是调用方最后的手段：读超时到了，再没别的可试。要是
+	// 它对着一段永远不会再长的输入还能回"还要更多字节"，调用方就会空转
+	// 到死。所以只要缓冲区非空，它至少得消耗一个字节——包括那些它读不懂
+	// 的碎片，这种它报 keyUnknown，而不是替用户编一次按键出来。（括号粘
+	// 贴模式是唯一一个有意为之的例外，见
 	// TestUnterminatedPasteNeedsMoreBytesEvenWhenFinal。）
 	for _, s := range []string{
 		"\x1b", "\x1b[", "\x1bO", "\x1b[1;5", "\x1b[<0;10;20", "\x1b[ ",
@@ -586,16 +577,16 @@ func TestDecodeKeyFinalAlwaysMakesProgress(t *testing.T) {
 			}
 		}
 	}
-	// 以及退化的情况：一个空缓冲区里没有键，也不消耗任何字节。
+	// 还有退化情形：空缓冲区里没有键，也不消耗任何字节。
 	if k, n, ok := decodeKeyFinal(nil); ok || n != 0 {
 		t.Errorf("decodeKeyFinal(nil) = %v n=%d ok=%v; want no key, 0 bytes", k, n, ok)
 	}
 }
 
 func TestRawAlwaysHoldsTheConsumedBytes(t *testing.T) {
-	// Raw 是调试时的便利：当一个未知序列出现在日志里，它是唯一能识别出这个序
-	// 列的东西。对于每一种键，它都必须精确地等于被消耗的字节数——包括那些通过
-	// Alt 前缀递归组装出来的键，这也是最容易出错的地方。
+	// Raw 是留给调试的抓手：日志里冒出一段认不出的序列时，只有它能指认
+	// 那是什么。对每一类键，它都必须严格等于被消耗的那些字节——包括经
+	// Alt 前缀递归拼出来的那些，那里最容易出错。
 	for _, in := range []string{
 		"a", "中", "\x03", "\x1b[A", "\x1bOA", "\x1b[1;5A", "\x1b[<0;10;20M",
 		"\x1b[200~hi\x1b[201~", "\x1ba", "\x1b\x1b[A", "\x1b[999X", "\xff",

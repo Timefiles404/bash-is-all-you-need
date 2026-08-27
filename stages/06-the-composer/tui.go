@@ -1,21 +1,20 @@
-// 阶段 06 —— composer：事件循环，以及 TUI 的本质。
+// 阶段 06——composer：事件循环，以及 TUI 到底是什么东西。
 //
-// 脱掉框架，一个终端 UI 就是三个函数和一个 select：
+// 把框架剥掉，终端界面就是三个函数加一个 select：
 //
-//	bytes → key       解码终端发来的内容             (keys.go)
-//	state + key → state   这意味着什么                  (this file)
-//	state → lines     它应该看起来如何              (views.go)
+//	字节 → 键          解码终端送来的东西        （keys.go）
+//	状态 + 键 → 状态    这意味着什么              （本文件）
+//	状态 → 行          它该长什么样              （views.go）
 //
-// 下面的循环有三十行。让 TUI 困难的所有东西都在它周围的三个文件中：终端
-// 必须还回去 (term.go)、键盘说的是一种有歧义的语言 (keys.go)，一列不等
-// 于一个字节 (width.go)。框架把这三件事都藏了起来，这样很好，直到其中
-// 一个行为不当，你却不知道是哪一个。
+// 下面这个循环三十行。让 TUI 变难的东西全在它周围那三个文件里：终端要还
+// 回去（term.go），键盘说的那门语言里带着歧义（keys.go），而一列不等于
+// 一字节（width.go）。框架把这三样全藏起来，这挺好，直到其中一样出岔子，
+// 而你完全不知道是哪一样。
 //
-// 它也是有意为之的一个**阅读器**，而不是聊天窗口。trace 才是事实来
-// 源——阶段 02 已经确保了这一点——所以 composer 可以在没有按键、没有
-// 网络、没有模型的情况下工作，处理一个几周前录制的会话，或者一个此刻正
-// 在另一个终端里运行的会话 (`r` 重新读取文件)。你在这里能看到的一切，
-// 对一个你没有运行过的会话，你也一样能看到。
+// 它还是有意做成**读者**而不是聊天窗口。trace 才是事实来源——阶段 02 把这
+// 件事坐实了——所以 composer 不用 key、不用网络、也不用模型就能跑，无论会
+// 话是几周前录的，还是此刻正在另一个终端里跑着（按 `r` 重读文件）。你在
+// 这儿能看到的一切，换成不是你跑的会话，同样能看到。
 package main
 
 import (
@@ -43,22 +42,22 @@ type composer struct {
 	s    *session
 
 	view viewKind
-	call int // 选中的调用索引
-	top  int // 第一个可见的正文行
+	call int // 选中的调用序号
+	top  int // 正文里最先可见的那一行
 
 	w, h  int
-	lines []string // 当前视图，已渲染
+	lines []string // 当前视图，渲染好的
 	help  bool
-	note  string // 一次性状态消息
+	note  string // 只显示一次的状态消息
 }
 
-// escTimeout 是循环在决定单独的 ESC 是 Escape 键、而不是某个序列的开始
-// 之前，要等待多长时间。
+// escTimeout 是主循环在认定落单的 ESC 是 Escape 键、而不是某段序列的开头
+// 之前，愿意等多久。
 //
-// keys.go 解释了为什么解码器不能自己做这个判断。这个数字是一种策略：太
-// 短了，慢的 ssh 链接会把方向键变成 Escape；太长了，Escape 又会感觉像
-// 是坏掉了。50ms 是大多数终端应用最终都收敛到的值，这也是为什么在 vim
-// 里按 Escape，一直感觉慢了那么一点点。
+// keys.go 里讲了解码器为什么不能自己下这个判断。这个数字是一条策略：定短
+// 了，慢一点的 ssh 链路会把方向键变成 Escape；定长了，Escape 按着就像坏
+// 了。50ms 是绝大多数终端程序最后收敛到的值，也是为什么在 vim 里按
+// Escape 从来都感觉略微晚了一点。
 const escTimeout = 50 * time.Millisecond
 
 func runComposer(path string) error {
@@ -84,10 +83,11 @@ func runComposer(path string) error {
 			select {
 			case chunk, ok := <-in:
 				if !ok {
-					return nil // stdin 关闭
+					return nil // stdin 关了
 				}
 				buf = append(buf, chunk...)
-				// 消耗每一个**完整的**按键。剩下的是一个前缀，唯一正确的响应是等待更多字节。
+				// 把每一个**完整**的键都排干。剩下的是前缀，而对前缀
+				// 唯一正确的反应就是等更多字节。
 				for len(buf) > 0 {
 					k, n, ok := decodeKey(buf)
 					if !ok {
@@ -100,8 +100,8 @@ func runComposer(path string) error {
 				}
 
 			case <-escTimer:
-				// 等待结束了：缓冲区中的任何东西就是全部。
-				// decodeKeyFinal 解决了 decodeKey 拒绝猜测的单独 ESC。
+				// 等待结束了：缓冲区里有什么就只有什么。decodeKey 不肯
+				// 猜的那个落单 ESC，由 decodeKeyFinal 来裁定。
 				for len(buf) > 0 {
 					k, n, ok := decodeKeyFinal(buf)
 					if !ok {
@@ -114,16 +114,16 @@ func runComposer(path string) error {
 				}
 
 			case <-t.resize:
-				// 询问大小；不要相信通知能承载它。
-				// 通道说"它改变了"，当我们查看时它可能已经改变了——这正是为什么通知
-				// 不承载任何有效负载。
+				// 去问尺寸，别指望通知里带着它。channel 说的是"它变
+				// 了"，而等我们去看的时候，它可能又变了一次——通知不带
+				// 任何载荷，正是为了这一点。
 				c.w, c.h = t.Size()
 				c.relayout()
 			}
 
-			// nil 通道永远阻塞，所以这一行武装和解除了
-			// Escape 计时器。缓冲区中的字节意味着一个未解决的
-			// 前缀；空缓冲区意味着没有待处理的东西。
+			// nil 的 channel 会永远阻塞，所以这一行就把 Escape 计时器
+			// 装上了、也卸下了。缓冲区里还有字节，说明有个前缀没裁
+			// 定；缓冲区空了，就说明没什么在等着。
 			if len(buf) > 0 {
 				escTimer = time.After(escTimeout)
 			} else {
@@ -134,7 +134,7 @@ func runComposer(path string) error {
 	})
 }
 
-// bodyHeight 是可滚动区域：除了两个边框行以外的所有东西。
+// bodyHeight 是可滚动的区域：除掉那两行界面框架之外的全部。
 func (c *composer) bodyHeight() int { return max(1, c.h-3) }
 
 func (c *composer) relayout() {
@@ -154,7 +154,7 @@ func (c *composer) clamp() {
 	c.top = min(max(0, c.top), maxTop)
 }
 
-// handle 应用一个按键。返回 false 退出。
+// handle 处理一个键。返回 false 就退出。
 func (c *composer) handle(k key) bool {
 	c.note = ""
 	switch k.Kind {
@@ -182,9 +182,9 @@ func (c *composer) handle(k key) bool {
 
 	case keyMouse:
 		switch k.Mouse.Button {
-		case 64: // 向上滚轮
+		case 64: // 滚轮上滚
 			c.top -= 3
-		case 65: // 向下滚轮
+		case 65: // 滚轮下滚
 			c.top += 3
 		case 0:
 			if k.Mouse.Press {
@@ -240,32 +240,32 @@ func (c *composer) selectCall(i int) {
 	c.call = i
 	c.top = 0
 	if c.view == viewGod {
-		// 在上帝视角中，在调用之间移动会滚动到调用而不是
-		// 改变显示的内容——上帝视角没有"当前"调用的概念，假装
-		// 有它会使 n/p 根据你所在的视图意味着两个不同的东西。
+		// 上帝视角里，在调用之间移动是滚到那次调用去，而不是换掉显示的内
+		// 容——上帝视角里根本没有"当前"调用这个概念，硬装成有，就会让 n/p 在
+		// 不同视角下代表两件不同的事。
 		if _, ln := c.s.godView(c.w, c.s.Calls[i].Seq); ln > 0 {
 			c.top = max(0, ln-2)
 		}
 	}
 }
 
-// clickAt 将屏幕行映射到上帝视角中的调用。
+// clickAt 在上帝视角里把屏幕上的一行映射到一次调用。
 //
-// 这是鼠标值得连接的原因：在两千行事件流中，"向我展示模型在这出错时看到的"
-// 是一次点击，任何其他输入机制都是搜索。
+// 鼠标值得接进来，理由就在这里：在两千行的事件流里，"让我看看出问题那一
+// 刻模型看到了什么"是一次点击，换成任何别的输入方式都是一次搜索。
 func (c *composer) clickAt(row int) {
 	if c.view != viewGod {
 		return
 	}
-	// draw() 在屏幕第 1 行放标头，第 2 行放分隔线，所以第一个正文行是第 3
-	// 行，正文行 i 是第 3+i 行。这里以前是 `row - 2`，选中的是被点击那一行
-	// 的下一行——这种 bug 看起来像是鼠标不精确，而不像是算术出了错，这也是
-	// 为什么它能存活这么久：没人会两次点击同一个像素去检查。
+	// draw() 把表头放在屏幕第 1 行、分隔线放在第 2 行，所以正文第一行是第
+	// 3 行，正文第 i 行就是第 3+i 行。这里原来写的是 `row - 2`，选中的是点
+	// 击那行的下一行——这类 bug 看起来像鼠标不准，而不像算错了数，所以它能
+	// 活很久：没人会为了核对，对着同一个像素点两次。
 	idx := c.top + row - 3
 	if idx < 0 || idx >= len(c.lines) {
 		return
 	}
-	// 沿着事件流走到那一行的事件，然后找到它的调用。
+	// 沿着事件流走到那一行对应的事件，再找出它属于哪次调用。
 	seq := 0
 	n := 0
 	for _, e := range c.s.Display {
@@ -285,11 +285,11 @@ func (c *composer) clickAt(row int) {
 	}
 }
 
-// reload 从磁盘重新读取 trace。
+// reload 从磁盘重读 trace。
 //
-// 整个重点在于：Agent 运行的时候，trace 会不断被追加内容，这让 composer
-// 不需要一行 IPC，就能在第二个终端里充当实时监视器。阶段 02 的订阅者模
-// 型早就替这一点付过钱了，只是它自己并不知道——文件本身就是接口。
+// 这才是重点：Agent 在跑的时候 trace 一直在被追加，所以这一下就让
+// composer 变成了另一个终端里的实时监视器，一行 IPC 代码都不用写。阶段
+// 02 的订阅者模型自己都不知道，它早就把这笔账付过了——文件就是接口。
 func (c *composer) reload() {
 	events, err := ReadTrace(c.path)
 	if err != nil {
@@ -305,14 +305,14 @@ func (c *composer) reload() {
 }
 
 // ---------------------------------------------------------------------------
-// 绘图
+// 绘制
 // ---------------------------------------------------------------------------
 
 func (c *composer) draw(t *terminal) {
 	body := c.bodyHeight()
 	out := make([]string, 0, c.h)
 
-	// 标头。
+	// 表头。
 	left := fmt.Sprintf(" %s  %s", bold("composer"), c.path)
 	right := fmt.Sprintf("%d events · %d calls · %d compactions  [%s] ",
 		len(c.s.Events), len(c.s.Calls), c.s.Compactions, bold(c.view.String()))
@@ -351,11 +351,11 @@ func (c *composer) draw(t *terminal) {
 	t.Frame(out, c.w, c.h)
 }
 
-// joinEnds 在左边放置 left，在右边放置 right。
+// joinEnds 把 left 顶到左边缘，把 right 顶到右边缘。
 //
-// 填充用 dispWidth 计算，而不是 len。这些字符串里，每一个都包含 ANSI
-// 转义序列，其中一半还可能包含带 CJK 目录名的路径；如果按字节测量，右
-// 边就会落在屏幕中间附近的某处。
+// 中间的填充是用 dispWidth 算的，不是 len。这些字符串里每一个都含 ANSI
+// 转义，其中一半还可能含着带 CJK 目录名的路径；按字节量出来，右边那一截
+// 会落在屏幕中间附近某个地方。
 func joinEnds(left, right string, w int) string {
 	gap := w - dispWidth(left) - dispWidth(right)
 	if gap < 1 {
@@ -390,12 +390,12 @@ func helpLines() []string {
 	}
 }
 
-// dumpComposer 将一个视图渲染到一个写入器，不涉及任何终端。
+// dumpComposer 把一个视图渲染到 writer 上，全程不牵扯终端。
 //
-// 它之所以存在，是因为渲染函数从一开始就不需要终端——views.go 把一个会
-// 话变成 []string，term.go 画出 []string——一旦这种分离真正成立，无头
-// 模式就是免费的。这也是 TUI 的测试方式：一个只能靠按键才能产生输出的
-// UI，就是一个没有测试的 UI。
+// 它之所以存在，是因为那些渲染函数本来就从没需要过终端——views.go 把会话
+// 变成 []string，term.go 把 []string 画出来——这个分离一旦是真的，无头模式
+// 就是白送的。TUI 也正是靠它来测的：只有按键才能产出输出的界面，就是没有
+// 测试的界面。
 func dumpComposer(path, view string, call, width int, w io.Writer) error {
 	events, err := ReadTrace(path)
 	if err != nil {

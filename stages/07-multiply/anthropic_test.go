@@ -1,18 +1,17 @@
 // Anthropic 协议适配器的测试。
 //
-// 以下每个流 fixture 都从 docs/wire-notes.md §B6 和 §B7 构建——
-// 这个端点实际发送的字节，不是为了让解析器看起来正确而发明的字节。
-// 这个区别正是为什么这些 fixture 在这里：从规范编写的 fixture
-// 测试的是你对规范的理解，而这个端点在至少四个地方与规范矛盾，
-// 这四个地方对这个文件很重要（流外的 ping、没有 [DONE]、
-// message_start 中的使用报告错误，以及 `</think>` 标签泄漏到可见文本）。
+// 下面每一份流式 fixture 都出自 docs/wire-notes.md §B6 和 §B7——是这个端点
+// 真的发过的字节，不是为了让解析器显得正确而编出来的字节。这些 fixture 存
+// 在的全部理由就是这个区别：照规范写出来的 fixture，测的是你对规范的理解；
+// 而这个端点至少在四处跟规范相左，每一处都关系到这个文件（流外面的 ping、
+// 没有 [DONE]、message_start 里报错的 usage，以及漏进可见文本的 `</think>`
+// 标签）。
 //
-// 某些 frame 的信封必须重建——线上笔记将某些事件记录为
-// 裸 `delta` 对象或作为序列列表中的名称——上面的注释会说明。
-// 内部的值总是逐字记录的。
+// 有些帧的信封是重建出来的——wire notes 里有些事件只记成裸 `delta` 对象，
+// 有些只在事件序列里留了个名字——凡是这种，上面的注释都说了。里面的值一律
+// 照抄。
 //
-// 没有网络、没有 API 密钥、没有 `-short` 跳过。
-// 整个文件可以在飞机上运行。
+// 不联网，不要 API key，没有 `-short` 跳过。整个文件在飞机上就能跑。
 package main
 
 import (
@@ -28,18 +27,18 @@ import (
 	"time"
 )
 
-// 适配器必须满足 provider.go 中的契约。在这里断言它意味着
-// 签名偏差是测试构建中的编译错误，就在解释每个方法
-// 对调用方的义务的测试旁边。
+// 适配器必须满足 provider.go 里的契约。在这里断言一句，签名一旦漂移就变成
+// 测试构建的编译错误——而且错误就报在旁边，那几个测试正好讲清楚了每个方法
+// 欠调用方什么。
 var _ Provider = (*anthropicProvider)(nil)
 
 // ---------------------------------------------------------------------------
-// Frame 构建器。
+// 帧构造器。
 //
-// 线上笔记将参数片段打印为裸值，deltas 打印为裸 `delta` 对象，
-// 所以这些辅助函数围绕逐字值重建信封。json.Marshal 进行字符串转义，
-// 这正是网关最初产生字节的方式——在 Go 字面值中手写 `\"`
-// 是 fixture 停止匹配线上内容的方式。
+// wire notes 里，参数片段是裸值，delta 是裸 `delta` 对象，所以这几个 helper
+// 的活儿就是给照抄来的值重新套上信封。字符串转义交给 json.Marshal——网关当
+// 初生成这些字节走的就是这条路；在 Go 字面量里手写 `\"`，正是 fixture 跟线
+// 上对不上的开端。
 // ---------------------------------------------------------------------------
 
 func anthQuote(s string) string {
@@ -76,33 +75,32 @@ func anthMessageDelta(stopReason string, input, output, cacheWrite, cacheRead in
 }
 
 // ---------------------------------------------------------------------------
-// §B6 / §B7 fixtures。
+// §B6 / §B7 的 fixture。
 // ---------------------------------------------------------------------------
 
 const (
-	// **逐字 §B6。注意里面没有**什么：没有 stop_reason、
-	// 没有缓存计数器，以及一个 input_tokens 数字，
-	// 这个数字与下一个使用报告矛盾。
+	// **照抄** §B6。注意它**缺**了什么：没有 stop_reason，没有缓存计数；另外它
+	// 给出的 input_tokens，紧接着的那份 usage 报告就推翻了。
 	b6MessageStart = `{"type":"message_start","message":{"id":"msg_e3f9307e-2dc9-41f0-a70e-cca934593aa0","type":"message","role":"assistant","model":"qwen3.7-plus","content":[],"usage":{"input_tokens":56,"output_tokens":0}}}`
 
-	// **逐字** §B6——tool_use 公告。`input` 是一个空对象，
-	// id/name 出现在这里，也不在其他 frame 中。
+	// **照抄** §B6——tool_use 的宣告帧。`input` 是空对象，id 和 name 只在这里
+	// 出现，别的帧里一个都没有。
 	b6ToolStart0 = `{"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_ff07c814f3f34014aa526469","name":"bash","input":{}}}`
 
-	// **逐字** §B6——使用报告与 message_start 关于同一请求不一致，
-	// 也是唯一携带 stop_reason 或缓存计数器的 frame。
+	// **照抄** §B6——同一次请求，这里的 usage 跟 message_start 对不上；而且只
+	// 有这一帧带 stop_reason 和缓存计数。
 	b6MessageDelta = `{"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"input_tokens":291,"output_tokens":63,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}}`
 
-	// **逐字** §B6——尾部 ping，携带额外键 `cost`。
+	// **照抄** §B6——收尾那个 ping，多带了 `cost` 这个键。
 	b6PingWithCost = `{"type":"ping","cost":"0"}`
 
-	// **重建**形状：§B6 在事件序列中列出 `ping` 和 `message_stop`，
-	// 但仅为尾部 ping 打印 body。
+	// 形状是**重建**的：§B6 的事件序列里列了 `ping` 和 `message_stop`，但只印出
+	// 了收尾那个 ping 的 body。
 	b6Ping        = `{"type":"ping"}`
 	b6MessageStop = `{"type":"message_stop"}`
 
-	// **逐字** §B7——一个思考块、它的（总是空的）签名 delta，
-	// 以及在它关闭后在**下一个**索引处打开的文本块。
+	// **照抄** §B7——thinking 块、它那条（永远是空的）signature delta，以及它
+	// 关掉之后在**下一个** index 上打开的 text 块。
 	b7ThinkingStart   = `{"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":"","signature":""}}`
 	b7ThinkingDelta   = `{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"Let"}}`
 	b7SignatureDelta  = `{"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":""}}`
@@ -112,11 +110,11 @@ const (
 	b7TextDeltaSecond = `{"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" 17 ×"}}`
 )
 
-// b6ArgFragments 是 §B6 记录的六个 `partial_json` 值，按顺序。
+// b6ArgFragments 就是 §B6 记下的那六个 `partial_json` 值，按原顺序。
 //
-// 第一个是**空字符串**，片段三在路径中间结束（`/srv`），
-// 片段四继续它（`/app`）。在任何时刻，片段都不是可解析的 JSON，
-// 这就是为什么适配器连接原始字节，永远不检查它们。
+// 第一片是**空串**，第三片断在路径中间（`/srv`），第四片接着往下写
+// （`/app`）。任何一片单拿出来都不是能解析的 JSON——所以适配器只管把裸字节
+// 接起来，从不去看里面是什么。
 var b6ArgFragments = []string{
 	``,
 	`{"command": "ls`,
@@ -126,29 +124,28 @@ var b6ArgFragments = []string{
 	`}`,
 }
 
-// b6WantArgs 是 §B6 说这些片段连接成什么。
+// b6WantArgs 是 §B6 说这些片段拼起来该有的样子。
 const b6WantArgs = `{"command": "ls -la /srv/app"}`
 
-// b6LeakText 是网关的 `</think>` 泄漏，**逐字** §B6（以及 §A3b，
-// 它在非流式响应中捕获了相同的字符串）。一个换行符、裸闭合标签、
-// 两个换行符——整个用户可见的文本块，不包含模型输出。
+// b6LeakText 是网关漏出来的 `</think>`，**照抄** §B6（§A3b 在非流式响应里也
+// 逮到了一模一样的串）。先是换行，然后是光秃秃的闭合标签，再两个换行——整
+// 整一个用户可见的文本块，里面没有半点模型输出。
 const b6LeakText = "\n</think>\n\n"
 
-// b6FullStream 是 §B6 的两个工具调用流端到端：
+// b6FullStream 是 §B6 那条两次工具调用的流，从头到尾：
 //
 //	ping message_start
-//	content_block_start content_block_delta x6 content_block_stop  (索引 0, tool_use)
-//	content_block_start content_block_delta   content_block_stop   (索引 1, 文本)
-//	content_block_start content_block_delta x6 content_block_stop  (索引 2, tool_use)
+//	content_block_start content_block_delta x6 content_block_stop  (index 0, tool_use)
+//	content_block_start content_block_delta   content_block_stop   (index 1, text)
+//	content_block_start content_block_delta x6 content_block_stop  (index 2, tool_use)
 //	message_delta message_stop ping
 //
-// 索引 2 块是**构造的**——§B6 记录其位置、类型和 delta
-// 计数，但没有记录它的 id 或参数——它故意被赋予不同的命令，
-// 所以一个在块之间共享一个缓冲区的解析器会产生可见的垃圾，
-// 而不是微妙的混淆。
+// index 2 那个块是**构造**的——§B6 记了它的位置、类型和 delta 条数，但没记
+// id 和参数——而且故意给了它另一条命令：解析器要是几个块共用一个缓冲区，出
+// 来的就是一眼能看见的垃圾，而不是不易察觉的串味。
 func b6FullStream() []string {
 	frames := []string{
-		b6Ping, // message_start **之前**。规范说这不可能发生。
+		b6Ping, // 在 message_start **之前**。规范说这不可能发生。
 		b6MessageStart,
 		b6ToolStart0,
 	}
@@ -158,12 +155,12 @@ func b6FullStream() []string {
 	frames = append(frames,
 		anthBlockStop(0),
 
-		// 索引 1：`</think>` 泄漏，作为它自己的文本内容块。
+		// index 1：漏出来的 `</think>`，自成一个 text 内容块。
 		b7TextStart1,
 		anthTextDelta(1, b6LeakText),
 		anthBlockStop(1),
 
-		// 索引 2：第二个工具调用。
+		// index 2：第二次工具调用。
 		anthToolStart(2, "toolu_5ae0ccdc34f44d30a2217c5e", "bash"),
 	)
 	for _, frag := range []string{``, `{"command": "wc`, ` -l /srv`, `/app/main`, `.go"`, `}`} {
@@ -173,24 +170,23 @@ func b6FullStream() []string {
 		anthBlockStop(2),
 		b6MessageDelta,
 		b6MessageStop,
-		b6PingWithCost, // message_stop **之后**，携带 `cost`。
+		b6PingWithCost, // 在 message_stop **之后**，带着 `cost`。
 	)
 	return frames
 }
 
 // ---------------------------------------------------------------------------
-// 宿主。
+// 测试宿主。
 // ---------------------------------------------------------------------------
 
-// anthSSE 以 §B6 描述这个端点呈现它们的方式呈现 frames：
-// `event: <name>`、`data: <payload>`、空行。event 名称取自
-// payload 自己的 `type`，这就是网关如何构建它的方式。
+// anthSSE 按 §B6 描述的这个端点的渲染器式来铺帧：`event: <name>`、
+// `data: <payload>`、空行。事件名取自 payload 自己的 `type`——网关就是这么
+// 拼的。
 //
-// body 在最后一个 frame 处结束**没有**尾部空行，因为这是
-// 这个流的实际结束方式：没有 `[DONE]`、没有终止符、
-// 只是连接关闭。一个只在空行上分发的读取器会无声地
-// 丢弃每个响应的最后一个 frame——在这个协议上，最后的 frame
-// 是 message_delta 和成本 ping。
+// 最后一帧后面**不带**空行，因为这条流真的就是这么结束的：没有 `[DONE]`，
+// 没有终止符，连接一关就完了。读取器要是只在遇到空行时才派发，每次响应的最
+// 后一帧都会被无声丢掉——而在这个协议上，最后几帧恰恰是 message_delta 和那
+// 个报 cost 的 ping。
 func anthSSE(frames ...string) io.Reader {
 	var b strings.Builder
 	for i, f := range frames {
@@ -212,9 +208,8 @@ func anthEventName(payload string) string {
 	return probe.Type
 }
 
-// anthRecorder 保留每个事件，这是展示为什么 agent 核心
-// 发出事件而不是打印的最便宜方式：这些测试对事件序列断言，
-// 从不接触 stdout。
+// anthRecorder 把每个事件都留着。这是对"Agent 核心为什么发事件而不是直接打
+// 印"最省事的一次演示：这些测试断言的是事件序列，从头到尾不碰 stdout。
 type anthRecorder struct{ events []Event }
 
 func (r *anthRecorder) OnEvent(e Event) { r.events = append(r.events, e) }
@@ -262,8 +257,7 @@ func anthProvider() *anthropicProvider {
 	return newAnthropicProvider("https://opencode.ai/zen/go/v1", "sk-test", "qwen3.7-plus")
 }
 
-// anthParse 在 frame 列表上运行适配器，交回测试可能想
-// 断言的一切。
+// anthParse 拿适配器跑一遍帧列表，把测试可能想断言的东西全都递回来。
 func anthParse(t *testing.T, frames []string) (*CallResult, *anthRecorder, error) {
 	t.Helper()
 	rec := &anthRecorder{}
@@ -284,8 +278,8 @@ func TestAnthropicFullB6Stream(t *testing.T) {
 		t.Fatalf("the recorded stream must parse cleanly: %v", err)
 	}
 
-	// message_start 前的一个 ping 和 message_stop 后的一个 ping，
-	// 都不是一个 token、一条消息，也不是停止读取的理由。
+	// message_start 前面一个 ping，message_stop 后面一个 ping。两个都不是
+	// token，不是消息，也不是停止读取的理由。
 	if got := rec.count(KindFirstToken); got != 1 {
 		t.Errorf("KindFirstToken emitted %d times, want exactly 1 (a ping is not a token)", got)
 	}
@@ -306,8 +300,7 @@ func TestAnthropicFullB6Stream(t *testing.T) {
 		t.Errorf("second call args = %q, want %q — fragments leaked between content blocks", res.Calls[1].Args, want)
 	}
 
-	// 这个流中唯一的文本块是 `</think>` 泄漏，所以根本
-	// 没有可见文本。
+	// 这条流里唯一的 text 块就是漏出来的 `</think>`，所以根本没有可见文本。
 	if res.Text != "" {
 		t.Errorf("Text = %q, want empty: the only text block was gateway residue", res.Text)
 	}
@@ -335,8 +328,7 @@ func TestAnthropicFullB6Stream(t *testing.T) {
 		t.Errorf("KindResponseEnd.FinishReason = %q, want the raw wire string", end.FinishReason)
 	}
 
-	// 每个事件都携带回合，所以多回合会话的 trace
-	// 可以按回合重新切分开。
+	// 每个事件都带着回合号，所以多回合会话的 trace 事后还能重新切开。
 	for _, e := range rec.events {
 		if e.Turn != anthTestTurn {
 			t.Fatalf("event %s carries turn %d, want %d", e.Kind, e.Turn, anthTestTurn)
@@ -355,8 +347,8 @@ func TestAnthropicToolArgsReassembly(t *testing.T) {
 		want   []Block
 	}{
 		{
-			// 观察到的片段，逐字 §B6，包括空的第一个
-			// 以及在中间分割路径的两个。
+			// 实测到的片段，照抄 §B6，包括空的第一片，以及把路
+			// 径从中间劈开的那两片。
 			name: "observed fragments reassemble",
 			frames: func() []string {
 				f := []string{b6Ping, b6MessageStart, b6ToolStart0}
@@ -373,10 +365,10 @@ func TestAnthropicToolArgsReassembly(t *testing.T) {
 			}},
 		},
 		{
-			// **构造的**。两个块在任何一个关闭前打开，
-			// 它们的片段交错，更高索引的块**先**打开——
-			// 所以一个累积到一个缓冲区中，或按到达顺序
-			// 返回调用的实现，每次运行都失败，而不是一半时间。
+			// **构造**的。两个块都开了才有一个关，片段交叉着来，
+			// 而且 index 大的**先**开——所以，往同一个缓冲区里
+			// 攒的实现，或者按到达顺序返回调用的实现，每跑必挂，
+			// 不是跑两次挂一次。
 			name: "interleaved blocks stay separate and come back index-ordered",
 			frames: []string{
 				b6Ping, b6MessageStart,
@@ -395,9 +387,9 @@ func TestAnthropicToolArgsReassembly(t *testing.T) {
 			},
 		},
 		{
-			// 一个工具调用，其参数从未到达。id 和 name
-			// 仍然必须幸存：没有 id 就没有 tool_use_id 来回答，
-			// 回合根本无法关闭。
+			// 参数始终没到的工具调用。id 和 name 还是得留住：没
+			// 有 id 就没有 tool_use_id 可以拿来回话，这个回合根
+			// 本收不了尾。
 			name: "announced but empty stays announced",
 			frames: []string{
 				b6Ping, b6MessageStart,
@@ -420,16 +412,16 @@ func TestAnthropicToolArgsReassembly(t *testing.T) {
 				t.Errorf("calls =\n  %+v\nwant\n  %+v", res.Calls, tc.want)
 			}
 
-			// 空的第一个片段不应该变成 trace 行：一个
-			// 不携带任何字符的参数 delta 在请求检查器中是噪音，
-			// 在下游的每个渲染器中也是。
+			// 空的第一片不能变成一行 trace：一条字符都不带的参数
+			// delta，在请求检查器里是噪音，在下游每个渲染器里也
+			// 是噪音。
 			for _, txt := range rec.textsOf(KindToolArgsDelta) {
 				if txt == "" {
 					t.Error("emitted a KindToolArgsDelta with empty text; the first observed fragment is \"\" and carries nothing")
 				}
 			}
 
-			// 每个公告都必须为其调用命名。
+			// 每次宣告都必须报出自己是哪个调用。
 			for _, e := range rec.events {
 				if e.Kind == KindToolCallStart && (e.ToolID == "" || e.ToolName == "") {
 					t.Errorf("KindToolCallStart missing id or name: %+v", e)
@@ -440,7 +432,7 @@ func TestAnthropicToolArgsReassembly(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 使用。这个文件中价值最高的测试。
+// Usage。这个文件里最有价值的测试。
 // ---------------------------------------------------------------------------
 
 func TestAnthropicUsageComesFromMessageDeltaNotMessageStart(t *testing.T) {
@@ -453,11 +445,11 @@ func TestAnthropicUsageComesFromMessageDeltaNotMessageStart(t *testing.T) {
 		wantStop   StopReason
 	}{
 		{
-			// §B6，不一致的对：message_start 说 input_tokens 56，
-			// message_delta 说 291，对于同一请求。带有相同
-			// prompt 的非流式调用同意了 291。如果这个断言
-			// 曾经读取 56，适配器就在信任规范称为权威的 frame，
-			// 而这个端点弄错了。
+			// §B6 里对不上的那一对：同一次请求，message_start 说
+			// input_tokens 是 56，message_delta 说是 291。同样
+			// prompt 的非流式调用站在 291 这边。这条断言哪天读到
+			// 56，就说明适配器信了那一帧——规范说它权威，这个端
+			// 点却把它搞错了。
 			name:       "message_start says 56, message_delta says 291, 291 wins",
 			frames:     []string{b6Ping, b6MessageStart, b6ToolStart0, anthArgsDelta(0, `{}`), anthBlockStop(0), b6MessageDelta, b6MessageStop, b6PingWithCost},
 			want:       Usage{Input: 291, Output: 63},
@@ -466,15 +458,16 @@ func TestAnthropicUsageComesFromMessageDeltaNotMessageStart(t *testing.T) {
 			wantStop:   StopToolUse,
 		},
 		{
-			// 一个热缓存调用，在线验证：input=18、cache_creation=0、
-			// cache_read=17967。这个协议的 input_tokens **仅**是
-			// 未缓存的剩余部分，所以它直接映射，上下文大小是
-			// **总和**——17,985——一个单个线上字段不会报告的数字。
-			// （§C8 在较小的手册上测量了相同的形状：input 18、
+			// 缓存热的一次调用，线上验过：input=18、
+			// cache_creation=0、cache_read=17967。这个协议的
+			// input_tokens **只**是没命中缓存的那部分余量，所以
+			// 直接一一对应搬过来就行；上下文大小是它们的
+			// **和**——17,985——线上没有任何单独字段报这个数。
+			// （§C8 在更小的一本手册上量到同样的形状：input 18、
 			// cache_read 9,775。）
 			//
-			// 一个复制 OpenAI 方向并从 input 减去 cache_read
-			// 的适配器会报告 -17,949。
+			// 适配器要是照搬 OpenAI 那个方向、拿 input 减掉
+			// cache_read，在这儿会报出 -17,949。
 			name:       "warm cache: input is only the uncached remainder",
 			frames:     []string{b6Ping, b6MessageStart, b7TextStart1, anthTextDelta(1, "ACK"), anthBlockStop(1), anthMessageDelta("end_turn", 18, 249, 0, 17967), b6MessageStop},
 			want:       Usage{Input: 18, CacheRead: 17967, Output: 249},
@@ -483,8 +476,9 @@ func TestAnthropicUsageComesFromMessageDeltaNotMessageStart(t *testing.T) {
 			wantStop:   StopEndTurn,
 		},
 		{
-			// 针对冷缓存的第一个调用写入前缀。CacheWrite
-			// 是它自己的字段，因为它按约 1.25 倍计费，而不是 0.1 倍。
+			// 缓存是冷的时候，第一次调用会把前缀写进去。
+			// CacheWrite 单列一个字段，是因为它按约 1.25 倍计
+			// 费，不是 0.1 倍。
 			name:       "cold cache: creation tokens land in CacheWrite",
 			frames:     []string{b6Ping, b6MessageStart, b7TextStart1, anthTextDelta(1, "ACK"), anthBlockStop(1), anthMessageDelta("end_turn", 18, 249, 9775, 0), b6MessageStop},
 			want:       Usage{Input: 18, CacheWrite: 9775, Output: 249},
@@ -493,11 +487,11 @@ func TestAnthropicUsageComesFromMessageDeltaNotMessageStart(t *testing.T) {
 			wantStop:   StopEndTurn,
 		},
 		{
-			// 流在 message_delta 前死亡。**没有**回退到
-			// message_start 的数字：缺少的数字可以看到并追踪，
-			// 一个看似正确的会出现在成本仪表板上。
-			// 并且没有 stop_reason，回合是 StopUnknown——
-			// 不是"可能没问题"。
+			// 流在 message_delta 之前就断了。这里**不**回退到
+			// message_start 给的数：数字缺了看得见、追得到，而看
+			// 着挺像样的错数字会一路进到成本看板里。而且完全没有
+			// stop_reason，这个回合就是 StopUnknown——不是"大概
+			// 没事"。
 			name:       "no message_delta: no usage, and an unknown stop",
 			frames:     []string{b6Ping, b6MessageStart, b7TextStart1, anthTextDelta(1, "half a sen")},
 			want:       Usage{},
@@ -526,8 +520,8 @@ func TestAnthropicUsageComesFromMessageDeltaNotMessageStart(t *testing.T) {
 				t.Errorf("Stop = %q, want %q", res.Stop, tc.wantStop)
 			}
 
-			// KindUsage 事件必须携带相同的规范化数字，
-			// 而且什么都不报告时根本不能发出。
+			// KindUsage 事件必须带着同样的归一化数字；什么都没报
+			// 的时候，这个事件根本就不该发出来。
 			ev, ok := rec.first(KindUsage)
 			if tc.want == (Usage{}) {
 				if ok {
@@ -546,13 +540,13 @@ func TestAnthropicUsageComesFromMessageDeltaNotMessageStart(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 思考。
+// Thinking。
 // ---------------------------------------------------------------------------
 
 func TestAnthropicThinkingAndTextStaySeparate(t *testing.T) {
-	// §B7 逐字：索引 0 处有一个思考块及其自己的 delta 类型，
-	// 在索引 1 处的文本块打开之前关闭。假设索引 0 是文本的代码
-	// 会将模型的私有推理呈现给用户。
+	// 照抄 §B7：index 0 上是 thinking 块，有自己的 delta 类型，在 index 1 的
+	// text 块打开之前就关掉了。代码要是默认 index 0 就是文本，就会把模型私下的
+	// 推理渲染给用户看。
 	frames := []string{
 		b6Ping, b6MessageStart,
 		b7ThinkingStart,
@@ -587,9 +581,8 @@ func TestAnthropicThinkingAndTextStaySeparate(t *testing.T) {
 		t.Errorf("KindTextDelta count = %d, want 2", got)
 	}
 
-	// signature_delta 由这个网关发出，总是携带 ""（§B7）。
-	// 它不能产生任何类型的事件：它既不是文本也不是通知，
-	// 也没有签名要来回往返。
+	// 这个网关会发 signature_delta，而且里面永远是 ""（§B7）。它不该产生任何
+	// 事件：它既不是文本也不是提示，而且根本没有签名可以往返带回去。
 	for _, txt := range append(rec.textsOf(KindTextDelta), rec.textsOf(KindReasoningDelta)...) {
 		if txt == "" {
 			t.Error("an empty delta reached the bus; signature_delta must be ignored, not forwarded")
@@ -599,9 +592,8 @@ func TestAnthropicThinkingAndTextStaySeparate(t *testing.T) {
 		t.Errorf("got %d notices, want 0 — signature_delta is expected, not unknown", got)
 	}
 
-	// 第一个 token 是第一个**思考** token，
-	// 不是第一个可见字符。在推理模型上，那是诚实的测量：
-	// 它是模型首先生产的东西。
+	// 第一个 token 是第一个**思考** token，不是第一个可见字符。在推理模型上，
+	// 这才是诚实的度量：它确实是模型最先产出的东西。
 	if got := rec.count(KindFirstToken); got != 1 {
 		t.Fatalf("KindFirstToken count = %d, want 1", got)
 	}
@@ -611,12 +603,12 @@ func TestAnthropicThinkingAndTextStaySeparate(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// `</think>` 泄漏。§B6 偏差 4。
+// `</think>` 泄漏。§B6 的第 4 处偏离。
 // ---------------------------------------------------------------------------
 
-// **受测试的决定**：残基从用户可见文本中丢弃，
-// 并报告为通知。不呈现（它不是模型的输出），
-// 不无声吞咽（trace 必须保留网关泄漏其自己的宿主标记的证据）。
+// **受测的决定**：残留从用户可见文本里丢掉，改成一条提示报出来。不渲染（它
+// 不是模型的输出），也不悄悄吞掉（trace 得留住证据，证明网关在漏自己宿主的
+// 标记）。
 func TestAnthropicThinkTagLeak(t *testing.T) {
 	cases := []struct {
 		name        string
@@ -625,8 +617,8 @@ func TestAnthropicThinkTagLeak(t *testing.T) {
 		wantNotices int
 	}{
 		{
-			// **逐字** §B6 / §A3b：整个文本内容块，
-			// 其整个内容是泄漏的闭合标签。
+			// **照抄** §B6 / §A3b：整整一个 text 内容块，内容从
+			// 头到尾就是漏出来的那个闭合标签。
 			name:        "the observed leak is dropped and reported",
 			deltas:      []string{b6LeakText},
 			wantText:    "",
@@ -639,19 +631,19 @@ func TestAnthropicThinkTagLeak(t *testing.T) {
 			wantNotices: 1,
 		},
 		{
-			// 尚未观察到打开标签泄漏，但这是相同的失败，
-			// 相同的修复。
+			// 开标签还没见过漏出来，但那是同一个故障，也是同一个
+			// 修法。
 			name:        "a bare opening tag is residue too",
 			deltas:      []string{"<think>", "hello"},
 			wantText:    "hello",
 			wantNotices: 1,
 		},
 		{
-			// **这个规则存在以避免的假阳性**。一个模型解释思考标签——
-			// 这是要求 coding Agent 做的完全合理的事情——
-			// 必须完全原封不动地通过。悄悄破坏真实输出来整理厂商垃圾
-			// 是两个失败中更糟糕的一个，所以规则是
-			// "整个 delta 是标签"，而不是"delta 包含它"。
+			// **这条规则就是为了躲开这个误判**。模型在讲 think 标
+			// 签怎么用——问 coding Agent 这个再正常不过——必须原
+			// 封不动地传出去。为了扫干净供应商的垃圾而悄悄改坏真
+			// 正的输出，是两种故障里更糟的那种，所以规则写的是
+			// "整条 delta 就是那个标签"，不是"delta 里含有它"。
 			name:        "a tag inside a sentence is the model talking, not residue",
 			deltas:      []string{"Close the block with </think> and continue."},
 			wantText:    "Close the block with </think> and continue.",
@@ -677,7 +669,7 @@ func TestAnthropicThinkTagLeak(t *testing.T) {
 			if got := rec.count(KindNotice); got != tc.wantNotices {
 				t.Errorf("notice count = %d, want %d (notices: %q)", got, tc.wantNotices, rec.textsOf(KindNotice))
 			}
-			// 丢弃意味着丢弃：任何渲染器都绝不能看到这个标签。
+			// 丢掉就是丢掉：任何渲染器都不许看见这个标签。
 			for _, txt := range rec.textsOf(KindTextDelta) {
 				if strings.TrimSpace(txt) == "</think>" || strings.TrimSpace(txt) == "<think>" {
 					t.Errorf("residue %q was forwarded as visible text", txt)
@@ -698,26 +690,26 @@ func TestAnthropicThinkTagLeak(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestAnthropicEventSequence(t *testing.T) {
-	// 一个流，其中包含每种 payload 类型，所以下面的断言是
-	// 这个适配器欠渲染器的完整契约：相同的类型、
-	// 相同的顺序、相同的含义，来自一个不共享其任何词汇的线上。
+	// 一条流里塞进了每一种 payload 类型，所以下面那条断言就是这个适配器欠渲染
+	// 器的全部契约：跟 OpenAI 适配器同样的 kind、同样的顺序、同样的含义——而线
+	// 上这套词汇跟那边毫无交集。
 	frames := []string{
-		b6Ping,         // 不是一个 token
-		b6MessageStart, // 不是 token，它的使用是谎言
+		b6Ping,         // 不是 token
+		b6MessageStart, // 不是 token，而且它报的 usage 是假的
 		b7ThinkingStart,
 		b7ThinkingDelta,
-		b7SignatureDelta, // 总是空的；什么都不产生
+		b7SignatureDelta, // 永远是空的；什么都不产生
 		b7BlockStop0,
 		b7TextStart1,
 		b7TextDeltaFirst,
 		anthBlockStop(1),
 		anthToolStart(2, "toolu_x", "bash"),
-		anthArgsDelta(2, ``), // 空的第一个片段什么都不产生
+		anthArgsDelta(2, ``), // 空的第一片什么都不产生
 		anthArgsDelta(2, `{"command": "ls"}`),
 		anthBlockStop(2),
 		b6MessageDelta,
 		b6MessageStop,
-		b6PingWithCost, // message_stop 之后，仍然不是 token
+		b6PingWithCost, // 在 message_stop 之后，照样不是 token
 	}
 
 	_, rec, err := anthParse(t, frames)
@@ -726,13 +718,13 @@ func TestAnthropicEventSequence(t *testing.T) {
 	}
 
 	want := []Kind{
-		KindFirstToken,     // 由思考 delta 发起，而不是由 ping
+		KindFirstToken,     // 由 thinking delta 触发，不是 ping
 		KindReasoningDelta, //
 		KindTextDelta,      //
-		KindToolCallStart,  // id + name，一次
-		KindToolArgsDelta,  // 一个片段，跳过空的那个
+		KindToolCallStart,  // id + name，只此一次
+		KindToolArgsDelta,  // 一个片段，空的那个跳过了
 		KindUsage,          // message_delta
-		KindResponseEnd,    // 最后
+		KindResponseEnd,    // 最后一个
 	}
 	if got := rec.kinds(); !reflect.DeepEqual(got, want) {
 		t.Errorf("event kinds =\n  %v\nwant\n  %v", got, want)
@@ -746,21 +738,21 @@ func TestAnthropicEventSequence(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 帧边界情况和可生存的损坏。
+// 分帧的边角情况，以及能扛过去的损坏。
 // ---------------------------------------------------------------------------
 
 func TestAnthropicStreamTolerance(t *testing.T) {
 	t.Run("pings anywhere, and no [DONE] anywhere", func(t *testing.T) {
 		frames := []string{
-			b6Ping, b6Ping, // message_start 前
+			b6Ping, b6Ping, // 在 message_start 之前
 			b6MessageStart,
 			b7TextStart1,
-			b6Ping, // 一个普通的中流 keepalive
+			b6Ping, // 流中间一次普通的 keep-alive
 			anthTextDelta(1, "hello"),
 			anthBlockStop(1),
 			anthMessageDelta("end_turn", 291, 63, 0, 0),
 			b6MessageStop,
-			b6PingWithCost, b6Ping, // message_stop 后
+			b6PingWithCost, b6Ping, // 在 message_stop 之后
 		}
 		res, rec, err := anthParse(t, frames)
 		if err != nil {
@@ -775,17 +767,17 @@ func TestAnthropicStreamTolerance(t *testing.T) {
 		if got := rec.count(KindNotice); got != 0 {
 			t.Errorf("pings produced %d notices, want 0: %q", got, rec.textsOf(KindNotice))
 		}
-		// 尾部 ping 在 message_stop **后**到达，所以一个
-		// 在那里返回的解析器永远不会看到 `cost`，
-		// 会在套接字中留下字节，停止连接返回到 keep-alive 池。
+		// 收尾那个 ping 是在 message_stop **之后**才到的，所以在
+		// 那儿就返回的解析器永远看不到 `cost`，还会在 socket 里
+		// 剩下字节——连接因此回不了 keep-alive 池。
 		if got := rec.count(KindUsage); got != 1 {
 			t.Errorf("KindUsage count = %d, want 1", got)
 		}
 	})
 
 	t.Run("a non-zero cost on the trailing ping is reported", func(t *testing.T) {
-		// §C10 只见过字符串"0"。一个真实数字会是这个端点
-		// 发出的第一个成本信号，所以它进入 trace。
+		// §C10 见到的一直只有字符串 "0"。真出来一个数字，那就是这
+		// 个端点发过的第一个成本信号，所以得进 trace。
 		frames := []string{
 			b6Ping, b6MessageStart, b7TextStart1, anthTextDelta(1, "hi"), anthBlockStop(1),
 			anthMessageDelta("end_turn", 1, 1, 0, 0), b6MessageStop,
@@ -802,8 +794,8 @@ func TestAnthropicStreamTolerance(t *testing.T) {
 	})
 
 	t.Run("a numeric cost does not break the frame", func(t *testing.T) {
-		// `cost` 键被类型化为 json.RawMessage，正是为了
-		// JSON 类型的改变不能把整个 frame 带下来。
+		// `cost` 这个键的类型定成 json.RawMessage，就是为了它的
+		// JSON 类型一变，不至于把整帧一起拖垮。
 		frames := []string{
 			b6Ping, b6MessageStart, b7TextStart1, anthTextDelta(1, "hi"), anthBlockStop(1),
 			anthMessageDelta("end_turn", 1, 1, 0, 0), b6MessageStop,
@@ -891,14 +883,14 @@ func TestAnthropicStreamTolerance(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 中流故障。
+// 流中途失败。
 // ---------------------------------------------------------------------------
 
 func TestAnthropicMidStreamFailureKeepsPartialAndSkipsResponseEnd(t *testing.T) {
 	t.Run("the connection dies", func(t *testing.T) {
-		// 直到一个完整工具调用的所有东西到达，然后套接字
-		// 破裂。调用方需要部分结果来区分"在完整工具调用后死亡"
-		// 和"什么都没产生"。
+		// 到一次完整工具调用为止的东西都到了，然后 socket 断了。调
+		// 用方要靠这份残缺结果，才能把"完整工具调用之后才死"和"什
+		// 么都没产出"分开。
 		var b strings.Builder
 		for _, f := range []string{b6Ping, b6MessageStart, b6ToolStart0, anthArgsDelta(0, b6WantArgs), anthBlockStop(0)} {
 			fmt.Fprintf(&b, "event: %s\ndata: %s\n\n", anthEventName(f), f)
@@ -922,10 +914,10 @@ func TestAnthropicMidStreamFailureKeepsPartialAndSkipsResponseEnd(t *testing.T) 
 	})
 
 	t.Run("an error event mid-stream", func(t *testing.T) {
-		// **构造的**：§D11 的错误都作为 HTTP 状态在流打开前到达，
-		// 所以这个形状在这个网关上未被观察到。规范在正文中间流
-		// overloaded_error，而一个在中间死亡的流不应该被记录为
-		// 一个完成的流。
+		// **构造**的：§D11 里的错误全是在流打开之前以 HTTP 状态码
+		// 到达的，所以这个形状在这个网关上没实测到过。规范说
+		// overloaded_error 会在 body 中间流出来；而半路死掉的流，
+		// 绝不能被记成跑完的流。
 		frames := []string{
 			b6Ping, b6MessageStart, b6ToolStart0,
 			anthArgsDelta(0, b6WantArgs), anthBlockStop(0),
@@ -951,13 +943,11 @@ func TestAnthropicMidStreamFailureKeepsPartialAndSkipsResponseEnd(t *testing.T) 
 // BuildRequest。
 // ---------------------------------------------------------------------------
 
-// anthWireBody 镜像的是 BuildRequest 本应产生的结果。它
-// 特意从 anthropic.go 里的结构体中单独写出来：一个测试如果
-// 用编码时那个类型来解码，就抓不出错误的 json tag，因为
-// 两边共享同一个错误。
-//
-// anthWireBlock 就是一个内容块在线上的样子。Stage 04 加上了
-// CacheControl；其余的都是 stage 03 就有的。
+// anthWireBody 镜像的是 BuildRequest 本该产出的东西。它特意跟
+// anthropic.go 里那些 struct 分开写：用编码时的同一个类型去解码的测
+// 试，抓不出写错的 json tag，因为两头共享同一个错误。
+// anthWireBlock 是内容块在线上的样子。阶段 04 加了 CacheControl；其
+// 余都是阶段 03 的。
 type anthWireBlock struct {
 	Type      string          `json:"type"`
 	Text      string          `json:"text"`
@@ -985,7 +975,7 @@ type anthWireBody struct {
 		Name        string          `json:"name"`
 		Description string          `json:"description"`
 		InputSchema map[string]any  `json:"input_schema"`
-		Function    json.RawMessage `json:"function"` // 绝不能出现
+		Function    json.RawMessage `json:"function"` // 绝不该出现
 		Parameters  json.RawMessage `json:"parameters"`
 	} `json:"tools"`
 }
@@ -1031,9 +1021,8 @@ func TestAnthropicBuildRequestEnvelope(t *testing.T) {
 		t.Errorf("url = %q, want %q", req.URL.String(), want)
 	}
 
-	// x-api-key，**不是** Authorization: Bearer。
-	// 在这里发送其他协议的 header 会产生"Missing API key."，
-	// 这看起来像一个配置问题。
+	// 是 x-api-key，**不是** Authorization: Bearer。在这儿发另一个协议的头，换
+	// 回来的是 "Missing API key."，读上去像是配置出了问题。
 	for _, h := range []struct{ key, want string }{
 		{"x-api-key", "sk-test"},
 		{"anthropic-version", "2023-06-01"},
@@ -1048,8 +1037,8 @@ func TestAnthropicBuildRequestEnvelope(t *testing.T) {
 		t.Error("an Authorization header leaked in from the other protocol")
 	}
 
-	// 返回的字节必须是线上的字节：调用方以 KindRequest 发出它们，
-	// 而请求检查器显示发送以外的东西比没有检查器更糟。
+	// 返回的字节必须就是线上的字节：调用方拿它发 KindRequest，而请求检查器给你
+	// 看的东西一旦跟实际发出去的不一样，那还不如没有检查器。
 	sent, err := io.ReadAll(req.Body)
 	if err != nil {
 		t.Fatalf("reading the request body: %v", err)
@@ -1069,8 +1058,8 @@ func TestAnthropicBuildRequestEnvelope(t *testing.T) {
 		t.Errorf("max_tokens = %d, want 700", got.MaxTokens)
 	}
 
-	// **不对称**。系统提示词在这里是顶级字段；OpenAI 适配器
-	// 让它成为 messages[0]。两个形状都不能是中立的那个。
+	// **不对称就在这里**。系统提示词在这边是顶层字段；OpenAI 适配器把它塞进
+	// messages[0]。两种形状都当不了中立的那个。
 	if len(got.System) != 1 || got.System[0].Text != "you are a shell" {
 		t.Errorf("system = %+v, want one top-level text block", got.System)
 	}
@@ -1080,8 +1069,8 @@ func TestAnthropicBuildRequestEnvelope(t *testing.T) {
 		}
 	}
 
-	// 工具是扁平的：{name、description、input_schema}。
-	// 没有 `function` 嵌套，没有 `parameters`。
+	// 工具定义是平的：{name, description, input_schema}。没有 `function` 那层
+	// 嵌套，也没有 `parameters`。
 	if len(got.Tools) != 1 {
 		t.Fatalf("got %d tools, want 1", len(got.Tools))
 	}
@@ -1099,9 +1088,9 @@ func TestAnthropicBuildRequestEnvelope(t *testing.T) {
 		t.Errorf("the OpenAI tool envelope leaked in: function=%s parameters=%s", tool.Function, tool.Parameters)
 	}
 
-	// max_tokens 在这里是强制的，§D11 展示了省略它的代价：
-	// 一个 400，其 body 是 `{"model":"qwen3.7-plus"}`，
-	// 根本没有错误信封。非正预算获得默认值而不是谜团。
+	// max_tokens 在这边是必填的，§D11 展示了漏掉它的代价：400，body 就是
+	// `{"model":"qwen3.7-plus"}`，连错误信封都没有。预算不是正数就给个默认值，
+	// 省得变成一桩悬案。
 	_, defaulted, err := p.BuildRequest("", []Msg{TextMsg(RoleUser, "hi")}, nil, 0)
 	if err != nil {
 		t.Fatalf("BuildRequest with no budget: %v", err)
@@ -1114,10 +1103,10 @@ func TestAnthropicBuildRequestEnvelope(t *testing.T) {
 	}
 }
 
-// TestAnthropicBuildRequestCollapsesToolResults 是这个文件存在的
-// 原因。三个工具结果变成**一个**用户消息，有三个
-// tool_result 块，不管调用方如何安排它们。OpenAI 适配器每个
-// 结果发出一条消息；把这个弄反是 anthropic.go 中最可能的 bug。
+// TestAnthropicBuildRequestCollapsesToolResults 就是这个文件存在的理由。三
+// 份工具结果会合成**一条** user 消息，里面装三个 tool_result 块——不管调用
+// 方当初怎么摆的。OpenAI 适配器是一份结果一条消息；把这件事做反，是
+// anthropic.go 里最可能出现的 bug。
 func TestAnthropicBuildRequestCollapsesToolResults(t *testing.T) {
 	assistant := Msg{Role: RoleAssistant, Blocks: []Block{
 		{Kind: BlockText, Text: "Running three checks."},
@@ -1131,8 +1120,8 @@ func TestAnthropicBuildRequestCollapsesToolResults(t *testing.T) {
 		msgs []Msg
 	}{
 		{
-			// 一个为每个已完成的工具追加一条消息的循环，会自然地
-			// 构建出这种安排——也就是 OpenAI 协议想要的那种。
+			// 主循环每做完一个工具就追加一条消息，自然就摆成这
+			// 样——也正是 OpenAI 协议想要的摆法。
 			name: "one neutral message per result",
 			msgs: []Msg{
 				TextMsg(RoleUser, "check three paths"),
@@ -1176,8 +1165,8 @@ func TestAnthropicBuildRequestCollapsesToolResults(t *testing.T) {
 			}
 			got := anthDecodeBody(t, body)
 
-			// user(文本) → assistant(文本 + 3 tool_use) → user(3 tool_result)。
-			// 这里四条或六条消息意味着结果没有折叠。
+			// user(text) → assistant(text + 3 tool_use) → user(3 tool_result)。
+			// 这里出现四条或六条消息，就说明结果没合并。
 			if len(got.Messages) != 3 {
 				var shape []string
 				for _, m := range got.Messages {
@@ -1211,7 +1200,7 @@ func TestAnthropicBuildRequestCollapsesToolResults(t *testing.T) {
 				}
 			}
 
-			// 助手回合重放为一个内容数组：首先是文本，
+			// assistant 那一轮回放成一个 content 数组：先是文本，
 			// 然后是三个 tool_use 块，按顺序。
 			asst := got.Messages[1]
 			if asst.Role != "assistant" || len(asst.Content) != 4 {
@@ -1235,8 +1224,8 @@ func TestAnthropicBuildRequestCollapsesToolResults(t *testing.T) {
 
 func TestAnthropicBuildRequestMessageShapes(t *testing.T) {
 	t.Run("a following user turn merges into the tool_result message", func(t *testing.T) {
-		// 连续两条用户消息是这个协议不喜欢的形状，
-		// tool_result 块需要首先出现在携带它们的消息中。
+		// 连着两条 user 消息，是这个协议不喜欢的形状；而且
+		// tool_result 块必须排在承载它们那条消息的最前面。
 		msgs := []Msg{
 			TextMsg(RoleUser, "go"),
 			{Role: RoleAssistant, Blocks: []Block{{Kind: BlockToolCall, ID: "toolu_1", Name: "bash", Args: `{"command":"ls"}`}}},
@@ -1258,10 +1247,10 @@ func TestAnthropicBuildRequestMessageShapes(t *testing.T) {
 	})
 
 	t.Run("thinking blocks are dropped, and a thinking-only turn vanishes", func(t *testing.T) {
-		// §B7/§A3b：签名在这个端点上**总是**空的，
-		// 所以重放的思考块不能验证。丢弃它会丢失来自下一回合
-		// 上下文的推理；发送它未签名冒着 400 的风险，
-		// 这会杀死会话。trace 无论哪种方式都保留每个思考 token。
+		// §B7/§A3b：这个端点上的签名**永远**是空的，所以回放的
+		// thinking 块通不过校验。丢掉它，下一回合的上下文就少了
+		// 推理；不带签名发出去，则可能吃个 400 把整个会话干掉。
+		// 反正无论走哪条路，trace 里每个 thinking token 都留着。
 		msgs := []Msg{
 			TextMsg(RoleUser, "go"),
 			{Role: RoleAssistant, Blocks: []Block{{Kind: BlockThinking, Text: "long private plan"}}},
@@ -1287,8 +1276,9 @@ func TestAnthropicBuildRequestMessageShapes(t *testing.T) {
 	})
 
 	t.Run("a system message in msgs is a caller bug, reported loudly", func(t *testing.T) {
-		// 将其重新标记为"user"会发送略有不同的 prompt，
-		// 并产生略有较差的 Agent——最难注意到的 bug 类别。
+		// 把它改标成 "user"，发出去的 prompt 就会有微妙的不同，
+		// 做出来的 Agent 也就微妙地差一点——这是最难被察觉的一
+		// 类 bug。
 		_, _, err := anthProvider().BuildRequest("sys", []Msg{TextMsg(RoleSystem, "you are a shell"), TextMsg(RoleUser, "hi")}, nil, 700)
 		if err == nil {
 			t.Fatal("want an error for a system message in msgs")
@@ -1299,9 +1289,9 @@ func TestAnthropicBuildRequestMessageShapes(t *testing.T) {
 	})
 
 	t.Run("no messages at all is refused before the network", func(t *testing.T) {
-		// §D11：这个网关对此的答案是一个 400，
-		// 其 body 是 `{"model":"qwen3.7-plus"}`
-		// ——没有类型、没有错误、没有东西可以记录。
+		// §D11：网关对这种情况的回答是 400，body 就是
+		// `{"model":"qwen3.7-plus"}`——没有 type，没有 error，没
+		// 有任何可记的东西。
 		if _, _, err := anthProvider().BuildRequest("sys", nil, nil, 700); err == nil {
 			t.Fatal("want an error for an empty conversation")
 		}
@@ -1320,48 +1310,47 @@ func TestAnthropicBuildRequestMessageShapes(t *testing.T) {
 }
 
 func TestAnthropicBuildRequestArgumentBytes(t *testing.T) {
-	// Block.Args 是字符串而 Input 是 json.RawMessage 的原因：
-	// 这些字节必须到达线上不变。通过 map[string]any 往返
-	// 会对字段排序——Go 在 marshal 上对 map 键排序，
-	// 模型按自己的顺序发出它们——而不同的字节序列是
-	// 不同的 prompt 前缀，这是对每次重放回合的缓存未命中。
+	// Block.Args 是字符串、Input 是 json.RawMessage，原因就在这里：这些字节必
+	// 须原样上线。让它们在 map[string]any 里过一遍，键就被排序了——Go 在
+	// marshal 时会给 map 的键排序，而模型是按自己的顺序吐出来的——字节序列一
+	// 变，prompt 前缀就变了，每个回放的回合都是一次缓存未命中。
 	cases := []struct {
 		name string
 		args string
-		want string // body 必须包含的确切子字符串
+		want string // body 里必须原样含有的子串
 	}{
 		{
-			// 有意**不**按字母顺序的键，以及一个充满
-			// encoding/json 会默认转义的字符的命令：
-			// `>` 和 `&` 变成 u003e/u0026，除非 HTML 转义关闭，
-			// 这会破坏请求检查器中的每个重定向。
+			// 键的顺序故意**不**按字母排；命令里也塞满了
+			// encoding/json 默认会转义的字符：不关掉 HTML 转义，
+			// `>` 和 `&` 就变成 u003e/u0026，请求检查器里每一条重
+			// 定向都会被写坏。
 			name: "key order and shell metacharacters survive byte for byte",
 			args: `{"z_last":"first","command":"grep -rn 'TODO' . 2>&1 > /tmp/o"}`,
 			want: `"input":{"z_last":"first","command":"grep -rn 'TODO' . 2>&1 > /tmp/o"}`,
 		},
 		{
-			// encoding/json 在拼接 RawMessage 时规范化的
-			// **唯一**东西：token 之间无关紧要的空格。键顺序
-			// ——真正破坏缓存的部分——未被触碰。记录在这里
-			// 所以行为是一个决定，而不是一个惊喜。
+			// 拼接 RawMessage 时，encoding/json **只**动一样东西：
+			// token 之间无意义的空白。键的顺序——真正会毁掉缓存的
+			// 那部分——一动没动。记在这里，是让这个行为成为一个决
+			// 定，而不是一次意外。
 			name: "insignificant whitespace is compacted, order is not",
 			args: `{"command": "ls -la /srv/app"}`,
 			want: `"input":{"command":"ls -la /srv/app"}`,
 		},
 		{
-			// 一个调用零参数工具的模型。`input` 是必需的。
+			// 模型调用了不带参数的工具。`input` 是必填的。
 			name: "empty args become an empty object",
 			args: ``,
 			want: `"input":{}`,
 		},
 		{
-			// §A3c：在 max_tokens 处截断的工具调用返回时
-			// `input` 被替换为 `{"raw_arguments":"<invalid JSON>"}` 而
-			// stop_reason 仍然说"tool_use"。如果那曾经往返到
-			// 请求中，原始拼接会产生格式错误的 body——§D11 展示了
-			// 这个网关用 500 回答格式错误的 body，一个依据 5xx
-			// 判断的重试策略会永远重试。所以无效字节被包裹在网关自己的
-			// 截断形状中：body 保持有效，证据完全存活在里面。
+			// §A3c：工具调用在 max_tokens 处被截断，回来的 `input`
+			// 会被换成 `{"raw_arguments":"<invalid JSON>"}`，而
+			// stop_reason 还写着 "tool_use"。这东西一旦又回到请求
+			// 里，裸着拼进去就会产出畸形的 body——而 §D11 显示这个
+			// 网关拿 500 回答畸形 body，按 5xx 来重试的策略会永远重
+			// 试下去。所以无效字节要用网关自己那套截断形状包起来：
+			// body 保持合法，证据原封不动地活在里面。
 			name: "invalid arguments are wrapped, not spliced",
 			args: `{"command": "find`,
 			want: `"input":{"raw_arguments":"{\"command\": \"find"}`,
@@ -1390,9 +1379,9 @@ func TestAnthropicBuildRequestArgumentBytes(t *testing.T) {
 }
 
 func TestAnthropicBuildRequestKeepsToolResultTextIntact(t *testing.T) {
-	// 命令输出是整个循环中最少被清理的东西：它是
-	// shell 打印的任何东西。它必须逐字到达模型的 `content`，
-	// 包括 encoding/json 本来会转义掉的尖括号和 & 符号。
+	// 命令输出是整个主循环里最没被处理过的东西：shell 打了什么就是什么。它必须
+	// 一个字节不差地变成模型看到的 `content`，包括那些 encoding/json 本来会转
+	// 义掉的尖括号和 & 号。
 	out := "total 4\ndrwxr-xr-x 2 root root <dir> & more\nexit 0\n"
 	msgs := []Msg{
 		TextMsg(RoleUser, "go"),
@@ -1414,8 +1403,8 @@ func TestAnthropicBuildRequestKeepsToolResultTextIntact(t *testing.T) {
 }
 
 func TestAnthropicBaseURLTrailingSlash(t *testing.T) {
-	// 一个 .env 文件中的一个字符；§D11 展示了这个网关
-	// 用不透明的 500 回答生成的双斜杠。
+	// .env 文件里的一个字符；§D11 显示，由此产生的双斜杠会让这个网关回一个不知
+	// 所云的 500。
 	p := newAnthropicProvider("https://opencode.ai/zen/go/v1/", "k", "m")
 	req, _, err := p.BuildRequest("", []Msg{TextMsg(RoleUser, "hi")}, nil, 10)
 	if err != nil {

@@ -7,17 +7,17 @@ import (
 	"unicode/utf8"
 )
 
-// 整个测试套件用 %q 打印字符串。转义序列在终端里根本不可见——要是失败消息
-// 真把它们渲染出来，就只会把断言输出涂成红色、吃掉字符，这样你最终调试的就是
-// 测试宿主，而不是代码。
+// 整个测试套件打字符串都用 %q。转义序列按定义在终端里就是看不见的——失败
+// 消息要是把它们真渲染出来，只会把断言输出涂成红的、再吃掉几个字符，然后
+// 你就从调试自己的代码变成了调试测试宿主。
 
 // ---------------------------------------------------------------------------
-// 表的不变量
+// 这张表的不变式
 // ---------------------------------------------------------------------------
 
-// TestWideRangesSorted 守护 inRanges 的未检查前提条件。对无序表的二分查找
-// 不会崩溃，但会无声地遗漏。症状是：某个字符在某种字体、某一台机器上宽度
-// 错误，这是一件令人恐惧的调试工作，也是一件平凡的断言工作。
+// TestWideRangesSorted 守的是 inRanges 那个没被检查的前置条件。在没排序的
+// 表上做二分不会崩，它只会悄悄漏掉。症状是某一台机器上、某一种字体里，某
+// 一个字符的宽度不对——这种事查起来要命，断言起来只要一行。
 func TestWideRangesSorted(t *testing.T) {
 	for i, r := range wideRanges {
 		if r.lo > r.hi {
@@ -114,11 +114,11 @@ func TestDispWidth(t *testing.T) {
 	}
 }
 
-// TestBytesRunesColumnsAreThreeDifferentNumbers 就是这个文件的论点，只是写成了
-// 可执行的代码。如果这个包里的测试你只记得一个，那就记住：这三个计数互不
-// 相同，只有最后一个才能真正排出一屏。
+// TestBytesRunesColumnsAreThreeDifferentNumbers 就是本文件的论点，做成了可
+// 执行的。这个包里你只记得住一个测试的话，就记住：这三个数彼此不一致，而
+// 只有最后那个能排出一屏东西来。
 func TestBytesRunesColumnsAreThreeDifferentNumbers(t *testing.T) {
-	const s = "é" // "e" 加 COMBINING ACUTE ACCENT — 渲染成 "é"
+	const s = "é" // "e" 加上 COMBINING ACUTE ACCENT——渲染出来是 "é"
 
 	if got := len(s); got != 3 {
 		t.Errorf("len(%q) = %d, want 3 — this is the BYTE count, and it is the number "+
@@ -133,7 +133,7 @@ func TestBytesRunesColumnsAreThreeDifferentNumbers(t *testing.T) {
 			"terminal agrees with. The accent stacks onto the e; it takes no column of its own", s, got)
 	}
 
-	// CJK 的相同三个数字，它们的偏离方式相反。
+	// 同样这三个数，换成 CJK，它们朝另一个方向岔开。
 	const cjk = "你好"
 	if len(cjk) != 6 || utf8.RuneCountInString(cjk) != 2 || dispWidth(cjk) != 4 {
 		t.Errorf("%q: bytes=%d runes=%d columns=%d, want 6/2/4 — bytes over-count, runes "+
@@ -173,30 +173,29 @@ func TestTruncCols(t *testing.T) {
 	}
 }
 
-// TestTruncColsWideBoundary 是大家都搞错的那个。
+// TestTruncColsWideBoundary 是所有人都会写错的那一个。
 //
-// 在 3 列处截断 "你好世界" 无法干净完成：你 是 2，好 会变成 4。半个 好
-// 绝不能到达终端，所以我们在它之前停下——然后我们欠调用者孤立列，
-// 因为一个少一列的单元格会像一个多一列的单元格一样完全损坏表。
+// 把 "你好世界" 切到 3 列，没法切干净：你 占 2，加上 好 就成了 4。半个 好
+// 绝不能送到终端上，所以我们停在它前面——然后就欠了调用方那落单的一列，因
+// 为格子少一列跟多一列，把表格错开的程度一模一样。
 func TestTruncColsWideBoundary(t *testing.T) {
-	// 注释写在对应行的上方，而不是行尾。gofmt 按 rune 数对齐行尾注释，所以
-	// 面对一张写满 CJK 字面量的表，它生成的东西自己觉得对齐了，你的终端却不
-	// 这么看——这正是这个包本来要修复的同一个 bug，只是这次出现在格式化器
-	// 自己身上。
+	// 注释放在各自那行的上面，不是后面。gofmt 按 rune 数对齐行尾注释，所以
+	// 在一张塞满 CJK 字面量的表上，它排出来的东西它自己认为是对齐的，你的终
+	// 端不这么认为——正是这个包要修的那个 bug，出现在格式化工具身上。
 	cases := []struct {
 		s    string
 		n    int
 		want string
 	}{
-		// 一个宽字符放下，然后为孤立列留一个空格。
+		// 装得下一个宽字符，然后一个空格补那落单的列。
 		{"你好世界", 3, "你 "},
-		// 两个宽字符放下，然后一个空格。
+		// 装得下两个宽字符，然后一个空格。
 		{"你好世界", 5, "你好 "},
-		// 根本放不下任何东西，结果仍然恰好是一列。
+		// 一个都装不下，结果照样正好是一列。
 		{"你好世界", 1, " "},
-		// 宽字符跨越极限。
+		// 宽字符正好跨在上限上。
 		{"a你b", 2, "a "},
-		// 重置发生在填充之前，所以那些填充用的空格，不会被涂上一层还没关闭的背景色。
+		// reset 排在补空格之前，所以填进去的空格不会被还开着的背景色涂上。
 		{"\x1b[36m你好", 3, "\x1b[36m你\x1b[0m "},
 	}
 	for _, c := range cases {
@@ -220,10 +219,9 @@ func TestTruncColsWideBoundary(t *testing.T) {
 	}
 }
 
-// TestTruncColsDoesNotSplitEscape 会在某一列处截断字符串，而这一列恰好落在
-// 转义序列字节的中间。朴素的 s[:n] 会把 "\x1b[3" 晾在那里悬空；终端接下来
-// 会把程序里任何地方打印出的下一个字符，当成这个序列缺失的最后一个字节，
-// 直接吞掉。
+// TestTruncColsDoesNotSplitEscape 在一个正好落在转义序列字节中间的列上切字
+// 符串。天真的 s[:n] 会留下悬空的 "\x1b[3"；终端接着就会把程序里任何地方打
+// 印的下一个字符吞掉，当成这段序列缺的那个结束字节。
 func TestTruncColsDoesNotSplitEscape(t *testing.T) {
 	const s = "ab\x1b[31mcd"
 	const want = "ab\x1b[31mc\x1b[0m"
@@ -240,14 +238,14 @@ func TestTruncColsDoesNotSplitEscape(t *testing.T) {
 		t.Errorf("truncCols(%q, 3) = %q is %d columns, want 3 — escape bytes must not "+
 			"count toward n", s, got, dispWidth(got))
 	}
-	// 为了对比，也为了使失败模式具体化：字节切片做什么。
+	// 做个对照，也让这种失败具体起来：字节切片会切成什么样。
 	if broken := s[:3]; broken != "ab\x1b" {
 		t.Errorf("sanity check on the counter-example changed: s[:3] = %q", broken)
 	}
 }
 
-// TestTruncColsClosesOpenSGR 是阻止程序让用户 shell 提示符永久保持红色的
-// 测试。
+// TestTruncColsClosesOpenSGR 就是那个防止程序把用户的 shell 提示符永久染红
+// 的测试。
 func TestTruncColsClosesOpenSGR(t *testing.T) {
 	cases := []struct {
 		name string
@@ -271,8 +269,8 @@ func TestTruncColsClosesOpenSGR(t *testing.T) {
 		}
 	}
 
-	// 镜像：不要把重置钉在从未打开颜色的字符串上，也不要在来源已经关闭时
-	// 加第二个。
+	// 反过来的一面：从没开过颜色的字符串，别给它硬钉上一个 reset；源串自己
+	// 已经关掉了的，也别再加第二个。
 	if got := truncCols("plain", 3); strings.Contains(got, "\x1b") {
 		t.Errorf("truncCols(%q, 3) = %q — an uncoloured string must come back with no "+
 			"escapes at all", "plain", got)
@@ -292,7 +290,7 @@ func TestPadCols(t *testing.T) {
 		name string
 		s    string
 		n    int
-		want string // "" 表示：仅检查列计数
+		want string // "" 表示：只检查列数
 	}{
 		{"ASCII short", "ab", 5, "ab   "},
 		{"ASCII exact", "abc", 3, "abc"},
@@ -320,9 +318,9 @@ func TestPadCols(t *testing.T) {
 	}
 }
 
-// TestPadColsBuildsAlignedTable 是 doc 注释承诺的验收测试：由 ASCII、CJK 和
-// 彩色名称混合而成的一列，全部落在同一个地方。fmt 的 %-12s 做不到这一点，
-// 这正是 padCols 存在的原因。
+// TestPadColsBuildsAlignedTable 就是文档注释许诺的那个验收测试：一列名字，
+// ASCII、CJK、带颜色的混在一起，全都落在同一个位置上。fmt 的 %-12s 做不到
+// 这件事，而这就是 padCols 存在的全部理由。
 func TestPadColsBuildsAlignedTable(t *testing.T) {
 	names := []string{"main.go", "读我.md", "\x1b[36mREADME\x1b[0m", "日本語テキスト.txt", "éclair.txt"}
 	const col = 12
@@ -382,9 +380,8 @@ func TestWrapCols(t *testing.T) {
 	}
 }
 
-// TestWrapColsReopensColour 检查的是：颜色跨越换行点时，两侧是否都能保留下来。
-// 一条延续行如果什么都不继承，那么只要两行之间发生了任意一次屏幕重绘，它就会
-// 立刻变得没有颜色。
+// TestWrapColsReopensColour 检查跨过折行点的颜色在两边都活了下来。什么都没
+// 继承到的续行，只要有东西在这两行之间重绘了屏幕，颜色就没了。
 func TestWrapColsReopensColour(t *testing.T) {
 	cases := []struct {
 		name string
@@ -438,15 +435,15 @@ func TestWrapColsReopensColour(t *testing.T) {
 	}
 }
 
-// TestWrapColsNarrowerThanAWideRune 是一个**终止**测试。
+// TestWrapColsNarrowerThanAWideRune 是一个**终止性**测试。
 //
-// n == 1 且一个 2 列字符无法满足：rune 无法在空行上放下，所以自然的
-// "刷新行并重试这个 rune" 循环永远重试。wrapCols 的第一个版本在这里
-// 挂起，它在重绘内挂起，所以症状是一个冻结的 UI，没有堆栈追踪，没有
-// 任何人想查看的 CPU 飙升。
+// n == 1 碰上一个 2 列宽的字符，这是无解的：这个 rune 在空行上也装不下，于
+// 是"刷掉这行、重试这个 rune"这个自然写法会一直重试下去。wrapCols 的第一版
+// 就挂在这里，而且是挂在重绘里面，所以症状是界面冻住，没有栈回溯，也没有
+// 谁想得起去看的 CPU 尖峰。
 //
-// 选择的行为是单独发出 rune 并溢出一列，而不是丢弃它：溢出的字形
-// 可见、可诊断，无声删除的字符两者都不是。
+// 选定的行为是让这个 rune 单独成行、溢出一列，而不是丢掉它：溢出的字形看
+// 得见、查得出，被悄悄删掉的字符两样都不是。
 func TestWrapColsNarrowerThanAWideRune(t *testing.T) {
 	inputs := []string{"你好", "a你b", "你", "\x1b[31m你好\x1b[0m", "你\n好"}
 
@@ -456,7 +453,8 @@ func TestWrapColsNarrowerThanAWideRune(t *testing.T) {
 
 		select {
 		case got := <-done:
-			// 每个字符必须仍然存在。溢出是接受的妥协；失去用户文本不是。
+			// 每一个字符都必须还在。溢出是可以接受的妥协；把用户的文字弄丢
+			// 了不是。
 			var joined string
 			for _, line := range got {
 				joined += line
@@ -470,7 +468,7 @@ func TestWrapColsNarrowerThanAWideRune(t *testing.T) {
 			if len(got) == 0 {
 				t.Errorf("wrapCols(%q, 1) returned no lines at all", s)
 			}
-			// 退化路径不能在末尾钉上一个空行。
+			// 退化路径不许在末尾硬安一个空行。
 			if len(got) > 1 && got[len(got)-1] == "" && !strings.HasSuffix(s, "\n") {
 				t.Errorf("wrapCols(%q, 1) = %q ends with a spurious empty line", s, got)
 			}
@@ -482,7 +480,7 @@ func TestWrapColsNarrowerThanAWideRune(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 转义扫描器，直接
+// 直接测这个转义序列扫描器
 // ---------------------------------------------------------------------------
 
 func TestAnsiLen(t *testing.T) {

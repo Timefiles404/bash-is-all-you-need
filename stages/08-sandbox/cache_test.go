@@ -6,9 +6,8 @@ import (
 	"testing"
 )
 
-// 每个下面测试使用的对话：两个回合，
-// 一个工具调用和它的结果，所以有一个现实的
-// "最后一条消息的最后块"来固定。
+// 下面每个测试用的都是这段对话：两个回合，一次工具调用加它的结果，
+// 这样才有像样的"最后一条消息的最后一个块"可以钉。
 func cacheFixture() []Msg {
 	return []Msg{
 		TextMsg(RoleUser, "count the go files"),
@@ -43,9 +42,8 @@ func TestCacheBreakpointOnSystemBlock(t *testing.T) {
 	}
 }
 
-// 滚动 breakpoint 是在 Agent 中重要的：
-// 它必须在最新回合上，所以每个请求读取
-// 前一个写的前缀。
+// 滚动断点才是 Agent 里要紧的那个：它必须落在最新的回合上，这样每个
+// 请求读到的都是上一个请求写下的前缀。
 func TestCacheBreakpointRollsToTheNewestTurn(t *testing.T) {
 	got := cacheBuild(t, true)
 	last := got.Messages[len(got.Messages)-1]
@@ -53,10 +51,9 @@ func TestCacheBreakpointRollsToTheNewestTurn(t *testing.T) {
 		t.Error("the last block of the last message is unmarked — the conversation prefix is never pinned")
 	}
 
-	// 每个更早的块必须保持未标记。一个标记
-	// 在一个不是最新的块上停止随对话移动，
-	// 所以它缓存每个回合的更少——并且
-	// 它永远烧掉四个可用槽中的一个。
+	// 更早的每个块都必须保持没有标记。标记打在不是最新的块上，就不再跟
+	// 着对话往前走，于是每个回合能缓存的部分越来越少——而且它把四个可用
+	// 槽位里的一个永久烧掉了。
 	for mi, m := range got.Messages[:len(got.Messages)-1] {
 		for bi, b := range m.Content {
 			if b.CacheControl != nil {
@@ -67,10 +64,9 @@ func TestCacheBreakpointRollsToTheNewestTurn(t *testing.T) {
 }
 
 func TestCacheBreakpointCountStaysUnderTheLimit(t *testing.T) {
-	// 协议允许每个请求四个标记。这个适配器
-	// 放置两个并留下两个空闲——一个扇出 Agent
-	// 需要一个中间标记来保持在 20-块回看
-	// 窗口内（见 markRollingBreakpoint）。
+	// 协议允许每个请求四个标记。这个适配器摆了两个，留两个空着——扇出型
+	// 的 Agent 需要一个中间标记，才待得住 20 块的回溯窗口（见
+	// markRollingBreakpoint）。
 	got := cacheBuild(t, true)
 	n := 0
 	for _, b := range got.System {
@@ -107,12 +103,11 @@ func TestNoCacheOmitsEveryBreakpoint(t *testing.T) {
 	}
 }
 
-// 使这个特性能安全添加的不变式。
+// 让这个特性可以放心加进来的不变式。
 //
-// 如果打开缓存改变了一个*未标记*块的字节，那么启用它反而会
-// 让它本该保留的那段前缀失效——升级后的第一个请求就会在
-// 悄无声息中支付全价。所以两份 body 之间唯一被允许的差异，
-// 就是 cache_control 键本身。
+// 要是打开缓存会改掉**没标记**的块的字节，那启用它就会作废它本来要
+// 保住的那段前缀——升级之后的第一个请求会一声不响地付全价。所以两份
+// body 之间唯一允许存在的差别，就是 cache_control 这几个键本身。
 func TestEnablingCachingChangesNothingElse(t *testing.T) {
 	p := newAnthropicProvider("https://example.test", "k", "m")
 	tools := []Tool{{Name: "bash", Schema: map[string]any{"type": "object"}}}
@@ -138,18 +133,17 @@ func TestEnablingCachingChangesNothingElse(t *testing.T) {
 	}
 }
 
-// 针对这一整章都在讲的那件事，设下的回归防护。
+// 整章讲的就是这件事，这里是它的回归防线。
 //
-// 工具参数被原样当作原始字节透传，就是为了让一个重放的回合，
-// 产生和它上次一样的前缀。如果请求路径里的任何环节把它们
-// 解码后又重新编码一遍，Go 就会把 map 的键排序，字节就会
-// 移位，从那之后每个本该命中缓存的回合都会变成一次缺失
-// ——不会报错，唯一的症状就是账单。
+// 工具参数以原始字节拼接穿过，正是为了让重放的回合产出跟上次一样的
+// 前缀。请求路径上只要有哪一步把它们解码再编码，Go 就会把 map 的键
+// 排序，字节就挪位了，那之后每个缓存过的回合都变成未命中——没有报
+// 错，除了账单之外没有任何症状。
 func TestToolArgumentKeyOrderSurvives(t *testing.T) {
 	msgs := []Msg{
 		TextMsg(RoleUser, "go"),
 		{Role: RoleAssistant, Blocks: []Block{
-			// 有意**不**按字母顺序："zeta"在"alpha"前。
+			// 故意**不**按字母序："zeta" 排在 "alpha" 前面。
 			{Kind: BlockToolCall, ID: "t1", Name: "bash", Args: `{"zeta":1,"alpha":2}`},
 		}},
 	}
@@ -168,12 +162,10 @@ func TestToolArgumentKeyOrderSurvives(t *testing.T) {
 	}
 }
 
-// Prompt() 是缓存命中率必须对其计算的
-// 数字。单独读取 Input 在一个温调用上
-// 低报真实输入 ~500x。
+// 缓存命中率必须拿 Prompt() 来算。热调用的时候只看 Input，会把真实
+// 输入少报约 500 倍。
 func TestCacheHitRateUsesPromptNotInput(t *testing.T) {
-	// 在 wire-notes §C8 的一个温调用上观察到
-	// 的形状。
+	// wire-notes §C8 在一次热调用上观测到的形状。
 	u := Usage{Input: 18, CacheRead: 17967}
 	if u.Prompt() != 17985 {
 		t.Fatalf("Prompt() = %d, want 17985", u.Prompt())
@@ -188,9 +180,8 @@ func TestCacheHitRateUsesPromptNotInput(t *testing.T) {
 	}
 }
 
-// 健全性检查：fixture body 是包括
-// cache_control 的有效 JSON，所以一个
-// 标记的请求仍然是服务器会接受的东西。
+// 兜底检查：带上 cache_control 之后，fixture 的 body 仍然是合法
+// JSON，所以打了标记的请求，服务器还是收得下。
 func TestMarkedBodyIsValidJSON(t *testing.T) {
 	p := newAnthropicProvider("https://example.test", "k", "m")
 	_, body, err := p.BuildRequest("sys", cacheFixture(), nil, 512)

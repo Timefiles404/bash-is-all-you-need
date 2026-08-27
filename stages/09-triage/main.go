@@ -1,25 +1,25 @@
-// 阶段 09 — 分诊：第二阶段的第一个阶段，从这里开始出错。
+// 阶段 09——分诊：第二部分的第一个阶段，从这里开始，东西会坏。
 //
-// 一个想法，它就住在 triage.go 里：**一个错误是一个决策，不是一个字符串。**
-// 一次失败的模型调用会被分类成重试 / 降级 / 停，而分类器扎根于
-// docs/wire-notes.md §D11，那里两条显而易见的规则——"401 说明密钥是坏的"和
-// "5xx 是瞬态的"——两条都是错的。
+// 只有一个想法，就写在 triage.go 里：**错误是决策，不是字符串。** 失败的
+// 模型调用会被分类成重试 / 降级 / 停，而分类器的依据是
+// docs/wire-notes.md §D11——那里记着，两条最显然的规则"401 表示密钥不对"
+// 和"5xx 是瞬态的"都是错的。
 //
-// 相比阶段 07 的差异，是一个新文件和一个变了的错误类型。原本是
+// 跟阶段 07 的差别，是多一个文件、改一个错误类型。原来是
 //
 //	res, err := a.call(turn, msgs)
 //	if err != nil { a.bus.Error("%v", err); return msgs }
 //
-// 的地方，现在是 callWithRetry；而 call() 本身作为 modelCall 搬进了
-// triage.go，好让阶段 05 的摘要器——它是一次真实的模型调用，也是每个 Agent 都忘
-// 了给它装仪表的那一次——走同一套决策，而不是自己那份更差的副本。
+// 现在是 callWithRetry，而 call() 本身搬进了 triage.go，改名 modelCall，
+// 好让阶段 05 的摘要器——它是一次真实的模型调用，也是每个 Agent 都忘了
+// 装仪表的那一次——走同一套决策，而不是自己那份更差的拷贝。
 //
-// 注意这个分叉点：第二阶段接的是阶段 07，不是阶段 08。阶段 08 是这个仓库唯一的
-// 依赖，而且它明说是可选的；把它一路带下主干，会悄悄让它变成必需。
+// 注意分叉点：第二部分接着阶段 07 往下走，不是阶段 08。阶段 08 是这个仓库
+// 唯一的依赖，而且是明说可选的；把它带进主干，等于悄悄把它变成必需。
 //
-// 第一阶段建起来的东西没有变。子 Agent 仍然只是一次函数调用，它的返回值是一段
-// 话——只是现在它和父 Agent 共享一把梯子，因为"这个端点在拒绝调用"是一个关于端
-// 点的事实。
+// 第一部分建起来的东西没有变。子 Agent 仍然是一次函数调用，返回值是一段
+// 话——只是它现在跟父 Agent 共用一把梯子，因为"这个端点在拒绝调用"是关
+// 于端点的事实。
 package main
 
 import (
@@ -55,16 +55,12 @@ either find another way or ask.
 
 When the task is done, reply with a short plain-text summary and no tool call.`
 
-// memoryPrompt 是整个长期记忆特性。
+// memoryPrompt 就是长期记忆这个功能的全部。
 //
-// 没有工具，没有存储，没有嵌入，
-// 没有检索步骤：一个文件，加一句
-// 话，告诉模型可以用它已有的工具，
-// 把内容追加进这个文件。最后一行
-// 是决定文件是否值得在六个月后读
-// 的部分——"记录你学到的，不是
-// 你做了什么"是知识库和日记之间
-// 的区别。
+// 没有工具，没有存储，没有 embedding，没有检索这一步：一个文件，加一句
+// 话告诉模型，它可以用手头已有的工具往里追加。最后那一行才是决定这份
+// 文件半年后还值不值得读的地方——"记你学到了什么，不是你干了什么"，
+// 就是知识库和日记的分界线。
 const memoryPrompt = `
 
 Durable notes live in ` + memoryFileForWriting + ` in the working directory. If that file
@@ -79,10 +75,10 @@ gotcha, a decision the user made — append it:
 Record what you learned, not what you did. Notes written now take effect in your
 next session, not this one.`
 
-// para 是一个空行。它之所以被写成一个常量，而不是在每个用到的地方直接
-// 写字面量，只是因为它要在四个地方保持一致：父 Agent 看到的系统提示词，
-// 和每一个子 Agent 看到的系统提示词，必须在第一段之后逐字节相同，
-// 否则两者就无法共享缓存前缀。
+// para 就是一个空行。它之所以做成常量、而不是在每个用到的地方写字面量，只
+// 是因为它出现在四个必须一致的位置：父 Agent 看到的系统提示词，和每个子
+// Agent 看到的那份，第一段以下必须逐字节相同，否则两者就没有共同的缓存前
+// 缀。
 var para = string([]rune{0x0A, 0x0A})
 
 func bashToolDef() Tool {
@@ -113,8 +109,7 @@ type config struct {
 }
 
 // ---------------------------------------------------------------------------
-// 权限闸。自阶段 01 以来未改，除了它通过
-// 总线报告。
+// 权限闸。除了改成通过总线上报，从阶段 01 起就没变过。
 // ---------------------------------------------------------------------------
 
 type gate struct {
@@ -123,22 +118,22 @@ type gate struct {
 	available    bool
 	out          io.Writer
 
-	// 一次只问一个问题，而这一点，是真的存在并发争用的。
+	// 一次只问一个问题，而且它是真的会争。
 	//
-	// 这个注释的第一个版本声称不会有争用：dispatch() 会在同一个 goroutine
-	// 上问完每一个问题，然后才开始任何并发，所以父 Agent 的问题都是串行的。
-	// 那个推理是错的，而错在哪里，比这把锁本身更值得琢磨。
+	// 这段注释的第一版声称它不会争：dispatch() 是在开始任何并发之前，在同一
+	// 个 goroutine 上把所有问题问完的，所以父 Agent 的提问是串行的。那个推理
+	// 错了，而它错的方式比这把锁本身更值钱。
 	//
-	// 子 Agent 在自己的 goroutine 上运行同一个 dispatch()，它的 bash 调用
-	// 会去问这同一个共享门——就在并发进行的过程中，和它的兄弟们一起。这把
-	// 锁能阻止两个提示词逐字交错地打印出来。但它挡不住更糟的情况，因为
-	// 命令文本和问题，是经由不同的路径、在不同的锁下，分别到达终端的：
+	// 子 Agent 在自己的 goroutine 上跑同一个 dispatch()，它的 bash 调用问的是
+	// 同一个共享的权限闸——在并发中间，跟它的兄弟们一起问。这把锁挡住的是两
+	// 段提示一个字符一个字符地交错。它挡不住更糟的事，因为命令文本和问题是走
+	// 不同的路径、在不同的锁下面到终端的：
 	//
-	//	命令   由**渲染器**打印，不经过总线，在 bus.core.mu 下
-	//	问题   在**这里**打印，在 gate.mu 下
+	//	命令   由**渲染器**打印，从总线上下来，在 bus.core.mu 底下
+	//	问题   在**这里**打印，在 gate.mu 底下
 	//
-	// 两个锁、一个终端，它们之间没有任何排序。修复的办法不是加第三把锁——
-	// 而是在下面的 ask() 里，让问题自己点明它问的是哪条命令。
+	// 两把锁，一个终端，两者之间没有顺序。修法不是加第三把锁——修法在下面的
+	// ask() 里，问题现在会自报它问的是谁。
 	mu sync.Mutex
 }
 
@@ -159,26 +154,23 @@ func (g *gate) ask(command string) (verdict, string) {
 	if !g.available {
 		return deny, "no terminal to ask on — rerun with --yolo to allow commands"
 	}
-	// 问题会说清楚，自己问的是哪条命令。
+	// 问题会点名它问的是哪条命令。
 	//
-	// 直到阶段 07 之前，都不是这样，而且在那之前，也确实不需要这样：在
-	// 严格顺序的 print-then-ask 循环下，"run?" 只能指上面的那一行。并发
-	// 子 Agent 抹掉了这个保证，而它留下的这个问题，不是什么显示上的小
-	// 故障：
+	// 阶段 07 之前它不点名，而在阶段 07 之前它也不需要点：在严格串行的"先打
+	// 印再询问"循环里，"run?" 只可能指它上面那一行。并发的子 Agent 把这个保
+	// 证拿掉了，而留下的失败不是显示上的小毛病：
 	//
-	//	│ $ rm -rf /tmp/build            <- 子 Agent A 的命令，通过总线
-	//	│ $ echo hello                   <- 子 Agent B 的命令，通过总线
-	//	  run? [y / n / a = all / q]     <- 子 Agent A 的问题
+	//	│ $ rm -rf /tmp/build            <- 子 A 的命令，经由总线
+	//	│ $ echo hello                   <- 子 B 的命令，经由总线
+	//	  run? [y / n / a = all / q]     <- 子 A 的问题
 	//
-	// 用户是在为自己刚读到的那条命令作答，却顺带把另一条也批准了。一句话
-	// 只要点明自己问的是哪条命令，不管屏幕上还有什么，都不会被看错——
-	// 代价不过是多出一行。
+	// 用户按自己刚读到的那条命令作答，于是授权了另外那条。自带主语的提示，不
+	// 管屏幕上还有什么都不会被读错，代价是一行。
 	//
-	// 还要注意 `a` 现在老实交代的是什么。它设置的 `always` 是在**共享**
-	// 门上，所以只要有一个子 Agent 点了"允许全部"，父 Agent 和其他每一个
-	// 兄弟 Agent 的门就都跟着解除了。把它的作用域收窄到每个 Agent 自己，
-	// 会更安全，但也意味着每个子 Agent 都要再被问一遍——而这正是人们最后
-	// 干脆一路 --yolo 跑下去的原因。选择保留；提示词停止隐藏它。
+	// 还要注意 `a` 现在对什么诚实了。它设的是**共享**权限闸上的 `always`，所
+	// 以某个子 Agent 的"全部允许"，把父 Agent 和所有兄弟的权限闸一起卸了。按
+	// Agent 分别限定会更安全，也意味着每个子 Agent 都要再问一遍，而人们就是这
+	// 么最后跑上 --yolo 的。这个选择不改；只是提示不再瞒着它了。
 	fmt.Fprintf(g.out, "  run? %s\n  [y / n / a = all, this session, every agent / q = stop] ",
 		oneLineDim(command, 72))
 	if !g.in.Scan() {
@@ -199,13 +191,12 @@ func (g *gate) ask(command string) (verdict, string) {
 
 // ---------------------------------------------------------------------------
 
-// agent 装着贯穿整个会话生命周期、
-// 始终存在的一切。
+// agent 装着活满整个会话的那些东西。
 type agent struct {
-	// 阶段 09 里，lad 取代了原来那个朴素的 `p Provider`。一个会话不再有*一个*
-	// 供应商；它有一个有序列表和一个当前位置，而这个位置可以在会话中途移动。原
-	// 本读 a.p 的地方现在全都走 a.prov()，那是离真相一把锁的距离，而不是一个
-	// "启动时曾经为真"的字段。
+	// 阶段 09 里，lad 取代了原来那个光秃秃的 `p Provider`。会话不再有*一个*
+	// 供应商，它有一份有序的列表和一个当前位置，而这个位置会在会话中途移
+	// 动。原先读 a.p 的地方现在全走 a.prov()——隔一把锁就是真相，而不是一个
+	// 启动时为真的字段。
 	lad   *ladder
 	pol   retryPolicy
 	httpc *http.Client
@@ -214,28 +205,26 @@ type agent struct {
 	cfg   config
 	comp  *compactor
 
-	// system 是函数，不是字符串，因为
-	// 阶段 04 的 --break-cache 实验：
-	// 启动时计算一次的值是常数前缀，
-	// 只有每个请求重计算的值使任何东西
-	// 无效。保持间接使那个区别可表达。
+	// system 是函数而不是字符串，原因在阶段 04 的 --break-cache 实验：启动
+	// 时算一次的值是恒定前缀，只有每次请求都重算的值才会作废缓存。留着这
+	// 一层间接，才能把这个差别表达出来。
 	system func() string
 
 	memoryDir  string
 	lastPrompt int
 
-	// stable 是环境 + 记忆 + 技能这一块，逐字共享给每一个子 Agent。只
-	// 计算一次；至于为什么绝不能重新计算，参见阶段 05 的位置规则。
+	// stable 是环境 + 记忆 + 技能这一整块，逐字节共享给每个子 Agent。只算一
+	// 次；为什么绝不能重算，见阶段 05 的摆放规则。
 	stable string
 
 	// 阶段 07。
-	depth    int // 0 是与人类交谈的 Agent
+	depth    int // 0 是人正在对话的那个 Agent
 	maxDepth int
 	subTurns int
 
 	mu        sync.Mutex
 	children  int
-	spent     Usage // 这个 Agent 自己的 token 消耗，用于子 Agent 报告
+	spent     Usage // 这个 Agent 自己的 token 消耗，给子 Agent 报告用
 	turnsUsed int
 }
 
@@ -250,18 +239,18 @@ func main() {
 		step         = flag.Bool("step", false, "replay: wait for Enter before each event")
 		showReq      = flag.Bool("show-request", false, "print the full request body before each call")
 
-		// 阶段 06。Composer 是一个**读者**，所以它只需要一个路径，其他什么都不需
-		// 要——没有密钥，没有供应商，没有网络。那不是限制，而是阶段 02 决定让
-		// trace 成为真实来源、而不是调试日志的收获。
+		// 阶段 06。composer 是个**读者**，所以它只要一个路径，别的什么都不
+		// 需要——不要 key，不要供应商，不要网络。这不是限制，这是阶段 02 当
+		// 初决定让 trace 当事实来源、而不是当调试日志的回报。
 		composerAt = flag.String("composer", "", "open the TUI on a trace file instead of running the agent")
 
-		// 同样的视图，印出来，而不是画出来。
+		// 同样这几个视图，只是打印出来而不是画出来。
 		//
-		// 这不是调试舱口。只要你想 diff、grep、把内容粘贴进一个 issue，或者在 CI
-		// 里检查，TUI 就是一条死路；而"模型在第 12 次调用中看到了什么"这类问题，
-		// 你恰恰想要一个能丢进管道里处理的答案。渲染和绘制原本就是两个独立的函数
-		// （views.go 返回文本行；term.go 把它们画出来），所以这里只多花八行代码——
-		// 这就是不让 UI 独占数据的回报。
+		// 这不是调试暗门。凡是你想 diff、想 grep、想贴进 issue、想在 CI 里
+		// 核对的东西，TUI 都是死路；而"第 12 次调用时模型看到了什么"，正是
+		// 那种你希望能把答案接进管道的问题。渲染和绘制原本就是两个函数
+		// （views.go 返回行，term.go 负责画），所以这件事只花了八行——不让
+		// UI 占住数据，回报就在这儿。
 		dumpAt   = flag.String("composer-dump", "", "print one composer view for a trace and exit")
 		dumpView = flag.String("view", "model", "composer-dump: god | model | wire")
 		dumpCall = flag.Int("call", 1, "composer-dump: which model call (1-based)")
@@ -281,16 +270,16 @@ func main() {
 		maxDepth = flag.Int("max-depth", 1, "how deep subagents may nest; 0 removes the task tool entirely")
 		noSkills = flag.Bool("no-skills", false, "do not index skills/*/SKILL.md")
 
-		// 进程外的子 Agent，用于 docs/07 里的对比：一个 prompt 进去，一个报告
-		// 出来，没有 REPL——这就是子 Agent 从头到尾的全部，也正是为什么在 bash
-		// 里运行 `agent --subagent "..."`，本身就是一套能用的子 Agent 机制，
-		// 完全不需要任务工具参与。
+		// 进程外的子 Agent，给 docs/07 里的对照用。一个 prompt 进去，一份报
+		// 告出来，没有 REPL——子 Agent 从来就只是这些，也正因如此，从 bash
+		// 里跑 `agent --subagent "..."` 就是一套能用的子 Agent 机制，全程没
+		// 有 task 工具的事。
 		subagentAt = flag.String("subagent", "", "run one subagent task, print its report, and exit")
 
-		// 阶段 09。三个数字，而默认值本身就是论点：重试是开着的，因为一个 429
-		// 就丢掉一个回合，比停两秒更糟；重试也是有界的，因为比丢掉一个回合更糟
-		// 的，只有一个悄无声息地花掉四分钟、六个 prompt，却什么也没换来的回
-		// 合。
+		// 阶段 09。三个数字，而默认值本身就是论点：重试默认开着，因为单单
+		// 一个 429 就丢掉一个回合，那比停两秒更糟；重试又是有界的，因为比
+		// 丢掉回合更糟的，只有一声不响花掉四分钟六个 prompt 却什么都没干成
+		// 的回合。
 		fallbackTo  = flag.String("fallback", "", "provider names to fall back to, in order, comma-separated")
 		retries     = flag.Int("retry", 3, "attempts per provider on a retryable failure; 1 disables retrying")
 		retryBudget = flag.Duration("retry-budget", 30*time.Second, "total time one call may spend waiting between attempts")
@@ -303,9 +292,9 @@ func main() {
 	flag.BoolVar(&cfg.yolo, "yolo", false, "run every command without asking")
 	flag.Parse()
 
-	// 首先要说清楚：Composer 从来不需要供应商；要是非让它等一个供应商，就意
-	// 味着你没法在一台没配密钥的机器上读 trace——可那恰恰是你最想读 trace 的
-	// 大多数机器。
+	// 放在最前面：composer 从来不需要供应商，让它先等着供应商，就等于
+	// 没配 key 的机器上读不了 trace——而你想读 trace 的机器，多半正是这
+	// 种。
 	if *dumpAt != "" {
 		if err := dumpComposer(*dumpAt, *dumpView, *dumpCall, *dumpW, os.Stdout); err != nil {
 			fmt.Fprintln(os.Stderr, err)
@@ -337,20 +326,17 @@ func main() {
 		return
 	}
 
-	// resolveErr 这里故意**不是**致命的。
+	// resolveErr 在这里故意**不**致命。
 	//
-	// 重放不需要密钥、不需要 shell、不需要网络，也不需要
-	// 供应商——那个承诺是阶段 02 的，它在 README 中，
-	// 从阶段 03 直到这行被写它是假的：resolve() 移动到
-	// 重放分支上方，并把它的 os.Exit(1) 带走了。
-	// 在一台设置了 env vars 的机器上（这是作者测试过的
-	// 每台机器），什么看起来都没错。在一台只有 trace 文件、
-	// 别无他物——这正是该功能存在的机器上——
-	// `--replay` 打印"no provider configured"。
+	// 重放不需要 key、不需要 shell、不需要网络，也不需要供应商——这是阶段 02
+	// 许下的承诺，写在 README 里；而从阶段 03 开始，直到这行代码写下之前，它一
+	// 直是假的：resolve() 挪到了重放分支的上面，把自己那句 os.Exit(1) 也一起带
+	// 了上去。在环境变量都设好的机器上（作者测过的每台机器都是这样），什么毛病
+	// 也看不出来。在只有 trace 文件、别的什么都没有的机器上——而这个功能存在的
+	// 意义正是为了这种机器——`--replay` 打出来的是 "no provider configured"。
 	//
-	// 所以错误被携带而不是被抛出，并在下面检查，
-	// 在唯一实际需要供应商的路径上。配置错误应该只对
-	// 依赖配置的代码致命，对其余代码则完全没有影响。
+	// 所以错误是被带着走的，不是当场抛出来；到下面真正需要供应商的那一条路径上
+	// 再检查。配置出错，该致命的只有依赖这份配置的代码，别的一概不该。
 	pcfg, pname, resolveErr := pf.resolve(*providerName)
 	if *window > 0 {
 		pcfg.Window = *window
@@ -408,13 +394,13 @@ func main() {
 		bus.Subscribe(tw)
 	}
 
-	// trace 里的第一个事实：谁在服务这个会话，什么价钱。
+	// trace 里的第一条事实：这场会话由谁来服务，什么价钱。
 	//
-	// 阶段 09 之前，trace 里根本没有记下供应商。你可以把一个会话的每个字节都读
-	// 一遍——每个请求体、每个 token 计数——却说不出它是哪个端点产出的，这让归档
-	// trace 里的成本数字变得无法重建。它在 trace writer 订阅之后才发出，好让文
-	// 件也拿到它；而这和后面一次降级发出的是同一个事件：一种 kind，一个意思，
-	// "现在是这一位在应答"。
+	// 阶段 09 之前，trace 里根本没记供应商。你可以把一场会话的每个字节都读
+	// 一遍——每个请求体、每个 token 计数——却说不出是哪个端点产出的；归档
+	// 的 trace 里那些成本数字，也就因此没法复原。它在 trace writer 订阅之后
+	// 才发出，好让文件也拿到；而它和降级稍后发的是同一个事件：一种事件，一
+	// 个意思，"现在是这家在应答"。
 	_, _, pinfo := lad.pos()
 	bus.Emit(Event{Kind: KindProvider, Provider: &pinfo})
 
@@ -429,21 +415,17 @@ func main() {
 	fmt.Printf("stage 09 · provider=%s (%s) · model=%s\ncwd=%s\n",
 		pname, provider.Protocol(), provider.Model(), wd)
 
-	// ---- 系统提示词，一次组装 -----------
+	// ---- 系统提示词，一次装配好 -----------------------------------------
 	//
-	// 这里的一切，在整个会话期间都
-	// 不会变——这就是它们能被排在
-	// 缓存断点之前的原因。会变的东西，
-	// 则进入消息流——参见 memory.go
-	// 的放置规则。
+	// 这里的一切在整个会话里都是稳定的，这才让它有资格待在缓存断点之前。
+	// 会动的东西一律进消息流——见 memory.go 的放置规则。
 	memory := ""
 	if !*noMemory {
 		memory, _ = loadMemory(wd, bus)
 	}
 
-	// 技能：只有名称和描述。正文一直留在磁盘上，直到模型判定某个技能
-	// 适用，用 cat 去读它——这就是渐进披露的全部内容，也是四十个技能的
-	// 成本，和一个技能的成本一样的原因。
+	// 技能：只给名字和描述。正文留在磁盘上，直到模型判定某个用得上、拿 cat
+	// 读它——这就是渐进披露的全部，也是四十个技能跟一个技能花一样多的原因。
 	var skills []skill
 	if !*noSkills {
 		skills = loadSkills(wd)
@@ -454,8 +436,8 @@ func main() {
 			Text: fmt.Sprintf("%d skills", len(skills))})
 	}
 
-	// stable 是在进程运行期间不会改变的一切，它会逐字共享给每一个子
-	// Agent。只组装一次——参见阶段 05。
+	// stable 是进程运行期间不可能变的一切，而且逐字节共享给每个子 Agent。只
+	// 拼一次——见阶段 05。
 	stable := stableContext(shell, wd) + memoryPrompt
 	if memory != "" {
 		stable += para + memory
@@ -486,13 +468,12 @@ func main() {
 		stable: stable, maxDepth: *maxDepth,
 	}
 
-	// --subagent：一个任务，一个报告，没有对话。
+	// --subagent：一个任务，一份报告，没有对话。
 	//
-	// 这就是进程外子 Agent 机制的全部，而且这套机制小到什么程度，值得你
-	// 亲眼看看。一个能运行 bash 的 Agent，就能运行 `agent --subagent
-	// "..."`，这意味着递归根本不需要 `task` 工具——shell 本身就是那个编排者。
-	// docs/07 量的就是这一点要付出什么代价，而答案是：付出的不是 token，
-	// 而是仪表盘上的每一个数字。
+	// 进程外的子 Agent 机制全在这儿了，值得看看它有多小。跑得了 bash 的
+	// Agent 就跑得了 `agent --subagent "..."`，这意味着递归压根不需要 `task`
+	// 工具——shell 就是编排者。docs/07 量了这么做的代价，答案是：不是 token，
+	// 而是仪表盘上的每一个数。
 	if *subagentAt != "" {
 		child := a.newChild("cli", func() string { return subagentSystem + para + stable })
 		msgs := child.runTurn([]Msg{TextMsg(RoleUser, *subagentAt)})
@@ -520,22 +501,16 @@ func main() {
 		}
 
 		bus.Emit(Event{Kind: KindUserMessage, Text: line})
-		// 易变快照在**这里**被取出一次，
-		// 冻结进这条消息。它永远不会
-		// 重新计算，这正是缓存能在一个
-		// 知道时间的会话里活下来的
-		// 全部原因。
+		// 易变快照在**这里**取，只取一次，然后冻进消息里。它永不重算——
+		// 会话知道现在几点，缓存却还活着，全靠这一点。
 		msgs = append(msgs, userTurn(line, volatileContext(shell, time.Now())))
 		msgs = a.runTurn(msgs)
 	}
 	view.SessionSummary(a.lastPrompt)
 }
 
-// command 处理斜线命令。它们是
-// 为 docs/05-live-forever.md 中的
-// 实验而存在的：只有窗口快满时
-// 才触发的压缩，很难演示，
-// 更难测试。
+// command 处理斜杠命令。它们是为 docs/05-live-forever.md 里的实验准备
+// 的：压缩只在窗口快满时才触发，这很难演示，更难测试。
 func (a *agent) command(line string, msgs []Msg) (bool, []Msg) {
 	switch {
 	case line == "/help":
@@ -583,29 +558,28 @@ func (a *agent) command(line string, msgs []Msg) (bool, []Msg) {
 	return false, msgs
 }
 
-// toolChars 是工具定义的字符成本，
-// 它们是每个 prompt 的一部分，
-// 否则对估算器不可见。
+// toolChars 是工具定义的字符开销。工具定义是每个 prompt 的一部分，而估
+// 算器本来看不见它们。
 func toolChars() int {
 	n := 0
 	for _, t := range []Tool{bashToolDef(), taskToolDef()} {
-		n += len(t.Name) + len(t.Description) + 200 // 模式，足够接近
+		n += len(t.Name) + len(t.Description) + 200 // schema 大概就这么大
 	}
 	return n
 }
 
-// prov 是现在正在服务调用的那个供应商。见 agent.lad。
+// prov 是当下正在接调用的那家供应商。见 agent.lad。
 func (a *agent) prov() Provider {
 	_, p, _ := a.lad.pos()
 	return p
 }
 
-// callWithRetry 是一次模型调用，加上 triage.go 里的那些决策。
+// callWithRetry 就是一次模型调用，加上 triage.go 里的那些决策。
 //
-// 原来 call() 的函数体搬到了 triage.go 的 modelCall()，压缩器那份副本也搬到了
-// 同一个地方。留在这里的，只是 Agent 说清楚它要什么被重试；而值得注意的是这有
-// 多么少：循环、策略、分类器和梯子全都能在没有 HTTP 服务器的情况下测试，唯一需
-// 要 Agent 的东西就是那个闭包。
+// 原来 call() 的函数体搬到了 triage.go 的 modelCall()，compactor 那份拷贝也
+// 一起搬了过去。留在这里的，只是 Agent 说出它想重试什么；而值得注意的是
+// 这有多么少：循环、策略、分类器和梯子，全都不需要 HTTP 服务器就能测，
+// 唯一需要 Agent 的东西就是那个闭包。
 func (a *agent) callWithRetry(turn int, msgs []Msg) (*CallResult, error) {
 	return retryLoop(a.bus, turn, a.pol, a.lad, time.Sleep, nil,
 		func(p Provider) (*CallResult, error) {
@@ -620,17 +594,12 @@ func (a *agent) runTurn(msgs []Msg) []Msg {
 			return msgs
 		}
 
-		// ---- 墙检查 ---------------------------------
+		// ---- 撞墙检查 -------------------------------------------------
 		//
-		// 它在**这里**，在工具循环的顶部，
-		// 而不是用户循环的顶部。填满
-		// 上下文窗口的不是对话，而是
-		// 一个回合里的工具输出：单单
-		// 一个 `find /` 就能加上超过一
-		// 小时的聊天量。只在用户消息
-		// 之间检查，意味着撞墙会发生在
-		// 回合中途——那正是唯一没有
-		// 优雅恢复余地的地方。
+		// 它放在**这里**，工具循环的开头，不是用户循环的开头。填满上下文
+		// 窗口的不是对话，是一个回合内部的工具输出：一条 `find /` 就能顶上
+		// 一个多小时的聊天。只在用户消息之间检查，意味着墙是在回合中途
+		// 撞上的——而那正是唯一没有优雅退路的地方。
 		base := len(a.system()) + toolChars()
 		if est := a.comp.estimate(msgs, base); a.comp.due(est) {
 			cut, why := a.comp.plan(msgs, base)
@@ -654,11 +623,8 @@ func (a *agent) runTurn(msgs []Msg) []Msg {
 		a.lastPrompt = res.Usage.Prompt()
 		a.spent = addUsage(a.spent, res.Usage)
 		a.turnsUsed = turn
-		// 校准。这是 Agent 能决定何时压缩
-		// 而不厂商化分词器的唯一原因：
-		// 服务器刚刚精确告诉了我们，我们
-		// 发送的那些字符变成了多少个
-		// token。
+		// 校准。Agent 能在不自带 tokenizer 的情况下决定何时压缩，全靠这一
+		// 点：服务端刚刚告诉了我们，发出去的那些字符最后变成了多少 token。
 		a.comp.est.observe(sentChars, res.Usage.Prompt())
 
 		am := Msg{Role: RoleAssistant}
@@ -667,13 +633,10 @@ func (a *agent) runTurn(msgs []Msg) []Msg {
 		}
 		am.Blocks = append(am.Blocks, res.Calls...)
 
-		// 模型可以返回什么都没有——无文本，
-		// 无工具调用——附加它产生一条消息，
-		// 带空内容数组，Anthropic 协议在
-		// **下一个**请求拒绝。阶段 04 里
-		// 这个问题就已经埋下了；
-		// compact.go 中的 validConversation()
-		// 是发现它的。
+		// 模型可以什么都不返回——没有文本，没有工具调用——把它追加进去，
+		// 就得到一条 content 数组为空的消息，而 Anthropic 协议要到*下一次*
+		// 请求才拒绝它。阶段 04 就潜伏着这个问题；是 compact.go 里的
+		// validConversation() 把它挖出来的。
 		if len(am.Blocks) == 0 {
 			a.bus.Notice("the model returned an empty response (wire: %q) — not adding it to the history", res.RawStop)
 			return msgs
@@ -706,8 +669,8 @@ func (a *agent) runTurn(msgs []Msg) []Msg {
 			return msgs
 		}
 
-		// 一行，阶段 06 有 40。dispatch() 运行这一回合中的每个工具调用——
-		// 子 Agent 并发，其他一切按顺序——并按模型要求的顺序交回结果。
+		// 一行，阶段 06 那里是四十行。dispatch() 跑掉这个回合里的每一次工具
+		// 调用——子 Agent 并发，其余按顺序——再按模型要求的顺序把结果交回来。
 		blocks, stop := a.dispatch(turn, res.Calls)
 		results := Msg{Role: RoleUser, Blocks: blocks}
 		msgs = append(msgs, results)

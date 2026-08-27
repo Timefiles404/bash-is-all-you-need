@@ -1,20 +1,15 @@
 // 阶段 03——OpenAI 协议适配器。
 //
-// 这个文件中的一切都是一个厂商关于对话如何
-// 形成的意见：系统提示词是消息，工具结果是消息，
-// 工具参数是嵌套在 JSON 中的 JSON 字符串，工具定义
-// 在 `function` 下一层。那些都不是关于语言模型的事实。
-// 它们是这个线上的事实，它们被隔离在这里，
-// 在 provider.go 中的 Provider 接口后面，
-// 所以 agent 主循环永不学到它们中的任何一个。
+// 这个文件里的一切，都是某一家厂商对"对话该长什么样"的看法：系统提示词是一
+// 条消息，工具结果也是一条消息，工具参数是嵌在 JSON 里的 JSON 字符串，工具
+// 定义还要往下钻一层放在 `function` 底下。这些没有一条是关于语言模型的事
+// 实。它们是关于这条线的事实，所以被隔离在这里，挡在 provider.go 的
+// Provider 接口后面，Agent 主循环一条都学不到。
 //
-// 解析一半是从阶段 02 的 sse.go 里挖出来的；它曾经
-// 紧挨着的 SSE 分帧逻辑，现在住在 sse.go 里，
-// 对这些内容一无所知。解析器在这次搬迁中什么都
-// 没变，除了它的返回类型——它当初围绕的那些
-// 观察行为（§B4 frames 11 和 13、id 锁存、未对齐
-// 的参数片段）还是同样的行为，解释它们的注释
-// 也还是同样的注释。
+// 解析这一半是从阶段 02 的 sse.go 里切出来的；原先跟它挨着的 SSE 分帧现在住
+// 在 sse.go 里，那个文件对这些事一无所知。搬家过程中解析器只改了返回类型，
+// 别的什么都没动——它当初围着写的那些实测行为（§B4 的第 11 和 13 帧、id 的
+// 锁存、参数片段的不对齐）还是同样的行为，解释它们的注释也还是同样的注释。
 package main
 
 import (
@@ -32,10 +27,9 @@ import (
 // 供应商
 // ---------------------------------------------------------------------------
 
-// openaiProvider 保持三件事，在说这个协议的
-// 端点之间变化。这里没有厂商 SDK，也不需要在任何
-// 特定厂商那里开户：一个本地 llama.cpp 服务器、一个网关、
-// 以及 OpenAI 本身按 URL 和模型字符串不同。
+// 说这个协议的端点之间，只有三样东西不同，openaiProvider 就装着这三样。这里
+// 没有厂商 SDK，也不需要在谁那儿开户：本地的 llama.cpp 服务、网关、还有
+// OpenAI 自己，差别就在 URL 和模型串上。
 type openaiProvider struct {
 	baseURL string
 	apiKey  string
@@ -44,52 +38,45 @@ type openaiProvider struct {
 
 func newOpenAIProvider(baseURL, apiKey, model string) *openaiProvider {
 	return &openaiProvider{
-		// 这里也被修剪，因为一个直接在测试中构造的
-		// 供应商否则就会 POST 到 `.../v1//chat/completions`
-		// ——某些服务器路由它，某些 404，所以 bug 仅在
-		// 你没有测试的端点上出现。
+		// 这里跟 config.go 里都要裁一次，否则测试里直接构造出来的供应商
+		// 会往 `.../v1//chat/completions` POST——有的服务器认这个路由，
+		// 有的回 404，于是这个 bug 只在你没拿来测的那个端点上冒头。
 		baseURL: strings.TrimSuffix(baseURL, "/"),
 		apiKey:  apiKey,
 		model:   model,
 	}
 }
 
-// 编译时证明这个文件遵守 provider.go 的约定。
-// 没有它，签名偏差的第一个证据就是 config.go
-// 的 switch 内部的一次构建失败，指向错误的文件。
+// 在编译期证明这个文件守着 provider.go。没有它，签名漂移的第一个证据会是
+// config.go 那个 switch 里的构建失败——指向的是错的文件。
 var _ Provider = (*openaiProvider)(nil)
 
 func (p *openaiProvider) Protocol() string { return "openai" }
 func (p *openaiProvider) Model() string    { return p.model }
 
 // ---------------------------------------------------------------------------
-// 请求：中立对话，呈现成这个厂商的形状
+// 请求：把中立的对话渲染成这家厂商要的形状
 // ---------------------------------------------------------------------------
 
-// oaiMessage 是 `messages` 中的一个条目。
+// oaiMessage 是 `messages` 里的一项。
 //
-// 这些类型上的 `oai` 前缀不是装饰。anthropic.go 在
-// 相同包中声明相同概念，一个裸 `message` 类型就意味着
-// 两个适配器抢占同一个名字——这正是这整个阶段所要
-// 防止的那类错误，只是发生在文件这一层。
+// 这些类型上的 `oai` 前缀不是装饰。anthropic.go 在同一个包里声明了同样的概
+// 念，光叫 `message` 就意味着两个适配器要抢同一个名字——而那正是这整个阶段
+// 要防的那个错误，只不过发生在文件层面。
 type oaiMessage struct {
 	Role string `json:"role"`
 
-	// 当空时 Content 被省略而不是作为 null 发送。
-	// 那是阶段 02 的发送行为，故意保留：一条除了
-	// 工具调用之外什么都没有的助手消息是没有 content
-	// 的，这个端点也接受 content 缺失。它唯一无法
-	// 表示的形状，是一个**故意的**空工具结果——在实践
-	// 中 exec.go 总是追加一个 `[exit N]` 页脚，所以
-	// 空结果永远到不了这里。
+	// Content 为空时是省略掉，不是发 null。这是阶段 02 上线时的行为，故意保
+	// 留：只包含工具调用的 assistant 消息本来就没有 content，而这个端点接受它
+	// 缺席。它唯一表达不了的形状，是*故意*留空的工具结果——实际上 exec.go 总会
+	// 补一行 `[exit N]` 收尾，所以空的结果根本到不了这里。
 	Content string `json:"content,omitempty"`
 
-	// ToolCalls 仅在被重放的助手消息上设置。
+	// 只有回放回去的 assistant 消息才会设 ToolCalls。
 	ToolCalls []oaiToolCall `json:"tool_calls,omitempty"`
 
-	// ToolCallID 仅在 `role:"tool"` 消息上设置，
-	// 它是这个协议上的整个寻址机制：结果命名调用。
-	// 在流解析器中丢失 id，答案无处可去。
+	// 只有 `role:"tool"` 的消息才设 ToolCallID，而它就是这个协议全部的寻址机
+	// 制：结果报出它答的是哪个调用。流解析器里把 id 弄丢，答案就无处可去。
 	ToolCallID string `json:"tool_call_id,omitempty"`
 }
 
@@ -99,8 +86,8 @@ type oaiToolCall struct {
 	Function struct {
 		Name string `json:"name"`
 
-		// Arguments 是一个包含 JSON 的 JSON **字符串**——
-		// 标准 OpenAI 双编码（§A2 在响应端显示它逐字）。
+		// Arguments 是装着 JSON 的 JSON *字符串*——OpenAI 标准的双层编
+		// 码（§A2 在响应那一侧原样记了一份）。
 		Arguments string `json:"arguments"`
 	} `json:"function"`
 }
@@ -121,14 +108,11 @@ type oaiRequest struct {
 	Tools     []oaiToolDef `json:"tools,omitempty"`
 	Stream    bool         `json:"stream"`
 
-	// 没有这个标记，真正的 OpenAI 端点是不会流式
-	// 返回 usage 的。这个 repo 开发时所针对的网关
-	// 无论有没有这个标记都会发送 usage——见
-	// docs/wire-notes.md §B5，那里这个标记**可测量地**
-	// 是个空操作：相同的 13 个 frame、相同位置、
-	// 相同字段，有它没它都一样。还是要发送它：
-	// 这不费什么成本，不发的代价是——某天有人把
-	// Agent 指向另一个供应商时，它会报告零 token。
+	// 不带这个，真正的 OpenAI 端点不会把 usage 流出来。这个仓库开发时对着的那
+	// 个网关带不带都会发 usage——见 docs/wire-notes.md §B5，那里这个 flag 是
+	// *可以量出来*的空操作：加与不加，都是 13 帧、同样的位置、同样的字段。还是
+	// 照发不误：它一分钱不花，而不发的下场是——哪天有人把它指向另一个供应商，
+	// 这个 Agent 就报出零 token。
 	StreamOptions *oaiStreamOptions `json:"stream_options,omitempty"`
 }
 
@@ -136,29 +120,24 @@ type oaiStreamOptions struct {
 	IncludeUsage bool `json:"include_usage"`
 }
 
-// BuildRequest 将中立对话呈现到这个线上。
+// BuildRequest 把中立的对话渲染到这条线上。
 //
-// 它返回 marshal 后的 body 以及请求，因为调用方
-// 以 KindRequest 发出它，而请求检查器只有在显示
-// 实际发送的字节时才算诚实——不是同一个结构体的
-// 重新 marshal，那可能会不一样。
+// 它连同请求一起返回 marshal 好的 body，是因为调用方要拿它发 KindRequest；
+// 而请求检查器只有把真正发出去的字节摆给你看，才算诚实——不是把同一个结构
+// 体再 marshal 一遍，那两次可能不一样。
 //
-// 四个翻译在这个路径上发生——三个下面以及
-// 第四个在 assistantMessage——每一个都是
-// 两个协议不同的地方。它们在它们发生的地方
-// 被指出，而不是在顶部列成清单，因为这些差异
-// 本身就是这一章要讲的内容。
+// 这条路径上发生了四次翻译——三次在下面，第四次在 assistantMessage 里——每
+// 一次都是两个协议意见不合的地方。它们被标在各自发生的位置，而不是在开头列
+// 成一张表，因为这些分歧就是这一章本身。
 func (p *openaiProvider) BuildRequest(system string, msgs []Msg, tools []Tool, maxTokens int) (*http.Request, []byte, error) {
 	out := make([]oaiMessage, 0, len(msgs)+1)
 
-	// **不同意 1**——系统提示词住在哪里。
+	// **分歧 1**——系统提示词住在哪儿。
 	//
-	// 这里它只是另一条消息，数组中首先，角色"系统"。
-	// 在 Anthropic 协议上它是顶级 `system` 字段，
-	// 根本不能是消息。这不对称是为什么
-	// Provider.BuildRequest 把系统提示词作为它自己的
-	// 参数：两个位置都不能是中立的，所以中立形式
-	// 拒绝选择。
+	// 在这边它就是普通的一条消息，排在数组第一个，role 是 "system"。在
+	// Anthropic 协议上它是顶层的 `system` 字段，根本当不成消息。正是这份不对
+	// 称，让 Provider.BuildRequest 把系统提示词单列成一个参数：两种放法都当不了
+	// 中立的那个，所以中立形式干脆拒绝选。
 	if system != "" {
 		out = append(out, oaiMessage{Role: "system", Content: system})
 	}
@@ -169,18 +148,16 @@ func (p *openaiProvider) BuildRequest(system string, msgs []Msg, tools []Tool, m
 			continue
 		}
 
-		// **不同意 2**——工具结果如何被寻址。
+		// **分歧 2**——工具结果怎么寻址。
 		//
-		// 每个结果变成它**自己的**消息，`role:"tool"`，
-		// 命名它回答的调用。三个结果，三条消息。
-		// Anthropic 协议把同样这三个折叠进**一个**用户
-		// 消息里的 tool_result 块中，谁把顺序弄反了，
-		// 两边的 API 都会报错。
+		// 每份结果都变成**自己独立的**一条消息，`role:"tool"`，并报出它
+		// 答的是哪个调用。三份结果，三条消息。Anthropic 协议则把同样这
+		// 三份收进**一条** user 消息里的 tool_result 块，两边做反了都是
+		// API 报错。
 		//
-		// 这正是为什么 provider.go 没有 RoleTool：
-		// 选择任何一种形状作为中立形式，都会把某个
-		// 厂商的设计走私进核心里，所以工具结果是一个
-		// **块**，由适配器决定用什么消息携带它。
+		// provider.go 里没有 RoleTool，原因正在于此：挑哪一种形状当中立
+		// 形式，都等于把某一家厂商的设计偷渡进核心，所以工具结果是一个
+		// *块*，由适配器决定用什么消息来装它。
 		sawText := false
 		var text strings.Builder
 		for _, b := range m.Blocks {
@@ -195,23 +172,21 @@ func (p *openaiProvider) BuildRequest(system string, msgs []Msg, tools []Tool, m
 				sawText = true
 				text.WriteString(b.Text)
 			}
-			// BlockThinking 在发送出去的路上被丢弃。这个协议上
-			// 没有入站字段——`reasoning_content` 是
-			// 仅响应——所以重放它要么会被忽略，要么会被拒绝，
-			// 这取决于谁的实现在远端。
+			// BlockThinking 出去的路上就丢掉了。这个协议没有对应的入
+			// 站字段——`reasoning_content` 只在响应里有——所以把它回
+			// 放回去，要么被忽略要么被拒，看对面是谁家的实现。
 		}
 		if sawText {
 			out = append(out, oaiMessage{Role: string(m.Role), Content: text.String()})
 		}
 	}
 
-	// **不同意 3**——工具定义信封。
+	// **分歧 3**——工具定义的信封。
 	//
-	// 这里 schema 被埋在 `{"type":"function","function":{...}}`
-	// 下，schema 键被称为 `parameters`。Anthropic
-	// 协议把 name/description 放在顶层，把 schema 叫作
-	// `input_schema`。中立的 Tool 结构体两种信封都不携带，
-	// 这也是唯一一张工具表能同时服务两边的原因。
+	// 在这边，schema 被埋在 `{"type":"function","function":{...}}` 底下，装
+	// schema 的键叫 `parameters`。Anthropic 协议把 name/description 放在顶层，
+	// schema 那个键叫 `input_schema`。中立的 Tool 结构体两种信封都不带——一张工
+	// 具表能同时喂饱两边，全靠这一点。
 	var defs []oaiToolDef
 	for _, t := range tools {
 		var d oaiToolDef
@@ -222,27 +197,21 @@ func (p *openaiProvider) BuildRequest(system string, msgs []Msg, tools []Tool, m
 		defs = append(defs, d)
 	}
 
-	// 用 HTML 转义**关闭**编码，匹配 anthropic.go。
+	// 编码时把 HTML 转义**关掉**，跟 anthropic.go 保持一致。
 	//
-	// Go 的 json.Marshal 把 <、> 和 & 转义成
-	// \u003c、\u003e 和 \u0026——这是一个对 shell
-	// Agent 实打实敌意的浏览器安全默认设置，因为
-	// 那三个字符正是 `2>&1`、`>/tmp/out` 和
-	// `<<EOF`。一条真实命令会变成：
+	// Go 的 json.Marshal 会把 <、> 和 & 转成 \u003c、\u003e 和 \u0026——这是为
+	// 浏览器安全定的默认值，对 shell Agent 却是彻头彻尾的敌意：那三个字符在这儿
+	// 就是 `2>&1`、`>/tmp/out` 和 `<<EOF`。一条真实的命令会变成：
 	//
 	//	{"command":"grep -rn 'x' . 2\u003e\u00261 | head -5 \u003e/tmp/out"}
 	//
-	// 服务器会解码它，所以模型无论哪种方式读到的
-	// 都是同一个字符串。这四行仍然值得保留，理由
-	// 有两个。请求检查器的意义就是向你展示你实际
-	// 发送了什么，而转义后的内容是不可读的。另外，
-	// 转义是否会改变供应商的缓存键，取决于它是对
-	// 原始字节还是解码后内容做哈希——我们不知道
-	// 答案，这正是选择保持一致而不是去猜的理由。
+	// 服务端会解码，所以模型读到的字符串两种写法都一样。但这四行仍然值：请求检
+	// 查器本来是要给你看你发了什么，而上面那行不是人能读的。还有，这样转义会不
+	// 会挪动供应商的缓存键，取决于它哈希的是裸字节还是解码后的内容——这一点我
+	// 们不知道，而不知道正是保持一致的理由，不是拍脑袋猜的理由。
 	//
-	// 一致性才是真正的论据：两个适配器为同一段
-	// 对话发出不同的字节，是一个疣，而本章讲的
-	// 正是把恰恰这一类差异给规范化掉。
+	// 真正的论据是一致性：同一段对话，两个适配器发出不同的字节，这在专讲"把这类
+	// 差异归一化掉"的章节里就是个疙瘩。
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
 	enc.SetEscapeHTML(false)
@@ -256,8 +225,8 @@ func (p *openaiProvider) BuildRequest(system string, msgs []Msg, tools []Tool, m
 	}); err != nil {
 		return nil, nil, err
 	}
-	// Encoder.Encode 追加 Marshal 不做的换行。
-	// 对服务器无害，但它会显示在检查器和每个 trace 中。
+	// Encoder.Encode 会在末尾加一个换行，Marshal 不加。对服务端无害，但它会出现
+	// 在检查器里，也会出现在每一份 trace 里。
 	body := bytes.TrimRight(buf.Bytes(), "\n")
 
 	req, err := http.NewRequest("POST", p.baseURL+"/chat/completions", bytes.NewReader(body))
@@ -271,10 +240,9 @@ func (p *openaiProvider) BuildRequest(system string, msgs []Msg, tools []Tool, m
 	return req, body, nil
 }
 
-// assistantMessage 重建的是 API 在非流式情况下
-// 本该返回的那条消息，因为这正是必须写回历史
-// 记录的东西。重新组装是为流式付出的税，忘记
-// 这一点，就是流式 Agent 会"丢失"工具调用的原因。
+// assistantMessage 把 API 在非流式下本会返回的那条消息重建出来，因为要放回
+// 历史里的就是它。重新拼装是流式的税，忘了交这份税，就是流式 Agent"弄丢"自
+// 己工具调用的原因。
 func (p *openaiProvider) assistantMessage(m Msg) oaiMessage {
 	am := oaiMessage{Role: "assistant", Content: m.Text()}
 	for _, b := range m.Blocks {
@@ -285,22 +253,18 @@ func (p *openaiProvider) assistantMessage(m Msg) oaiMessage {
 		call.ID, call.Type = b.ID, "function"
 		call.Function.Name = b.Name
 
-		// **不同意 4**——`arguments` 的类型，以及
-		// Block.Args 为何是一个原始字符串。
+		// **分歧 4**——`arguments` 的类型，以及 Block.Args 为什么是裸
+		// 字符串。
 		//
-		// 这个协议想要一个包含 JSON 的 JSON 字符串，
-		// 这正是流解析器累积出来的东西，所以字节
-		// 原封不动地直接通过。Anthropic 端则想要
-		// 相同的数据作为 JSON **对象**，必须对它们
-		// 做 unmarshal。
+		// 这个协议要的是装着 JSON 的 JSON 字符串，而流解析器攒下来的正
+		// 是这个，所以字节原样穿过去，什么都不动。Anthropic 那边要同样
+		// 的数据以 JSON *对象*的形式出现，得先 unmarshal 一遍。
 		//
-		// 把中立形式存成解码后的 map，会让这一端
-		// 每个回合都要重新序列化，而 Go 故意把 map
-		// 的迭代顺序随机化——于是同一个工具调用
-		// 每次都会产生不同的字节，击穿字节级的 prompt
-		// 缓存（§C9：9,815 个 token 里有 9,792 个
-		// 是从缓存提供的，全都依赖精确的前缀匹配），
-		// 还会破坏任何格式化方式很重要的参数值。
+		// 中立形式要是存成解码后的 map，这边每个回合都得重新序列化一
+		// 次；而 Go 是故意把 map 的迭代顺序随机化的——于是同一次工具调
+		// 用每次产出的字节都不一样，按字节比对的 prompt 缓存就废了
+		// （§C9：9,815 个 token 里有 9,792 个是从缓存里取的，全靠前缀完
+		// 全一致），格式本身有意义的参数值也会被改坏。
 		call.Function.Arguments = b.Args
 
 		am.ToolCalls = append(am.ToolCalls, call)
@@ -309,68 +273,68 @@ func (p *openaiProvider) assistantMessage(m Msg) oaiMessage {
 }
 
 // ---------------------------------------------------------------------------
-// 响应：流式块 schema
+// 响应：流式 chunk 的结构
 // ---------------------------------------------------------------------------
 
-// sseChunk 是 OpenAI 协议上的一个 `data:` 载荷。
+// sseChunk 是 OpenAI 协议上的一份 `data:` 载荷。
 //
-// 关于这些结构体，最重要的一件事是：在这个端点，每个字段都被显式
-// 地发出为 `null` 而不是省略（§B4）。Go 的解码器把 `null` 转成字符串
-// 的零值、切片的 nil 和结构体的 no-op——默默无声，没有错误。那正是
-// 我们想要的，也正是陷阱：这里"键在场"根本说不了什么。测试值。
-// 下面的每个检查都测试一个值。
+// 关于这几个 struct，最要紧的一件事：这个端点上每个字段都是显式发出
+// `null`，而不是省略掉（§B4）。Go 的解码器会把 `null` 变成 string 的零
+// 值、slice 的 nil，对 struct 则什么都不做——安安静静，不报错。这正是我
+// 们要的，也正是陷阱所在："这个 key 在"在这里什么都说明不了。要判的是
+// 值。下面每一处检查判的都是值。
 type sseChunk struct {
-	// Choices 在 usage 帧（§B4 帧 11）和 DONE 之后的 cost 帧
-	// （帧 13）上是**空的**。这里是这个文件最可能藏 bug 的地方：
-	// `chunk.Choices[0]` 读起来毫无问题，能通过每一个 happy path
-	// 测试，然后在每个真实请求的倒数第二帧上以 index-out-of-range
-	// panic。下面那个循环用的是 `range`，那就是修法。
+	// usage 帧（§B4 第 11 帧）和 DONE 之后的 cost 帧（第 13 帧）上，Choices
+	// 是**空的**。这个文件最可能出 bug 的地方就在这儿：
+	// `chunk.Choices[0]` 读起来没毛病，顺利路径上的测试全都过，然后在每个真
+	// 实请求的倒数第二帧上以 index-out-of-range panic。下面那个循环用的是
+	// `range`，这就是修法。
 	Choices []sseChoice `json:"choices"`
 
-	// Usage 是指针，所以"不存在/null"和"存在但全是零"保持可区分。
-	// 零 token 响应是一种合法的、可以正当报告的情况。
+	// Usage 用指针，是为了让"缺席/null"和"在，但全是零"这两种情况分得开。零
+	// token 的响应是件正当的、该报出来的事。
 	Usage *sseUsage `json:"usage"`
 }
 
 type sseChoice struct {
 	Index        int      `json:"index"`
-	FinishReason string   `json:"finish_reason"` // 除最后一个以外每个块都是 null
+	FinishReason string   `json:"finish_reason"` // 除最后一个 chunk 外都是 null
 	Delta        sseDelta `json:"delta"`
 }
 
-// sseDelta 是增量载荷。注意推理**不是**这个协议上的独立事件或块
-// 类型——它搭在同一个对象里的相邻字段上，只通过两个中哪个
-// 非 null 来区分（§B7）。在那里记录的运行中，44 帧携带了 reasoning_content
-// 和 1 帧携带了 content。
+// sseDelta 是增量载荷。注意在这个协议里，reasoning **不是**单独的事件或
+// 块类型——它就搭在同一个对象里，是个兄弟字段，区分它俩全靠哪个非 null
+// （§B7）。那儿记下的那次运行里，44 帧带 reasoning_content，1 帧带
+// content。
 type sseDelta struct {
-	Role             string             `json:"role"`              // 开启端是"assistant"，之后是 null
-	Content          string             `json:"content"`           // 开启端是""，大多数块上是 null
-	ReasoningContent string             `json:"reasoning_content"` // §B7：思考在这里到达
+	Role             string             `json:"role"`              // 开场帧上是 "assistant"，之后是 null
+	Content          string             `json:"content"`           // 开场帧上是 ""，多数 chunk 上是 null
+	ReasoningContent string             `json:"reasoning_content"` // §B7：思考从这里来
 	ToolCalls        []sseToolCallDelta `json:"tool_calls"`
 }
 
 type sseToolCallDelta struct {
-	// Index 是助手消息的 tool_calls 数组中的位置，它是把片段和它所属的
-	// 调用绑在一起的**唯一**依据。并行工具调用会交错它们的片段；按别的
-	// 什么累积，就会把一个调用的参数拼接进另一个调用里。
+	// Index 是这条 assistant 消息的 tool_calls 数组里的位置，也是**唯一**能
+	// 把一个碎片和它所属的调用绑起来的东西。并行的工具调用会把各自的碎片交
+	// 错着发；按别的东西攒，就会把一个调用的参数接到另一个的身上。
 	Index int `json:"index"`
 
-	// ID 和 Function.Name 在**恰好一个**块中到达，在它之后的每个块中都
-	// 是 null（§B4 帧 2 对比帧 3–9）。第一眼就锁定它们。
+	// ID 和 Function.Name 只在**一个** chunk 里到，在它之后的每个 chunk 上都
+	// 是 null（§B4 第 2 帧对比第 3–9 帧）。第一次见到就锁住。
 	ID       string `json:"id"`
-	Type     string `json:"type"` // 始终是"function"；不是 null，也不是信号
+	Type     string `json:"type"` // 全程都是 "function"；不会置 null，也不是信号
 	Function struct {
 		Name string `json:"name"`
 
-		// Arguments 片段**不是** JSON 对齐的。§B4 观察了分裂
+		// Arguments 的碎片**不**按 JSON 边界切。§B4 观测到的切法是
 		// `{"command": ` / `"` / `ls` / ` -la /srv` / `/app` / `"` / `}`——
-		// 中间 token 和中间路径。片段在任何时点上都不是可解析的 JSON，
-		// 所以这被累积为原始字符串，在流结束后恰好被调用者解析一次。
+		// 词切一半，路径也切一半。没有哪个时刻碎片是能解析的 JSON，所以这
+		// 里当裸字符串攒着，等流结束之后由调用方解析，只解析这一次。
 		Arguments string `json:"arguments"`
 	} `json:"function"`
 }
 
-// sseUsage 是 OpenAI 的 token 记账，在 OpenAI 的方向。
+// sseUsage 是 OpenAI 的 token 账，按 OpenAI 自己的方向记的。
 type sseUsage struct {
 	PromptTokens        int `json:"prompt_tokens"`
 	CompletionTokens    int `json:"completion_tokens"`
@@ -383,33 +347,33 @@ type sseUsage struct {
 	} `json:"completion_tokens_details"`
 }
 
-// normalise 转换成这个仓库的 Usage，转换是方向反转，不是重命名。
+// normalise 转成本仓库的 Usage，这个转换是把方向反过来，不是改个名。
 //
-// 线上（§B4 帧 11）：
+// 线上（§B4 第 11 帧）：
 //
 //	"prompt_tokens": 506, "prompt_tokens_details": {"cached_tokens": 192}
 //
-// 506 是**完整的 prompt。192 个缓存 token 被计入其中**。
+// 506 是**整个** prompt。那 192 个缓存 token 是算在**它里面**的。
 //
-// 这个仓库的 Usage.Input 意思是"按满价计费"（见 events.go），所以
-// 缓存部分得**出来**：
+// 本仓库的 Usage.Input 意思是"按全价计费的那部分"（见 events.go），所以缓
+// 存那部分得**减出去**：
 //
 //	Input = 506 - 192 = 314   CacheRead = 192   →   Prompt() = 506 ✓
 //
-// 把字段不变地复制过来，Usage.Prompt() 对一个 506 token 的 prompt
-// 报告 698。错误恰好是缓存命中的大小，所以它在冷首次请求上是零：
-// 测试时看起来完美，你的缓存工作得越好它变得越差。那就是这个是
-// 函数而不是结构体标签的全部原因。
+// 字段照抄不动，Usage.Prompt() 就会把 506 token 的 prompt 报成 698。误差恰
+// 好等于缓存命中的大小，所以头一次冷请求时它是零：你测的时候它看着完美无
+// 缺，而你的缓存做得越好它错得越狠。这就是这里为什么是个函数，而不是
+// struct tag。
 //
-// Anthropic 一侧再反转一次——那里 `input_tokens` 只是未缓存的
-// 余量，所以它直接映射到 Input，没有减法。两个协议，相反的约定，
-// 一个规范化的结构体，这正是要有一个规范化结构体的理由所在。
+// Anthropic 那边又反了过来——在那儿 `input_tokens` 只是没命中缓存的余量，
+// 所以直接映射到 Input，什么都不用减。两个协议，相反的约定，一个归一化的
+// struct——这正是要有这个归一化 struct 的理由。
 func (u sseUsage) normalise() Usage {
 	cached := u.PromptTokensDetails.CachedTokens
 
-	// 限制而不是信任。负的 Input 会传播到 Prompt() 和任何建立在它上
-	// 的成本估计；如果端点哪天报告比 prompt token 更多的缓存 token，
-	// 丢掉这个差值，好过导出一个负的 token 计数。
+	// 钳住，别信它。负的 Input 会一路传进 Prompt()，也传进任何拿它算出来的成
+	// 本估算；万一这个端点报出的缓存 token 比 prompt token 还多，把这点出入吞
+	// 掉，也好过对外抛一个负的 token 数。
 	input := u.PromptTokens - cached
 	if input < 0 {
 		input = 0
@@ -419,47 +383,41 @@ func (u sseUsage) normalise() Usage {
 		Input:     input,
 		CacheRead: cached,
 		Output:    u.CompletionTokens,
-		// 是 Output 的一个子集，不是外加的东西——§B4 报告这里是 0，因为那个运行使
-		// 用了 reasoning_effort:"none"。
+		// 它是 Output 的子集，不是外加的——§B4 这里报 0，是因为那次运行用
+		// 的是 reasoning_effort:"none"。
 		Reasoning: u.CompletionTokensDetails.ReasoningTokens,
-		// CacheWrite 一直是 0：这个协议的缓存是隐式的，线上根本没有"写入"
-		// 这个数字。它是零，不是因为什么都没缓存，而是因为这个概念不上报。
+		// CacheWrite 保持 0：这个协议的缓存是隐式的，线上根本没有缓存写这
+		// 个数。它是零，不是因为什么都没缓存，是因为这个概念压根不上报。
 	}
 }
 
-// sseToolAccum 是一个工具调用的飞行中状态。它不是返回的形状因为
-// 它持有两个调用者永远不该看到的东西：构建器和启动事件是否已经
+// sseToolAccum 是一次工具调用在途中的状态。它不是对外返回的那个形状，因为
+// 它拿着两样调用方绝不该看见的东西：builder，以及 start 事件是不是已经发
 // 出去了。
 type sseToolAccum struct {
 	index     int
 	id        string
 	name      string
 	args      strings.Builder
-	announced bool // 已为这个索引发出 KindToolCallStart
+	announced bool // 这个 index 的 KindToolCallStart 已经发过了
 }
 
-// ParseStream 消耗 OpenAI 协议 SSE body，
-// 在事件到达时发出它们到 bus，并在中立形状返回
-// 已组装结果。
+// ParseStream 吃下一段 OpenAI 协议的 SSE body，事件一到就往 bus 上发，最后
+// 把拼好的结果以中立形状返回。
 //
-// `started` 是请求出去时，不是这个函数被调用时
-// ——TTFT 是往返的属性，从响应 header 到达
-// 的时刻测量隐藏你试图看的整个延迟。
+// `started` 是请求发出去的时刻，不是这个函数被调用的时刻——TTFT 是往返的属
+// 性，从响应头到达的那一刻起算，会把你本来想看的那段延迟整个藏起来。
 //
-// 遇到流式传输中途的 I/O 故障时，这个函数会
-// 返回部分结果**和**错误——这是故意打破通常的
-// `return nil, err` 惯例。一个在完整工具调用之后
-// 中断的流，和一个什么都没产生的流，是两种不同
-// 的情况，调用方只有在拿到了确实到达的内容时，
-// 才能把两者区分开。调用方仍然必须检查错误——
-// 没有 finish_reason 的部分结果就是一次截断，
-// 阶段 01 整整一章讲的就是截断如果没被发现
-// 会发生什么。
+// 流中途 I/O 出错时，这里把残缺结果**和**错误一起返回，这是对常见的
+// `return nil, err` 的一次有意背离。一条在完整工具调用之后才死掉的流，和一
+// 条什么都没产出的流，是两回事；只有把已经到手的东西交给调用方，它才分得
+// 清。调用方仍然必须检查错误——没有 finish_reason 的残缺结果就是截断，而阶
+// 段 01 整整一章讲的就是截断没被发现会怎样。
 func (p *openaiProvider) ParseStream(r io.Reader, bus *Bus, turn int, started time.Time) (*CallResult, error) {
 	res := &CallResult{}
 
-	// emit 在每个事件上戳上回合号，所以没有调用点能忘记它，并且
-	// 容忍 nil bus，好让解析器可以当纯函数使用。
+	// emit 在每个事件上都盖上回合号，这样哪个调用点都忘不掉；它也容忍 bus 为
+	// nil，好让这个解析器能当纯函数用。
 	emit := func(e Event) {
 		if bus == nil {
 			return
@@ -477,10 +435,11 @@ func (p *openaiProvider) ParseStream(r io.Reader, bus *Bus, turn int, started ti
 
 	// markFirstToken 只触发一次，在模型真正输出的第一个字节上。
 	//
-	// role 开启帧（§B4 帧 1）刻意不算：它带的是 `content: ""`，没有任何
-	// 载荷。把它算进去，TTFT 就变成了 time-to-first-byte —— 而在一个开口
-	// 之前先想四秒的模型上，那是个好看却毫无意义的数字。文本、推理和工具
-	// 调用结构都算，尤其是推理：在思考型模型上，它确实是最先生成的东西。
+	// role 开场帧（§B4 第 1 帧）故意不算数：它带的是 `content: ""`，一点载荷
+	// 都没有。把它算进去，TTFT 就变成了 time-to-first-byte——碰上先想四秒再
+	// 开口的模型，这个数好看得很，却什么也说明不了。文本、reasoning、工具调
+	// 用结构都算数——尤其是 reasoning，在会思考的模型上它确实是最先生成出来
+	// 的东西。
 	markFirstToken := func() {
 		if firstSeen {
 			return
@@ -496,27 +455,26 @@ func (p *openaiProvider) ParseStream(r io.Reader, bus *Bus, turn int, started ti
 			return nil
 		}
 		if payload == sseDoneSentinel {
-			// 跳过它，继续读。见 sseDoneSentinel 了解为什么。
+			// 跳过它，接着往下读。理由见 sseDoneSentinel。
 			return nil
 		}
 
 		var c sseChunk
 		if jerr := json.Unmarshal([]byte(payload), &c); jerr != nil {
-			// 一个格式错误的帧不应该摧毁一个已经产生有效工具调用的回合。
-			// 作为通知呈现它——在 trace 中可见，在主循环中存活——并继续。
-			// 在这里返回错误，是那个看起来更整洁、实际更差的选择。
+			// 回合已经产出了有效的工具调用，不该被一帧坏帧毁掉。把它
+			// 以 notice 的形式露出来——在 trace 里看得见，在主循环里活得
+			// 下去——然后接着走。在这里返回错误，看着更利落，实际更糟。
 			emit(Event{Kind: KindNotice, Text: fmt.Sprintf("skipped an SSE frame that was not JSON: %v (%.120s)", jerr, payload)})
 			return nil
 		}
 
-		// range 遍历 Choices，永远不是 Choices[0]。在使用情况帧和
-		// post-DONE 成本帧上，这个数组是空的，循环体根本不会执行。
-		// 那一个词，决定了这个文件是能正常工作，还是会在每个请求的
-		// 倒数第二帧上崩溃。
+		// 对 Choices 用 range，绝不写 Choices[0]。usage 帧和 DONE 之后的 cost
+		// 帧上，这个数组是空的，循环体干脆就不执行。就这一个词，决定了这个文
+		// 件是能跑，还是在每个请求的倒数第二帧上 panic。
 		//
-		// (`n > 1` 会把几个补全交错进一个结果里。这个 Agent 从不要求它，
-		// 要正确支持它，就意味着每个累积器都得同时以选择索引和工具
-		// 索引为键。)
+		// （`n > 1` 会把好几个 completion 交错进同一个结果。这个 Agent 从不
+		// 这么要，而要正经支持它，每个累加器就得同时按 choice index 和 tool
+		// index 做键。）
 		for _, ch := range c.Choices {
 			d := ch.Delta
 
@@ -541,11 +499,11 @@ func (p *openaiProvider) ParseStream(r io.Reader, bus *Bus, turn int, started ti
 					calls[tc.Index] = acc
 				}
 
-				// **闩。** 只在传入值非空时赋值。§B4 帧 3–9 携带
-				// `"id":null,"function":{"name":null}`，
-				// 一个不加防范的 `acc.id = tc.ID` 会在紧接着的下一块里把 id 清空——
-				// 留下一个参数完整、却无法被回复的工具调用，因为 API 在回复中
-				// 要求的 tool_call_id 没了。
+				// **锁存点**。只在进来的值非空时才赋值。§B4 第 3–9 帧带
+				// 的是 `"id":null,"function":{"name":null}`，直白写一句
+				// `acc.id = tc.ID`，下一个 chunk 就会把 id 抹平——于是你
+				// 有一次参数完整却没法回答的工具调用，因为 API 要求回复
+				// 里带回的那个 tool_call_id 没了。
 				if tc.ID != "" {
 					acc.id = tc.ID
 				}
@@ -553,17 +511,18 @@ func (p *openaiProvider) ParseStream(r io.Reader, bus *Bus, turn int, started ti
 					acc.name = tc.Function.Name
 				}
 
-				// 宣布一次，一旦这个调用可识别。在这个端点 id 和 name 在一个块
-				// 中一起到达，所以实践中事件总是两个都携带；"任一非空"的权限闸
-				// 意味着把它们拆开的协议仍然得到宣布而不是沉默。
+				// 只宣告一次，这次调用刚能被认出来就宣告。这个端点上 id
+				// 和 name 是同一个 chunk 里一起到的，所以实际上事件总是
+				// 两个都带着；用"两者之一非空"来开闸，是为了让某个把它
+				// 俩拆开发的协议照样能得到一次宣告，而不是一片沉默。
 				if !acc.announced && (acc.id != "" || acc.name != "") {
 					acc.announced = true
 					emit(Event{Kind: KindToolCallStart, ToolID: acc.id, ToolName: acc.name})
 				}
 
-				// 开启端携带 `"arguments":""`，所以这个空值检查会让一个没有意义
-				// 的零长度 delta 进不了 trace。片段是照原样追加的，从不检查内容
-				// ——见 sseToolCallDelta。
+				// 开场帧带的是 `"arguments":""`，这个空值判断挡住的是一
+				// 条毫无意义的零长度 delta，别让它进 trace。碎片是原样
+				// 追加的，从不检查——见 sseToolCallDelta。
 				if tc.Function.Arguments != "" {
 					acc.args.WriteString(tc.Function.Arguments)
 					emit(Event{
@@ -575,13 +534,12 @@ func (p *openaiProvider) ParseStream(r io.Reader, bus *Bus, turn int, started ti
 				}
 			}
 
-			// 用同样的方式被锁定，原因也一样：除了完成
-			// 块之外到处都是 null，无防护的赋值会在
-			// 后续的帧上擦除它。
+			// 同样的锁存，同样的理由：除了收尾那个 chunk，别处全是
+			// null，不加判断直接赋值，后面的帧就会把它抹掉。
 			//
-			// 存储的是字面值。在这里规范化意味着要
-			// 在两个地方规范化（这个分支和下面的后备方案），
-			// 而第二个总是会腐烂的那个。
+			// 存下来的是原字符串。在这里归一化，就意味着要在两个地
+			// 方归一化（这一支和下面那个兜底），而烂掉的永远是第二
+			// 个。
 			if ch.FinishReason != "" {
 				res.RawStop = ch.FinishReason
 			}
@@ -591,9 +549,9 @@ func (p *openaiProvider) ParseStream(r io.Reader, bus *Bus, turn int, started ti
 			u := c.Usage.normalise()
 			res.Usage = u
 
-			// 发出**复制**。交出 &res.Usage 会把事件别名到调用者仍然可以写
-			// 到的一个字段，一个懒序列化的订阅者（trace 写入者不是；TUI 之后
-			// 可能）会记录它之后变成的任何东西。
+			// 发**副本**。把 &res.Usage 交出去，等于让事件和调用方还能写
+			// 的那个字段共用同一份；而某个惰性序列化的订阅者（trace 写入
+			// 器不是，后面的 TUI 可能是）记下来的，就会是它后来变成的样子。
 			sent := u
 			emit(Event{Kind: KindUsage, Usage: &sent})
 		}
@@ -604,24 +562,18 @@ func (p *openaiProvider) ParseStream(r io.Reader, bus *Bus, turn int, started ti
 	res.Text = text.String()
 	res.Thinking = reasoning.String()
 
-	// RawStop 保留供应商的字面说法；Stop 保留
-	// 规范化后的说法。两个都要，不能选一个：
-	// 关于 CallResult.RawStop 的情况见 §A3c，
-	// 在那种情况下信封在说谎，两者之间的间隔
-	// 是仅存的证据。
+	// RawStop 留供应商的原话，Stop 留归一化之后的那个。两个都要，不是二选一：
+	// 见 CallResult.RawStop 里那个案例（§A3c）——信封在说谎，两者之间的落差是
+	// 仅存的证据。
 	//
-	// 无条件地完成，包括当 RawStop 是 "" 的
-	// 时候——一个没有 finish_reason 的流规范化成
-	// StopUnknown，这是 Agent 循环报告的东西，
-	// 而不是零值 StopReason，那是一个没有任何
-	// case 语句的值。
+	// 这一步无条件执行，RawStop 是 "" 时也执行——没带 finish_reason 就结束的流
+	// 会归一化成 StopUnknown，Agent 主循环会把它报出来；而不是归成 StopReason
+	// 的零值，那个值在这个仓库里没有任何 switch 为它写过分支。
 	res.Stop = normaliseStop(res.RawStop)
 
-	// 升序索引顺序，不是到达顺序。Go 中的 map
-	// 迭代被有意随机化，所以没有这个排序，顺序
-	// 就会因运行而异——这是那种一周出现一次、
-	// 被甩锅给模型的 bug。当没有工具调用时设为
-	// nil，所以纯文本结果与零值 CallResult 相等。
+	// 按 index 升序，不按到达顺序。Go 的 map 迭代是故意随机化的，不排这一下，顺
+	// 序每跑一次变一次——这种 bug 一周复现一回，最后赖到模型头上。没有工具调用
+	// 时就留 nil，这样纯文本的结果跟零值的 CallResult 比较起来相等。
 	if len(calls) > 0 {
 		ordered := make([]*sseToolAccum, 0, len(calls))
 		for _, a := range calls {
@@ -641,18 +593,15 @@ func (p *openaiProvider) ParseStream(r io.Reader, bus *Bus, turn int, started ti
 	}
 
 	if err != nil {
-		// 没有 KindResponseEnd：响应没有结束，它破了。发出这样一个事件，
-		// 等于向每个订阅者撒了一个干净利落的谎，trace 应该是证据。
+		// 不发 KindResponseEnd：响应不是结束了，是断了。发一个出去，等于对
+		// 每个订阅者说一句干干净净的谎，而 trace 本该是证据。
 		return res, err
 	}
 
-	// 如果流在没有 finish_reason 的情况下结束，
-	// RawStop 在这里是 ""——这个协议通过根本不
-	// 提及它来报告的截断。把空字符串原封不动地
-	// 传出去，而不是编造一个从未发生过的"stop"，
-	// 让调用者可以看到这个情况；Stop 保持为
-	// StopUnknown，这是 Agent 循环报告的东西，
-	// 而不是当作清洁的完成处理。
+	// 流要是没带 finish_reason 就结束了，这里的 RawStop 就是 ""——这个协议报告
+	// 截断的方式，就是压根不提。把空串原样传下去，调用方就还看得见这件事，好过
+	// 凭空造出一个从没发生过的 "stop"；Stop 保持 StopUnknown，Agent 主循环会把
+	// 它报出来，而不是当成干净的收尾。
 	emit(Event{
 		Kind:         KindResponseEnd,
 		FinishReason: res.RawStop,

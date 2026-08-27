@@ -15,11 +15,17 @@ stages/05-live-forever` and see exactly one idea arrive.
 that would break the thing this repo is for.
 
 The course has two halves. **Phase 1 (00–08) is the instrument panel; phase 2
-(09 onward) is what fails in production.** Every phase 2 stage is copied from
-**stage 07**, not from the previous number: stage 08 is the only stage in the
-repo with a dependency and is advertised as optional, so carrying it down the
-trunk would make it mandatory. To add a stage,
-`cp -r stages/07-multiply stages/NN-name` and then add the one idea.
+(09 onward) is what fails in production.** Phase 2 *branches* from **stage 07**,
+not stage 08: stage 08 is the only stage in the repo with a dependency and is
+advertised as optional, so carrying it down the trunk would make it mandatory.
+
+That is a rule about where phase 2 starts, not about every stage in it. Stage 09
+was copied from 07; stage 10 is copied from 09, and so on, because the property
+that matters just as much is that `diff stages/NN stages/NN+1` shows **one**
+idea. Copying from 07 every time would put every earlier phase 2 idea into that
+diff as well. So: `cp -r stages/<previous> stages/NN-name`, and then add the one
+idea — where `<previous>` is stage 07 for stage 09 and the preceding stage after
+that.
 
 ## Rules
 

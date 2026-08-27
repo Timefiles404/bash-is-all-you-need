@@ -76,7 +76,7 @@ sandbox in a later stage.
 | Stage | Idea | Status |
 |---|---|---|
 | [09 Triage](docs/09-triage.md) | an error is a decision, not a string: one taxonomy over two protocols, `Retry-After`, a retry budget, the fallback ladder | ✅ built |
-| 10 Deadlock | the tool that never returns and the stream that stalls: every wait gets a deadline and an owner | 🚧 planned |
+| [10 Deadlock](docs/10-deadlock.md) | the tool that never returns and the stream that stalls: every wait gets a deadline and an owner | ✅ built |
 | 11 Malformed | the tool call is not valid JSON — what each protocol actually hands you, and what to do with it | 🚧 planned |
 | 12 Echo | the cheapest tool call is the one you do not make: content-addressed results, an LRU, staleness by `mtime` | 🚧 planned |
 | 13 Rewind | the session and the workspace are both state, and both need a rewind — resume from the trace, checkpoint before mutation | 🚧 planned |
@@ -126,6 +126,13 @@ rather than on protocol documentation, because the two do not agree.
   obvious rules wrong: a nonexistent model returns **401**, and a malformed body
   returns **500**. Plus the number nobody reports, because the API cannot be
   asked for it: **what the failed attempts cost**.
+- Three clocks on a streamed call instead of one, because `http.Client.Timeout`
+  covers the body read and so cannot tell a slow answer from a dead socket — and
+  the widest silence each stream actually had, **printed on the panel** next to
+  TTFT, so the timeout is a measured margin rather than a number someone liked.
+  Measured: the worst silence in 14 calls was **5.0s** against a 45s default,
+  and finding that took three attempts because the first two measured the wrong
+  thing.
 - No vendor lock: any OpenAI- or Anthropic-compatible endpoint, including local
   models, configured by URL + key + protocol.
 

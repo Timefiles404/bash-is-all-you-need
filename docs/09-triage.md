@@ -527,3 +527,7 @@ above them), which is the honest way to close a mutation report.
    really sends one, capture the bytes, and add the section to
    `wire-notes.md`. That is the only exercise here that improves the repo's
    evidence rather than its code.
+
+→ Next: [Stage 10 — Deadlock](10-deadlock.md)
+
+→ Reference: [Wire notes](wire-notes.md) §D11–D12

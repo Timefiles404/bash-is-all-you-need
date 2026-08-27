@@ -1,21 +1,16 @@
-# Stage 02 — See Everything
+# 第 02 阶段 — 看清一切
 
-Stages 00 and 01 built an agent that works. This one is about the fact that you
-cannot see what it is doing.
+第 00 和第 01 阶段构建了一个可以工作的 Agent。这一章讲的是：你看不到它在做什么。
 
-That sounds like a complaint about logging. It is not. Stage 01 printed plenty.
-The problem is that printing is the *only* thing it did with what it knew: the
-moment a line scrolled off your terminal, the fact was gone. You could not
-replay it, diff it, total it, or hand it to someone else.
+这听起来像是在吐槽日志。不是。第 01 阶段打印了很多东西。问题在于，打印是它处理已知信息的**唯一**方式：一行从你的终端滚出的时刻，事实就消失了。你无法重放它、对比它、统计它或把它给别人。
 
-So this chapter makes one structural change, and then collects the consequences.
+所以这一章做了一个结构改变，然后收集它的后果。
 
 ---
 
-## The one change
+## 那个改变
 
-> **The agent core prints nothing. It emits events. Everything you can see is a
-> subscriber.**
+> **Agent 核心不打印任何东西。它发出事件。你能看到的一切都是订阅者。**
 
 ```
 agent core ──emit──▶ Bus ──┬──▶ renderer     (terminal, instrumented)
@@ -24,32 +19,25 @@ agent core ──emit──▶ Bus ──┬──▶ renderer     (terminal, in
 replay:  session.jsonl ──▶ Replay ──▶ the same renderer, no network, no API key
 ```
 
-Nearly everything else in this stage falls out of that:
+这个阶段几乎所有其他东西都从这一点衍生出来：
 
-| You get | Because |
+| 你获得 | 原因 |
 |---|---|
-| A permanent record of every session | the trace file is just another subscriber |
-| Replay with no API key | a trace fed back through the same renderer |
-| `--plain` vs. the stage-06 TUI | a choice of subscriber, not a fork of the code |
-| Tests that assert on behaviour | assert on an event sequence, not on scraped stdout |
-| A request inspector | the request bytes are already an event |
+| 每个会话的永久记录 | trace 文件就是另一个订阅者 |
+| 无 API 密钥重放 | trace 通过同一个渲染器反馈 |
+| `--plain` vs. 第 06 阶段 TUI | 选择订阅者，而非代码分支 |
+| 断言行为的测试 | 断言事件序列，而非抓取 stdout |
+| 请求检查器 | 请求字节已是事件 |
 
-The transferable lesson is not "use an event bus". It is that **observability is
-a shape you choose at the beginning, not logging you add at the end.** Every
-`fmt.Printf` in stage 01 was a place where the only record of a fact was a
-character on a screen.
+可迁移的教训不是"使用事件总线"。而是**可观测性是你在开始时选择的形状，不是最后补上的日志。**第 01 阶段的每个 `fmt.Printf`，都是这样一处——某个事实的唯一记录，只是屏幕上的一个字符。
 
-The bus dispatches **synchronously, under a lock**. That is slower than a
-channel per subscriber and it is deliberate: it makes ordering total and
-identical for everyone, so the trace file and your terminal can never disagree
-about what happened first. A trace that can disagree with what you saw is not
-evidence.
+总线以**同步方式，在锁下**分发。这比每个订阅者一个通道慢，这是有意的：它使顺序对所有人都是绝对一致的，所以 trace 文件和你的终端永远不会对先发生的事情意见不一。一个与你看到的不同的 trace 不是证据。
 
 ---
 
-## The instrument panel
+## 仪表盘
 
-Here is one call from a real session:
+下面是一个真实会话的调用：
 
 ```
   ┌─ call 5 · stop
@@ -59,64 +47,44 @@ Here is one call from a real session:
   └ context 1066 / 131072 (0.8%)
 ```
 
-Four lines, and each answers a question most agents cannot.
+四行，每一行都回答了大多数 Agent 无法回答的问题。
 
-### `in 1066` — and why no API field says 1066
+### `in 1066` — 以及为什么没有 API 字段说 1066
 
-This is the number people mean by "how big is my context now", and **you cannot
-read it off any single field the API returns.**
+这是人们说"我的上下文现在有多大"时的意思，而**你无法从 API 返回的任何单个字段读出来。**
 
-On an Anthropic-style protocol, `input_tokens` is only the *uncached remainder*.
-An agent that has been running for an hour can honestly report `input_tokens:
-18` while sending 18,000. The real prompt size is `input + cache_write +
-cache_read`, which is what `Usage.Prompt()` computes and what this line shows.
+在 Anthropic 风格的协议上，`input_tokens` 只是*未缓存的部分*。一个运行了一小时的 Agent 可以诚实地报告 `input_tokens: 18`，同时发送 18,000。真实的 prompt 大小是 `input + cache_write + cache_read`，这就是 `Usage.Prompt()` 计算的，也是这一行显示的。
 
-On an OpenAI-style protocol the accounting runs the **opposite direction**:
-`prompt_tokens` is the full figure and `cached_tokens` is nested *inside* it. So
-normalising means subtracting:
+在 OpenAI 风格的协议上，账目运行的**方向相反**：`prompt_tokens` 是完整数字，`cached_tokens` 嵌套在**里面**。所以归一化意味着相减：
 
 ```go
-Input     = prompt_tokens - cached_tokens   // billed at full price
+Input     = prompt_tokens - cached_tokens   // 按全价计费
 CacheRead = cached_tokens
 ```
 
-Copy `prompt_tokens` straight across instead and `Prompt()` reports 698 for a
-506-token prompt. Note when that bug is invisible: **the error is exactly the
-size of the cache hit**, so it is zero on a cold request, looks perfect in
-testing, and gets steadily worse the better your caching works.
+如果直接复制 `prompt_tokens`，`Prompt()` 会为一个 506 token 的 prompt 报告 698。注意这个 bug 何时看不见：**错误恰好是缓存命中的大小**，所以在冷请求上是零，在测试中看起来完美，并且随着你的缓存工作得越来越好而逐渐变糟。
 
-### The bar — three colours because you are billed three rates
+### 柱子 — 三种颜色，因为你以三种费率计费
 
 ```
 ███████████████████        red = full price · yellow = cache write (~1.25x) · green = cache read (~0.1x)
 ```
 
-A table of three numbers is readable. A bar is *glanceable*, and the thing worth
-noticing is a **change in proportion between turns**. When the green disappears,
-something invalidated your cache — and you want to see that on the turn it
-happens, not on a bill at the end of the month. Stage 04 is entirely about
-keeping that bar green.
+一个三个数字的表格是可读的。一个柱子是**一眼可得的**，值得注意的是回合之间**比例的变化**。当绿色消失时，某个东西使你的缓存无效——你希望在那个回合看到它，而不是在月末的账单上。第 04 阶段完全是关于保持那个柱子是绿色的。
 
 ### `TTFT 2943ms · total 4533ms · 73.6 tok/s`
 
-TTFT and throughput are separate numbers because **they fail for separate
-reasons**. A slow first token is a queue, a cold cache, or a long prompt. Slow
-throughput is the model itself. One number averaging both tells you nothing
-actionable — and note the first call of the session below, at 13 seconds TTFT
-against 1.2 seconds for the second: that is a cold start, and averaging would
-have hidden it.
+TTFT 和吞吐量是分开的数字，因为**它们因不同的原因失败**。第一个 token 慢是队列、冷缓存或长 prompt。吞吐量慢是模型本身。平均两者的一个数字告诉你没什么可操作的——注意下面会话的第一个调用，13 秒 TTFT 对第二个 1.2 秒：那是冷启动，平均会隐藏它。
 
-### `$0.000201` — or a dash
+### `$0.000201` — 或者一个破折号
 
-If you do not pass `--price-in` / `--price-out`, this line reads
-`cost — (set --price-* to price this run)`.
+如果你不传递 `--price-in` / `--price-out`，这一行读取 `cost — (set --price-* to price this run)`。
 
-**A made-up zero is worse than no number**, because zero is the number people
-quote. The agent does not know your rates, so it declines to invent them.
+**编造的零比没有数字更糟**，因为零是人们引用的数字。Agent 不知道你的费率，所以它拒绝编造它们。
 
 ---
 
-## The session summary, and the number stage 04 exists to move
+## 会话摘要，以及第 04 阶段所要移动的数字
 
 ```
   5 calls · 5 commands
@@ -126,17 +94,13 @@ quote. The agent does not know your rates, so it declines to invent them.
   re-send ratio: 3.7x (billed 3941 for a final context of 1066)
 ```
 
-The last line is the one to keep. Stage 00's docs recorded this ratio at **4.2x
-with no visibility at all**. Here it is 3.7x — but now you can also see that
-**3072 of those 3941 tokens were cache reads**, at roughly a tenth of the price.
-The re-send tax is real; most of it was already cheap, and nobody could have
-told you that before this chapter.
+最后一行是要保留的。第 00 阶段的文档记录这个比率为**4.2x，完全看不到**。这里是 3.7x——但现在你也可以看到，**这 3941 个 tokens 里有 3072 个是缓存读**，价格大约是十分之一。重新发送税是真实的；其中大部分已经很便宜，在这一章之前没人能告诉你。
 
 ---
 
-## The trace
+## trace
 
-One JSON object per line:
+每行一个 JSON 对象：
 
 ```json
 {"seq":1,"t":"2026-08-27T03:15:34.33+08:00","kind":"user_message","text":"run python stats.py…"}
@@ -144,45 +108,21 @@ One JSON object per line:
 {"seq":3,"t":"2026-08-27T03:15:34.34+08:00","kind":"request","turn":1,"request":{"model":"mimo-v2.5",…}}
 ```
 
-That five-turn session is 196 events and 40KB.
+那个五回合会话是 196 个事件和 40KB。
 
-**JSONL is not a style choice, it is the crash contract.** A JSON array needs a
-closing bracket that a killed process never writes — so the file documenting the
-crash would be unparseable *because of* the crash. Line-delimited means every
-completed line is independently valid, and a half-written final line costs you
-one event instead of all of them. `ReadTrace` treats a truncated tail as the
-**normal** shape of a killed session, recovers everything before it, and reports
-what happened as an event in the stream rather than as an error that would
-tempt a caller to throw away the 195 events explaining the crash.
+**JSONL 不是风格选择，这是崩溃合约。**一个 JSON 数组需要一个被杀进程永远不会写的右括号——所以文档化崩溃的文件会**因为崩溃**而不可解析。行分隔意味着每个完成的行都独立有效，半写的最后一行只让你损失一个事件，而不是全部。`ReadTrace` 将被截断的尾部视为已杀死会话的**正常**形状，恢复它之前的所有内容，并把发生的事情报告为流中的一个事件，而不是会诱使调用者把解释崩溃的 195 个事件一并扔掉的错误。
 
-**"Flush every line" means unbuffered, and explicitly not `fsync`.** One write
-per event costs microseconds into the page cache and already survives SIGKILL,
-panic and `os.Exit`. `fsync` additionally survives a power cut and costs
-0.1–10ms — *on every text delta, inside the bus lock*. Three orders of
-magnitude, to defend a much rarer failure. Knowing where the line is drawn is
-more useful than being told "we flush".
+**"每行刷新"意味着无缓冲，明确不是 `fsync`。**每个事件一次写入花费微秒进入页面缓存，已经在 SIGKILL、panic 和 `os.Exit` 中存活。`fsync` 另外存活断电，花费 0.1–10ms——**在总线锁内的每个文本增量**。三个数量级，以防御一个更罕见的失败。知道线划在哪里，比被告知"我们刷新"更有用。
 
-**"Never block the bus" is not "never do I/O".** The obvious fix is an async
-writer, and a queue has exactly two behaviours when full: block the producer
-(the thing you were avoiding) or drop events (a trace that lies by omission,
-under precisely the load you most wanted recorded). The real rule is *no
-unbounded wait* — no fsync, no network, no lock held across a channel send.
-There is deliberately no goroutine in `trace.go`.
+**"永不阻挡总线"不是"永不做 I/O"。**明显的修复是一个异步写入程序，一个队列在满时恰好有两个行为：阻止生产者（你试图避免的东西）或丢弃事件（一个通过省略而说谎的 trace，恰好在你最想记录的负载下）。真实的规则是*无无界等待*——没有 fsync、没有网络、没有跨通道发送持有的锁。`trace.go` 中故意没有 goroutine。
 
-**`bufio.Scanner` is a trap for trace readers.** It caps a token at 64KB and
-fails the *entire* read with `ErrTooLong` — and the single most valuable line in
-a trace, the request body, is the one that crosses 64KB around turn thirty.
-`bufio.Reader.ReadBytes` has no cap, and hands back a newline-less final line
-together with `io.EOF`, which *is* the truncation signal.
+**`bufio.Scanner` 对 trace 读取器是一个陷阱。**它将一个 token 限制在 64KB 并**整个**读取失败为 `ErrTooLong`——trace 中最有价值的单行，请求体，是第三十个回合左右穿过 64KB 的那一行。`bufio.Reader.ReadBytes` 没有上限，并且将无换行符的最后一行与 `io.EOF` 一起交回，这**是**截断信号。
 
-**Forward compatibility is mostly a thing you don't do.** `ReadTrace` never
-validates `kind` against the constants in `events.go`. Validating would mean
-every kind added in a later stage silently breaks replay of files written after
-it.
+**向前兼容性大多是你不做的事情。**`ReadTrace` 从不针对 `events.go` 中的常量验证 `kind`。验证会意味着，后续阶段每新增一个 kind，都会让写在它之后的文件，悄悄地重放失败。
 
 ---
 
-## Replay
+## 重放
 
 ```sh
 agent --replay session.jsonl              # original timing
@@ -190,7 +130,7 @@ agent --replay session.jsonl --speed 0    # instant
 agent --replay session.jsonl --step       # Enter for each event
 ```
 
-No API key. No network. No shell. Run with the environment stripped:
+没有 API 密钥。没有网络。没有 shell。以剥离的环境运行：
 
 ```
 trace · 196 events · 5 turns · 5 commands · 25.34s
@@ -198,109 +138,61 @@ tokens · prompt 3941 (full 869 · write 0 · read 3072) · output 419
 replay · instant
 ```
 
-…and the session reproduces exactly, because the renderer never had a clock of
-its own. **Every number it prints arrived in an event.** If you ever find
-yourself wanting `time.Now()` in `render.go`, the number you want belongs in an
-event instead.
+……会话完全再现，因为渲染器从未有自己的时钟。**它打印的每个数字，都是随着某个事件到达的。**如果你曾经发现自己在 `render.go` 中想要 `time.Now()`，你想要的数字应该在事件中。
 
-This is what makes the repo teachable: a student with no credentials can study
-a real session, and you can debug someone else's run from the file they sent
-you.
+这是使仓库可教学的原因：一个没有凭证的学生可以研究一个真实会话，你可以从他们发给你的文件中调试别人的运行。
 
-Timing detail worth knowing: recorded gaps are **capped at 5 seconds before**
-`Speed` scales them. Everything replay exists to convey lives under 5s — TTFT,
-delta pacing, a command's wall clock. Anything longer is a human being idle,
-which the timestamps already report better than a wait does. Capping *before*
-scaling means `--speed 2` still halves the worst case, and `--speed 0.5` can
-still stretch a pause for someone who wants to feel it.
+值得知道的时间细节：记录的间隙**在 `Speed` 缩放它们之前，上限为 5 秒**。重放存在的意义，就是呈现 5 秒之内的一切——TTFT、增量步进、命令的挂钟时间。更长的任何东西都是一个人的空闲，时间戳比等待更好地报告。在缩放**前**上限意味着 `--speed 2` 仍然将最坏情况减半，`--speed 0.5` 仍可拉伸一个暂停给想要感受它的人。
 
 ---
 
-## What streaming actually costs you
+## 流式传输实际上花费你什么
 
-Streaming is not "the same response, arriving gradually". It is a different data
-shape, and you have to rebuild the old one.
+流式传输不是"同一个响应，逐渐到达"。它是一个不同的数据形状，你必须重新构建旧的。
 
-**You must reassemble the assistant message.** The history needs the message the
-API *would* have returned non-streamed. Forgetting this is why streaming agents
-mysteriously "lose" their tool calls: the deltas rendered fine, and nothing ever
-went back into `messages`.
+**你必须重新组装助手消息。**历史需要 API**本来会**非流式返回的消息。忘记这个是为什么流式 Agent 神秘地"丢失"它们的工具调用：增量渲染得很好，没有什么曾经回到 `messages` 中。
 
-**The parser has to survive this protocol as it actually is.** Every one of
-these is recorded with raw evidence in [wire-notes.md](wire-notes.md) §B4–B7,
-and every one is a real trap:
+**解析器必须在这个协议实际上的样子中存活。**这些中的每一个都是用 [wire-notes.md](wire-notes.md) §B4–B7 中的原始证据记录的，每一个都是一个真实的陷阱：
 
-| Observed | Consequence |
+| 观察 | 后果 |
 |---|---|
-| The usage chunk has `"choices": []` | `choices[0]` panics. The most likely bug in the file. |
-| `id` and `function.name` arrive in exactly **one** chunk, `null` in all later ones | Latch on first sight; never overwrite with null |
-| `arguments` fragments are **not** JSON-aligned (`"{\"command\": "`, `"\""`, `"ls"`, `" -la /srv"`, `"/app"`) | Accumulate raw bytes keyed by `index`; never parse a fragment |
-| Every field is emitted explicitly as `null` rather than omitted | "Key present" tells you nothing. Test values |
-| A frame arrives **after** `data: [DONE]` | Skip the sentinel, keep draining to EOF |
-| The stream carries no `event:` lines at all | …but `readSSE` still supports them, because stage 03's second protocol uses them |
+| 使用块有 `"choices": []` | `choices[0]` panic。文件中最有可能的 bug。 |
+| `id` 和 `function.name` 到达**恰好一个**块，`null` 在所有后来的块中 | 第一次看到时锁存；永远不要用 null 覆盖 |
+| `arguments` 片段**不是** JSON 对齐的(`"{\"command\": "`, `"\""`, `"ls"`, `" -la /srv"`, `"/app"`) | 以 `index` 为键累积原始字节；永远不要解析片段 |
+| 每个字段被明确发出为 `null` 而非省略 | "键存在"告诉你什么都没有。测试值 |
+| 一个帧在 `data: [DONE]` **之后**到达 | 跳过哨兵，继续排空至 EOF |
+| 流根本不携带 `event:` 行 | ……但 `readSSE` 仍然支持它们，因为第 03 阶段的第二个协议使用它们 |
 
-The `[DONE]` decision deserves its own note, because "stop at the sentinel" is
-what the spec says and it is wrong here for three reasons: the post-`[DONE]`
-frame is real data; abandoning a body with bytes left in it stops the HTTP
-transport reusing the connection, quietly adding a TLS handshake per turn; and
-if usage ever moves behind the sentinel, an early-stopping client reports zero
-tokens and is confidently wrong.
+`[DONE]` 决定值得它自己的注意，因为"在哨兵处停止"是规范说的，它在这里因三个原因是错的：`[DONE]` 后帧是真实数据；放弃一个仍有字节剩余的响应体，会让 HTTP 传输层无法复用这个连接，静默地给每回合都添上一次 TLS 握手；如果使用曾经移动到哨兵后面，早停的客户端会报告零 token，且错得理直气壮。
 
-**TTFT gates on real payload, not on the first frame.** The first chunk carries
-`content: ""`. Counting it turns TTFT into time-to-first-*byte* and flatters
-every request on a thinking model.
+**TTFT 只认真实负载，不认第一帧。**第一个块携带 `content: ""`。把它计入，会让 TTFT 变成时间到首**字节**，让每个跑在思考模型上的请求都显得比实际更好。
 
 ---
 
-## The integration bug this chapter shipped and then fixed
+## 这一章发布然后修复的集成 bug
 
-Worth keeping, because it is the characteristic failure of event-driven designs
-and it does not look like a crash.
+值得保留，因为它是事件驱动设计的特征失败，它看起来不像崩溃。
 
-The first working version printed **two panels per call** — one full of zeroes,
-then one with real numbers. The cause: the stream parser emitted
-`KindResponseEnd` (it knows when the response ended), *and* the agent loop
-emitted its own (it knows the usage). **Two components each believed they owned
-the same event.**
+第一个工作版本打印了**每个调用两个面板**——一个满是零，然后一个有真实数字。原因：流解析器发出 `KindResponseEnd`（它知道响应何时结束），**以及** Agent 循环发出它自己的（它知道使用）。**两个组件各自相信他们拥有同一个事件。**
 
-Two fixes, and both are the general lesson:
+两个修复，两个都是一般教训：
 
-1. **One owner per event.** The parser keeps `KindResponseEnd`, because it is
-   the component that knows whether the response ended *cleanly* — and on a
-   mid-stream error it deliberately emits nothing, so a trace never records a
-   clean ending that did not happen.
-2. **A renderer should not care which event a number rode in on.** It latches
-   the last `KindUsage` it saw and uses that. Reading usage only off
-   `KindResponseEnd` was the fragile assumption underneath the zeroes.
+1. **每个事件一个所有者。** 解析器保持 `KindResponseEnd`，因为它是知道响应是否以*清洁方式*结束的组件——在中流错误上，它故意什么都不发出，所以 trace 永远不会记录一个没发生的清洁结束。
+2. **一个渲染器不应该关心一个数字在哪个事件中出现。**它锁存它看到的最后 `KindUsage` 并使用那个。只从 `KindResponseEnd` 读取使用是零下面的脆弱假设。
 
-The same pass removed a second duplication: the command footer printed an exit
-code and duration that the tool-result text already ended with. Now only the
-tool result is shown — **exactly the bytes the model was given.** Showing a
-human a nicer summary than the model received is precisely the divergence this
-stage exists to eliminate.
+同一次传递移除了第二个重复：命令脚注打印了一个退出码和持续时间，工具结果文本已经以此结尾。现在只显示工具结果——**恰好是给模型的字节。**给人类一个比模型收到的更好的摘要，正是这个阶段所要消除的分歧。
 
 ---
 
-## Exercises
+## 练习
 
-1. **Break the ordering guarantee.** Make `Bus.Emit` dispatch in a goroutine.
-   Watch the trace and the terminal disagree about ordering, intermittently.
-   Then put it back.
-2. **`jq` the trace.** `jq -r 'select(.kind=="command_start") | .command'` gives
-   you every command a session ran. This is why the format is boring on purpose.
-3. **Turn on `--show-request` and read the first request in full.** Most
-   "why did the model do that" questions die here: the prompt did not contain
-   what you assumed.
-4. **Replay someone else's trace.** Delete your API key from the environment
-   first, to prove to yourself that replay needs nothing.
-5. **Add an event kind.** Emit it, render it, confirm old traces still replay.
-   Then try renaming an existing kind and watch what it does to a recorded
-   session — that is why the constants carry a warning.
-6. **Find the cold start.** In the run above, call 1 has TTFT 13042ms and call 2
-   has 1239ms. Explain the difference, then check the cache column and see
-   whether it agrees with you.
+1. **打破顺序保证。**让 `Bus.Emit` 在 goroutine 中分发。观察 trace 和终端对顺序意见不一，间歇性地。然后放回去。
+2. **`jq` trace。**`jq -r 'select(.kind=="command_start") | .command'` 给你会话运行的每个命令。这就是格式故意无聊的原因。
+3. **打开 `--show-request` 并完整阅读第一个请求。**大多数"模型为什么那样做"问题在这里死亡：prompt 不包含你假设的东西。
+4. **重放别人的 trace。**先从环境中删除你的 API 密钥，向自己证明重放什么都不需要。
+5. **添加一个事件 kind。**发出它、渲染它、确认旧 trace 仍然重放。然后尝试重命名现有的 kind 并观察它对记录会话做什么——那就是常量携带着警告的原因。
+6. **找到冷启动。**在上面的运行中，调用 1 有 TTFT 13042ms，调用 2 有 1239ms。解释差异，然后检查缓存列，看它是否同意你。
 
-→ Next: Stage 03 — Babel *(planned)*
+→ 下一步：第 03 阶段 — Babel *(计划中)*
 
-→ Reference: [Wire notes](wire-notes.md) — the observed behaviour every claim in
-this chapter rests on
+→ 参考：[Wire notes](wire-notes.md) — 这一章中每个声明所基于的观察行为

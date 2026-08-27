@@ -1,17 +1,14 @@
 //go:build darwin || dragonfly || freebsd || netbsd || openbsd
 
-// The two constants that force every terminal library in existence to have a
-// file like this one.
-//
-// termios is POSIX and the struct is portable. The ioctl *numbers* that read
-// and write it are not: BSD called them TIOCGETA/TIOCSETA and Linux, arriving
-// later, called them TCGETS/TCSETS with different values. There is no portable
-// name, so the choice is a build tag or a runtime switch on runtime.GOOS — and
-// a runtime switch would compile a Linux constant into a macOS binary, where
-// x/sys does not even define it.
-//
-// Six lines, twice, is the whole cost of getting this right. The cost of
-// getting it wrong is an ioctl that returns ENOTTY on exactly one platform.
+// 正是这两个常数，逼着现存的每一个终端库，都得有像这个文件一样的东西。
+// termios 是 POSIX 标准，这个 struct 本身是可移植的。但负责读写它的那两
+// 个 ioctl **数字**就不是了：BSD 把它们叫做 TIOCGETA/TIOCSETA，而后来才
+// 出现的 Linux，把它们叫做 TCGETS/TCSETS，用的还是不同的值。没有一个可移
+// 植的名字，所以只能靠构建标签，或者在 runtime.GOOS 上做运行时判断——而运
+// 行时判断会把一个 Linux 的常数编译进 macOS 二进制里，可 x/sys 在 macOS
+// 上根本没有定义这个常数。
+// 六行，写两遍，就是把这件事做对的全部代价。做错的代价，则是某一个平台上，
+// 偏偏就有个 ioctl 会返回 ENOTTY。
 package main
 
 import "golang.org/x/sys/unix"

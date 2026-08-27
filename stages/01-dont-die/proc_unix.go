@@ -1,18 +1,18 @@
 //go:build !windows
 
-// Process-tree killing, Unix edition.
+// 进程树杀死，Unix 版。
 //
-// The problem this solves: `bash -c "npm start &"` exits immediately, but the
-// backgrounded npm keeps running *and* keeps the stdout pipe open. Killing only
-// the shell leaves the grandchild alive and leaves cmd.Wait() blocked on a pipe
-// that will never close. See runBash in main.go.
+// 这解决的问题：`bash -c "npm start &"` 立即退出，但后台的
+// npm 保持运行**并且**保持 stdout 管道打开。仅杀 shell 留孙
+// 进程活着，留 cmd.Wait() 阻塞在一个永不关闭的管道上。见
+// main.go 中的 runBash。
 //
-// Unix has had the answer since v7: a process group. Every process belongs to
-// one, children inherit it, and kill(2) will signal an entire group if you pass
-// it a negative PID. So the whole job becomes killable through a single integer,
-// and we never have to walk a process tree — which is good, because walking one
-// is inherently racy (a process can fork between the moment you enumerate it and
-// the moment you kill it).
+// Unix 从 v7 起就有答案：一个进程组。每个进程都属于一个，
+// 子进程继承它，kill(2) 只要传入一个负 PID，就会给整个组
+// 发信号。所以整个任务就变得可以通过单个整数杀死，我们也
+// 从来不需要走一遍进程树——这很好，因为走一遍本质上是有
+// 竞争的（一个进程可能就在你枚举它和杀死它之间的那一刻
+// fork 出去）。
 package main
 
 import (
@@ -22,66 +22,71 @@ import (
 	"syscall"
 )
 
-// procGroup is a handle on "the shell and everything it spawned".
+// procGroup 是"shell 和它生成的所有东西"的句柄。
 //
-// On Unix that handle is just a number, so this struct looks almost empty. The
-// Windows file carries a real kernel object; the point of the shared API is that
-// main.go cannot tell the difference.
+// 在 Unix 上，那个句柄只是一个数字，所以这个结构体看起来
+// 几乎是空的。Windows 那边的文件则携带着一个真实的内核
+// 对象；共享这套 API 的关键在于，main.go 根本看不出其中
+// 的差别。
 type procGroup struct {
-	// runBash calls adopt() on one goroutine and kill() from the timeout branch,
-	// which is the same goroutine today — but "today" is a bad thing to build a
-	// kill switch on, and the Windows implementation genuinely needs a lock to
-	// stop kill() using a handle Close() already released. Same discipline in
-	// both files, so neither can drift into being the unsafe one.
+	// runBash 在一个 goroutine 上调用 adopt()，并在超时分支里
+	// 调用 kill()——目前这两者刚好是同一个 goroutine，但把一个
+	// 杀死开关的可靠性建立在"目前"这个前提上，可不是什么好事；
+	// Windows 那边的实现确实需要一把锁，来阻止 kill() 使用一个
+	// Close() 已经释放掉的句柄。两个文件都守着同样的纪律，这样
+	// 谁都不会慢慢漂移、变成不安全的那一个。
 	mu sync.Mutex
 
-	// The process-group ID, which is also the shell's PID. Cached at adopt()
-	// rather than read from cmd.Process at kill() time, so that kill() never
-	// touches exec.Cmd state concurrently with the goroutine sitting in
-	// cmd.Wait().
+	// 进程组 ID，同时也是 shell 的 PID。它在 adopt() 时就被
+	// 缓存下来，而不是等到 kill() 时才从 cmd.Process 读取，
+	// 这样 kill() 就永远不会跟那个守在 cmd.Wait() 里的
+	// goroutine，并发地去碰 exec.Cmd 的状态。
 	pgid int
 }
 
-// newProcGroup allocates nothing on Unix: the group is created by the kernel as
-// a side effect of fork(), so there is nothing to set up in advance and nothing
-// that can fail. The error return exists for the Windows implementation, where
-// creating the job object is a real syscall that really can fail.
+// newProcGroup 在 Unix 上什么都不分配：这个组由内核创建，
+// 是 fork() 的一个副作用，所以事先没有什么要设置的，也
+// 没有什么能失败的。错误返回的存在，是为了 Windows 那边
+// 的实现——在那里，创建工作对象是一次真正的系统调用，
+// 真的可能会失败。
 func newProcGroup() (*procGroup, error) {
 	return &procGroup{}, nil
 }
 
-// attach must be called BEFORE cmd.Start().
+// attach 必须在 cmd.Start() **之前**调用。
 //
-// Setpgid tells the Go runtime to call setpgid(0, 0) in the child, in the
-// window between fork() and exec(). That timing is what makes Unix airtight and
-// Windows not: the child is already in its own group before its first
-// instruction of shell code runs, so there is no interval in which a grandchild
-// could be spawned into our group instead of its own.
+// Setpgid 告诉 Go 运行时在子进程里调用 setpgid(0, 0)，就在
+// fork() 和 exec() 之间的那个窗口期。正是这个时序，让 Unix
+// 做到了万无一失，而 Windows 做不到：子进程在它的 shell
+// 代码第一条指令运行之前，就已经在自己的组里了，所以根本
+// 不存在这样一个空档——让孙进程被生成到我们的组里，而
+// 不是它自己的组里。
 //
-// Pgid is left at zero, which means "make the child the leader of a brand new
-// group whose ID equals its PID". A non-zero Pgid would join an existing group
-// instead — never do that here, or kill(-pgid) would take out the agent too.
+// Pgid 被留在零，意味着"让子进程成为一个全新进程组的组长，
+// 组 ID 等于它自己的 PID"。非零的 Pgid 会转而加入一个已有
+// 的组——这里绝不能这么做，否则 kill(-pgid) 连 Agent 自己
+// 也会一起干掉。
 func (g *procGroup) attach(cmd *exec.Cmd) {
-	// Preserve any attributes a caller already set; we only want this one bit.
+	// 保留呼叫者已设置的任何属性；我们仅要这一个位。
 	if cmd.SysProcAttr == nil {
 		cmd.SysProcAttr = &syscall.SysProcAttr{}
 	}
 	cmd.SysProcAttr.Setpgid = true
 }
 
-// adopt is called immediately after cmd.Start(). On Unix the kernel has already
-// done the work, so all that is left is to remember which group we own.
+// adopt 在 cmd.Start() 之后立刻被调用。在 Unix 上，内核已经
+// 把活干完了，剩下的就只是记住我们拥有的是哪个组。
 //
-// It is worth understanding why this is a no-op here and a syscall on Windows:
-// Unix lets a parent declare a child's group *before the child exists*, whereas
-// the Windows equivalent (assigning a job object) can only be done to a process
-// that is already running. That single difference is the entire reason the
-// Windows implementation has a race and this one does not.
+// 值得搞清楚，为什么这一步在这里是空操作，换到 Windows
+// 上却是一次系统调用：Unix 允许父进程在子进程**存在之前**
+// 就为它声明好进程组，而 Windows 那边的等价做法（分配一个
+// 工作对象）只能对一个已经在运行的进程去做。那个单一的
+// 差别，就是 Windows 实现会有竞争、而这边不会的全部原因。
 func (g *procGroup) adopt(cmd *exec.Cmd) error {
 	if cmd.Process == nil {
-		// Same error as the Windows implementation gives, so a caller that gets
-		// the ordering wrong finds out on whichever platform they develop on
-		// rather than the one they deploy to.
+		// 跟 Windows 实现给出的是同一种错误，这样一来，把调用
+		// 顺序搞错的呼叫者，会在自己开发时用的那个平台上就发现
+		// 问题，而不是等到部署的平台上才发现。
 		return fmt.Errorf("adopt called before Start")
 	}
 	g.mu.Lock()
@@ -90,66 +95,70 @@ func (g *procGroup) adopt(cmd *exec.Cmd) error {
 	return nil
 }
 
-// kill signals the whole group with SIGKILL.
+// kill 用 SIGKILL 向整个组发信号。
 //
-// The negative PID is the entire trick: kill(-N, sig) means "deliver sig to
-// every process in group N". Descendants that were re-parented to init when the
-// shell died are still in the group, so they still die — group membership is
-// inherited through fork and survives the death of the leader, which is exactly
-// the property an orphan-killer needs.
+// 负 PID 就是整个技巧所在：kill(-N, sig) 的意思是"把 sig
+// 发给组 N 里的每一个进程"。那些在 shell 死掉时被过继给
+// init 的子孙进程，依然留在这个组里，所以照样会被杀死——
+// 组成员关系是通过 fork 继承下来的，组长死了这层归属关系
+// 也不会消失，而这正是一个"孤儿杀手"需要的特性。
 //
-// SIGKILL, not SIGTERM, because a shell command that ignores SIGTERM is not a
-// hypothetical (any program with a "graceful shutdown" handler that hangs) and
-// this call is the agent's last resort, already reached after the timeout
-// expired. A more forgiving design sends SIGTERM, waits a second, then SIGKILL;
-// that is a reasonable change to make, but only once you have a way to abandon
-// the wait, or you have re-introduced the hang you were escaping.
+// 选 SIGKILL 而不是 SIGTERM，是因为"shell 命令会无视
+// SIGTERM"根本不是纸上谈兵（随便一个带"优雅关机"逻辑、
+// 结果却卡死的程序就是例子），而且这一步本来就是 Agent
+// 的最后手段，是超时到期之后才会走到的。更宽容一点的
+// 设计会先发 SIGTERM，等一秒，再发 SIGKILL；这么改是
+// 合理的，但前提是你得有办法半途放弃这次等待——不然就
+// 等于重新引入了那个你本来想逃开的挂起。
 //
-// Errors are deliberately swallowed. The only ones that occur in practice are
-// ESRCH ("nothing left in that group" — the happy case if the command finished
-// on its own) and EPERM. There is no useful recovery for either, and kill() is
-// documented as safe to call on an already-dead process.
+// 错误被故意吞掉。实践中唯一会出现的是 ESRCH（"那个组里
+// 什么都不剩了"——如果命令是自己结束的，这就是理想情况）
+// 和 EPERM。这两种情况都没有什么有用的补救办法，而且
+// kill() 的文档写明了：对一个已经死掉的进程调用它是安全的。
 func (g *procGroup) kill() {
 	g.mu.Lock()
 	pgid := g.pgid
 	g.mu.Unlock()
 
 	if pgid <= 0 {
-		// adopt() never ran, or the process never started. Killing group 0 would
-		// mean "my own group" — i.e. the agent would kill itself. Refuse.
+		// adopt() 根本没运行过，或者进程压根没启动。杀死组 0 就
+		// 意味着"我自己的组"——也就是说 Agent 会把自己杀掉。
+		// 拒绝执行。
 		return
 	}
 	_ = syscall.Kill(-pgid, syscall.SIGKILL)
 }
 
-// Close releases resources. There are none on Unix.
+// Close 释放资源。在 Unix 上，没有资源可释放。
 //
-// The one thing worth noting is what Close does NOT do: it does not kill
-// anything. On Windows the job object is configured to kill its members when the
-// last handle closes, so `defer g.Close()` there is also a safety net against
-// leaking a runaway tree if the agent itself crashes. Unix has no equivalent —
-// if the agent dies, its children keep running under init. That asymmetry is
-// real, and it is why runBash calls kill() explicitly instead of relying on
-// Close.
+// 唯一值得注意的是 Close **不**做什么：它不会杀掉任何
+// 东西。在 Windows 上，工作对象被配置成：当最后一个句柄
+// 关闭时，就杀掉它的所有成员，所以那边的 `defer g.Close()`
+// 也顺带成了一张安全网——就算 Agent 自己崩溃了，也不会
+// 泄漏一整棵失控的进程树。Unix 没有对应的机制——如果
+// Agent 死掉，它的子进程会继续在 init 下运行。这种不
+// 对称是真实存在的，这也是为什么 runBash 会明确地调用
+// kill()，而不是依赖 Close。
 func (g *procGroup) Close() error {
 	return nil
 }
 
-// processAlive reports whether a PID currently exists. It is used by
-// proc_test.go, which has to prove that grandchildren are gone rather than trust
-// that kill() returned without complaint.
+// processAlive 报告一个 PID 当前是否存在。它被 proc_test.go
+// 使用，proc_test.go 必须证明孙进程真的消失了，而不是
+// 轻信 kill() 老老实实地返回、没有报错。
 //
-// Signal 0 is the standard existence probe: the kernel runs its permission and
-// existence checks and then delivers nothing. A nil error means the PID is
-// there.
+// 信号 0 是标准的存在性探针：内核会执行它的权限检查和
+// 存在性检查，然后不递送任何东西。一个 nil 错误就意味着
+// 这个 PID 还存在。
 //
-// Caveat a student should know: this also returns true for a zombie — a process
-// that has died but whose exit status nobody has collected yet. After we kill a
-// process group, the orphans are re-parented to init (PID 1), which reaps them
-// promptly on any normal system. Inside a container whose PID 1 is an
-// application that does not reap, they can stay visible as zombies indefinitely.
-// That is a container-configuration bug, not a bug here, but it will make this
-// test flake, so the test polls rather than checking once.
+// 有个警告学生应该知道：遇到僵尸进程时，它也同样会返回
+// true——僵尸进程是指已经死掉、但退出状态还没人收集的
+// 进程。在我们杀掉一个进程组之后，孤儿进程会被过继给
+// init（PID 1），在任何正常系统上，init 都会很快把它们
+// 回收掉。但如果某个容器的 PID 1 是一个不会回收子进程的
+// 应用，它们就可能无限期地以僵尸进程的样子留在那里。那
+// 是容器配置的 bug，不是这里的 bug，但它会让这个测试变得
+// 不稳定，所以测试用轮询、而不是只检查一次。
 func processAlive(pid int) bool {
 	if pid <= 0 {
 		return false

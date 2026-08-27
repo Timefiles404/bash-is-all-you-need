@@ -1,28 +1,22 @@
 //go:build windows
 
-// Raw mode, Windows edition.
-//
-// Same contract as term_unix.go, and almost nothing else in common. Three
-// differences change the design rather than just the code:
-//
-//  1. There is no termios. There are two *console modes*, one for the input
-//     handle and one for the output handle, and they are bit flags rather than
-//     a struct — so "restore" means remembering two uint32s.
-//
-//  2. ANSI is opt-in on both ends. The input handle has to be told to encode
-//     keys as escape sequences (ENABLE_VIRTUAL_TERMINAL_INPUT) and the output
-//     handle has to be told to interpret them (ENABLE_VIRTUAL_TERMINAL_PROCESSING).
-//     Without the second, a TUI prints its escape codes as text — which is the
-//     single most common "my Go TUI is broken on Windows" report, and it is one
-//     API call.
-//
-//  3. **There is no SIGWINCH.** Nothing tells you the window was resized. The
-//     Win32 way is to read WINDOW_BUFFER_SIZE_EVENT records from the console
-//     input queue — but ENABLE_VIRTUAL_TERMINAL_INPUT is what turns that queue
-//     into a byte stream, and having asked for bytes you no longer get records.
-//     So this file polls. It is not a shortcut; it is what you are left with
-//     after choosing the VT path, and the VT path is the one that makes the
-//     keyboard behave like every other platform.
+// 原始模式，Windows 版本。
+// 契约和 term_unix.go 一样，但除此之外几乎没有别的共同点了。三处差异改变
+// 的是设计本身，而不只是代码：
+//  1. 没有 termios。这里有两个**控制台模式**，一个给输入句柄，一个给输出
+//     句柄，而且它们是位标志，不是 struct——所以"恢复"意味着要记住两个
+//     uint32。
+//  2. ANSI 在两端都是选择性开启的。输入句柄必须被告知把按键编码成转义序
+//     列（ENABLE_VIRTUAL_TERMINAL_INPUT），输出句柄必须被告知去解释这些
+//     转义序列（ENABLE_VIRTUAL_TERMINAL_PROCESSING）。少了后者，TUI 就会
+//     把自己的转义码当文本打印出来——这是"我的 Go TUI 在 Windows 上坏了"
+//     这类反馈里最常见的一种，而修复它只需要一次 API 调用。
+//  3. **没有 SIGWINCH。** 没有什么会主动告诉你窗口大小变了。Win32 的做法
+//     是从控制台输入队列里读取 WINDOW_BUFFER_SIZE_EVENT 记录——但正是
+//     ENABLE_VIRTUAL_TERMINAL_INPUT 把这个队列变成了字节流，一旦你选择接
+//     收字节，就不会再收到记录。所以这个文件采用轮询。这不是图省事的捷径；
+//     这是选择了 VT 路径之后唯一剩下的办法，而 VT 路径正是让键盘在
+//     Windows 上表现得和其他平台一样的那条路径。
 package main
 
 import (
@@ -48,21 +42,19 @@ func enterRaw(in, out *os.File) (*savedState, error) {
 		return nil, err
 	}
 
-	// Input: strip the line discipline, add VT encoding.
-	//
-	// ENABLE_PROCESSED_INPUT is the ISIG of Windows — with it on, Ctrl-C raises
-	// a console control event instead of arriving as a byte.
+	// 输入：去掉线纪律，加上 VT 编码。
+	// ENABLE_PROCESSED_INPUT 是 Windows 版的 ISIG——开着它，Ctrl-C 会触发一个
+	// 控制台控制事件，而不是作为字节到达。
 	newIn := oldIn
 	newIn &^= windows.ENABLE_ECHO_INPUT | windows.ENABLE_LINE_INPUT |
 		windows.ENABLE_PROCESSED_INPUT
 	newIn |= windows.ENABLE_VIRTUAL_TERMINAL_INPUT
 
-	// Quick Edit is the one nobody expects. It is on by default, it makes the
-	// mouse select text instead of reaching the application, and turning it off
-	// requires setting ENABLE_EXTENDED_FLAGS in the same call — clear
-	// QUICK_EDIT without it and the console ignores you, silently. A mouse UI
-	// that "does not receive clicks on Windows" is usually this and nothing
-	// else.
+	// Quick Edit 是没有人会想到的那一个。它默认是开着的，会让鼠标去选取文本，
+	// 而不是把点击传给应用程序；要关掉它，得在同一次调用里设置
+	// ENABLE_EXTENDED_FLAGS——不带上这个标志就去清除 QUICK_EDIT，控制台会悄悄
+	// 地无视你。一个"在 Windows 上收不到点击"的鼠标 UI，通常就是踩了这个坑，
+	// 没有别的原因。
 	newIn |= windows.ENABLE_EXTENDED_FLAGS
 	newIn &^= windows.ENABLE_QUICK_EDIT_MODE
 
@@ -70,17 +62,16 @@ func enterRaw(in, out *os.File) (*savedState, error) {
 		return nil, err
 	}
 
-	// Output: interpret ANSI, and stop wrapping at the last column.
-	//
-	// DISABLE_NEWLINE_AUTO_RETURN matters for the bottom-right cell. Writing a
-	// character there normally scrolls the screen by one line, which on an
-	// alternate screen means the frame the UI just drew slides up out of place.
+	// 输出：解释 ANSI，并且在最后一列不再自动换行。
+	// DISABLE_NEWLINE_AUTO_RETURN 真正要解决的，是右下角那个单元格：在那里写
+	// 一个字符，正常情况下会让屏幕向上滚动一行，而在备用屏上，这意味着 UI 刚
+	// 画好的那一帧会向上滑出原位。
 	newOut := oldOut | windows.ENABLE_VIRTUAL_TERMINAL_PROCESSING |
 		windows.ENABLE_PROCESSED_OUTPUT | windows.DISABLE_NEWLINE_AUTO_RETURN
 	if err := windows.SetConsoleMode(outH, newOut); err != nil {
-		// The input handle is already changed. Put it back before returning, or
-		// a failure here leaves the user with no echo and no explanation — the
-		// exact outcome this whole file exists to prevent.
+		// 输入句柄这时已经被改掉了。一定要在返回之前把它改回来——不然这里一旦失败，
+		// 用户就会被留在一个既没有 echo、也没有任何解释的处境里，而这恰恰是这整
+		// 个文件存在的目的所要阻止的结果。
 		windows.SetConsoleMode(inH, oldIn)
 		return nil, err
 	}
@@ -98,12 +89,11 @@ func leaveRaw(in, out *os.File, s *savedState) error {
 	return err
 }
 
-// termSize reads the console screen buffer info.
-//
-// Note that it uses the *window* rectangle, not the buffer Size. They are
-// different on Windows in a way they never are on Unix: a console can have a
-// 9,000-line scrollback buffer behind an 80x25 window, and Size describes the
-// buffer. Measure the buffer and the UI draws 9,000 rows into a 25-row hole.
+// termSize 读取控制台屏幕缓冲区信息。
+// 注意它用的是**窗口**矩形，不是缓冲区的 Size。这两者在 Windows 上是不同
+// 的，而这种区别在 Unix 上从来不会出现：一个控制台可以有一个 9,000 行的
+// 滚回缓冲，藏在一个 80x25 的窗口后面，Size 描述的是缓冲区。去量缓冲区的
+// 大小，UI 就会想把 9,000 行画进一个只有 25 行的窟窿里。
 func termSize(out *os.File) (int, int, error) {
 	var info windows.ConsoleScreenBufferInfo
 	if err := windows.GetConsoleScreenBufferInfo(windows.Handle(out.Fd()), &info); err != nil {
@@ -114,19 +104,16 @@ func termSize(out *os.File) (int, int, error) {
 	return w, h, nil
 }
 
-// watchResize polls, because nothing will tell us.
+// watchResize 轮询，因为没有其他办法通知我们。
 //
-// Four times a second: fast enough that a resize feels immediate, slow enough
-// that an idle UI is not measurably running. The comparison against the last
-// observed size is what keeps this edge-triggered like its Unix counterpart, so
-// the event loop cannot tell the two apart — which is the point of the shared
-// signature.
+// 一秒四次：快得足以让调整大小感觉即时，慢得足以让空闲的 UI 不会显著运行。
+// 靠的是和上一次观察到的尺寸做比较，这个事件才能像它的 Unix 对应物一样保
+// 持边缘触发，所以事件循环分不出两者——这正是共享签名的意义所在。
 //
-// The honest summary of the difference: on Unix a resize costs nothing until it
-// happens; here it costs a syscall every 250ms forever. That is the price of
-// the VT input path, and it is worth paying, because the alternative is a
-// separate Windows key decoder and a different set of bugs on the platform
-// where users are least likely to be able to diagnose them.
+// 诚实地说说这个差异：在 Unix 上调整大小的代价是零，直到它发生；这里的
+// 代价是每 250ms 一次系统调用，永远如此。这是 VT 输入路径的代价，值得
+// 付出，因为另一种选择是一个独立的 Windows 按键解码器，以及这个平台上
+// 一套不同的 bug——而这恰恰是用户最不可能自己诊断出问题的平台。
 func watchResize(out *os.File) (<-chan struct{}, func()) {
 	ch := make(chan struct{}, 1)
 	done := make(chan struct{})

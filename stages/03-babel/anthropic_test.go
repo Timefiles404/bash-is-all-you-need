@@ -1,19 +1,18 @@
-// Tests for the Anthropic protocol adapter.
+// Anthropic 协议适配器的测试。
 //
-// Every stream fixture below is built from docs/wire-notes.md §B6 and §B7 —
-// bytes this endpoint actually sent, not bytes invented to make a parser look
-// correct. That distinction is the whole reason the fixtures are here: a
-// fixture written from the specification tests your reading of the
-// specification, and this endpoint contradicts the specification in at least
-// four places that matter to this file (pings outside the stream, no [DONE], a
-// wrong usage report in message_start, and a `</think>` tag leaking into
-// visible text).
+// 以下每个流 fixture 都从 docs/wire-notes.md §B6 和 §B7 构建——
+// 这个端点实际发送的字节，不是为了让解析器看起来正确而发明的字节。
+// 这个区别正是为什么这些 fixture 在这里：从规范编写的 fixture
+// 测试的是你对规范的理解，而这个端点在至少四个地方与规范矛盾，
+// 这四个地方对这个文件很重要（流外的 ping、没有 [DONE]、
+// message_start 中的使用报告错误，以及 `</think>` 标签泄漏到可见文本）。
 //
-// Where a frame's envelope had to be reconstructed — the wire notes record some
-// events as a bare `delta` object or as a name in a sequence listing — the
-// comment above it says so. The values inside are always verbatim.
+// 某些 frame 的信封必须重建——线上笔记将某些事件记录为
+// 裸 `delta` 对象或作为序列列表中的名称——上面的注释会说明。
+// 内部的值总是逐字记录的。
 //
-// No network, no API key, no `-short` skips. The whole file runs on a plane.
+// 没有网络、没有 API 密钥、没有 `-short` 跳过。
+// 整个文件可以在飞机上运行。
 package main
 
 import (
@@ -29,19 +28,18 @@ import (
 	"time"
 )
 
-// The adapter must satisfy the contract in provider.go. Asserting it here means
-// a signature drift is a compile error in the test build, next to the tests
-// that explain what each method owes the caller.
+// 适配器必须满足 provider.go 中的契约。在这里断言它意味着
+// 签名偏差是测试构建中的编译错误，就在解释每个方法
+// 对调用方的义务的测试旁边。
 var _ Provider = (*anthropicProvider)(nil)
 
 // ---------------------------------------------------------------------------
-// Frame builders.
+// Frame 构建器。
 //
-// The wire notes print the argument fragments as bare values and the deltas as
-// bare `delta` objects, so these helpers rebuild the envelope around a verbatim
-// value. json.Marshal does the string escaping, which is exactly how the
-// gateway produced the bytes in the first place — writing `\"` by hand in a Go
-// literal is how a fixture stops matching the wire.
+// 线上笔记将参数片段打印为裸值，deltas 打印为裸 `delta` 对象，
+// 所以这些辅助函数围绕逐字值重建信封。json.Marshal 进行字符串转义，
+// 这正是网关最初产生字节的方式——在 Go 字面值中手写 `\"`
+// 是 fixture 停止匹配线上内容的方式。
 // ---------------------------------------------------------------------------
 
 func anthQuote(s string) string {
@@ -78,32 +76,33 @@ func anthMessageDelta(stopReason string, input, output, cacheWrite, cacheRead in
 }
 
 // ---------------------------------------------------------------------------
-// §B6 / §B7 fixtures.
+// §B6 / §B7 fixtures。
 // ---------------------------------------------------------------------------
 
 const (
-	// VERBATIM §B6. Note what is NOT in it: no stop_reason, no cache counters,
-	// and an input_tokens figure that the very next usage report contradicts.
+	// **逐字 §B6。注意里面没有**什么：没有 stop_reason、
+	// 没有缓存计数器，以及一个 input_tokens 数字，
+	// 这个数字与下一个使用报告矛盾。
 	b6MessageStart = `{"type":"message_start","message":{"id":"msg_e3f9307e-2dc9-41f0-a70e-cca934593aa0","type":"message","role":"assistant","model":"qwen3.7-plus","content":[],"usage":{"input_tokens":56,"output_tokens":0}}}`
 
-	// VERBATIM §B6 — the tool_use announcement. `input` is an empty object and
-	// the id/name appear here and in no other frame.
+	// **逐字** §B6——tool_use 公告。`input` 是一个空对象，
+	// id/name 出现在这里，也不在其他 frame 中。
 	b6ToolStart0 = `{"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_ff07c814f3f34014aa526469","name":"bash","input":{}}}`
 
-	// VERBATIM §B6 — usage that disagrees with message_start about the same
-	// request, and the only frame carrying stop_reason or cache counters.
+	// **逐字** §B6——使用报告与 message_start 关于同一请求不一致，
+	// 也是唯一携带 stop_reason 或缓存计数器的 frame。
 	b6MessageDelta = `{"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"input_tokens":291,"output_tokens":63,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}}`
 
-	// VERBATIM §B6 — the trailing ping, carrying `cost` as an extra key.
+	// **逐字** §B6——尾部 ping，携带额外键 `cost`。
 	b6PingWithCost = `{"type":"ping","cost":"0"}`
 
-	// RECONSTRUCTED shape: §B6 lists `ping` and `message_stop` in the event
-	// sequence but prints a body only for the trailing ping.
+	// **重建**形状：§B6 在事件序列中列出 `ping` 和 `message_stop`，
+	// 但仅为尾部 ping 打印 body。
 	b6Ping        = `{"type":"ping"}`
 	b6MessageStop = `{"type":"message_stop"}`
 
-	// VERBATIM §B7 — a thinking block, its (always empty) signature delta, and
-	// the text block that opens at the NEXT index once it closes.
+	// **逐字** §B7——一个思考块、它的（总是空的）签名 delta，
+	// 以及在它关闭后在**下一个**索引处打开的文本块。
 	b7ThinkingStart   = `{"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":"","signature":""}}`
 	b7ThinkingDelta   = `{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"Let"}}`
 	b7SignatureDelta  = `{"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":""}}`
@@ -113,11 +112,11 @@ const (
 	b7TextDeltaSecond = `{"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" 17 ×"}}`
 )
 
-// b6ArgFragments are the six `partial_json` values §B6 recorded, in order.
+// b6ArgFragments 是 §B6 记录的六个 `partial_json` 值，按顺序。
 //
-// The first is the EMPTY STRING, fragment three ends mid-path (`/srv`) and
-// fragment four resumes it (`/app`). At no point is a fragment parseable JSON,
-// which is why the adapter concatenates raw bytes and never inspects them.
+// 第一个是**空字符串**，片段三在路径中间结束（`/srv`），
+// 片段四继续它（`/app`）。在任何时刻，片段都不是可解析的 JSON，
+// 这就是为什么适配器连接原始字节，永远不检查它们。
 var b6ArgFragments = []string{
 	``,
 	`{"command": "ls`,
@@ -127,30 +126,29 @@ var b6ArgFragments = []string{
 	`}`,
 }
 
-// b6WantArgs is what §B6 says those fragments concatenate to.
+// b6WantArgs 是 §B6 说这些片段连接成什么。
 const b6WantArgs = `{"command": "ls -la /srv/app"}`
 
-// b6LeakText is the gateway's `</think>` leak, VERBATIM §B6 (and §A3b, which
-// caught the identical string in a non-streaming response). A newline, the bare
-// closing tag, two more newlines — an entire user-visible text block containing
-// no model output at all.
+// b6LeakText 是网关的 `</think>` 泄漏，**逐字** §B6（以及 §A3b，
+// 它在非流式响应中捕获了相同的字符串）。一个换行符、裸闭合标签、
+// 两个换行符——整个用户可见的文本块，不包含模型输出。
 const b6LeakText = "\n</think>\n\n"
 
-// b6FullStream is §B6's two-tool-call stream end to end:
+// b6FullStream 是 §B6 的两个工具调用流端到端：
 //
 //	ping message_start
-//	content_block_start content_block_delta x6 content_block_stop  (index 0, tool_use)
-//	content_block_start content_block_delta   content_block_stop   (index 1, text)
-//	content_block_start content_block_delta x6 content_block_stop  (index 2, tool_use)
+//	content_block_start content_block_delta x6 content_block_stop  (索引 0, tool_use)
+//	content_block_start content_block_delta   content_block_stop   (索引 1, 文本)
+//	content_block_start content_block_delta x6 content_block_stop  (索引 2, tool_use)
 //	message_delta message_stop ping
 //
-// The index-2 block is CONSTRUCTED — §B6 records its position, type and delta
-// count but not its id or arguments — and it is deliberately given a different
-// command, so a parser that shares one buffer across blocks produces visible
-// garbage instead of a subtle mix-up.
+// 索引 2 块是**构造的**——§B6 记录其位置、类型和 delta
+// 计数，但没有记录它的 id 或参数——它故意被赋予不同的命令，
+// 所以一个在块之间共享一个缓冲区的解析器会产生可见的垃圾，
+// 而不是微妙的混淆。
 func b6FullStream() []string {
 	frames := []string{
-		b6Ping, // BEFORE message_start. The spec says this cannot happen.
+		b6Ping, // message_start **之前**。规范说这不可能发生。
 		b6MessageStart,
 		b6ToolStart0,
 	}
@@ -160,12 +158,12 @@ func b6FullStream() []string {
 	frames = append(frames,
 		anthBlockStop(0),
 
-		// Index 1: the `</think>` leak, as its own text content block.
+		// 索引 1：`</think>` 泄漏，作为它自己的文本内容块。
 		b7TextStart1,
 		anthTextDelta(1, b6LeakText),
 		anthBlockStop(1),
 
-		// Index 2: the second tool call.
+		// 索引 2：第二个工具调用。
 		anthToolStart(2, "toolu_5ae0ccdc34f44d30a2217c5e", "bash"),
 	)
 	for _, frag := range []string{``, `{"command": "wc`, ` -l /srv`, `/app/main`, `.go"`, `}`} {
@@ -175,24 +173,24 @@ func b6FullStream() []string {
 		anthBlockStop(2),
 		b6MessageDelta,
 		b6MessageStop,
-		b6PingWithCost, // AFTER message_stop, carrying `cost`.
+		b6PingWithCost, // message_stop **之后**，携带 `cost`。
 	)
 	return frames
 }
 
 // ---------------------------------------------------------------------------
-// Harness.
+// 宿主。
 // ---------------------------------------------------------------------------
 
-// anthSSE renders frames the way §B6 describes this endpoint rendering them:
-// `event: <name>`, `data: <payload>`, blank line. The event name is taken from
-// the payload's own `type`, which is how the gateway builds it.
+// anthSSE 以 §B6 描述这个端点呈现它们的方式呈现 frames：
+// `event: <name>`、`data: <payload>`、空行。event 名称取自
+// payload 自己的 `type`，这就是网关如何构建它的方式。
 //
-// The body ends WITHOUT a trailing blank line on the last frame, because that
-// is how this stream really ends: no `[DONE]`, no terminator, just the
-// connection closing. A reader that only dispatches on a blank line silently
-// drops the last frame of every response — and on this protocol the last frames
-// are message_delta and the cost ping.
+// body 在最后一个 frame 处结束**没有**尾部空行，因为这是
+// 这个流的实际结束方式：没有 `[DONE]`、没有终止符、
+// 只是连接关闭。一个只在空行上分发的读取器会无声地
+// 丢弃每个响应的最后一个 frame——在这个协议上，最后的 frame
+// 是 message_delta 和成本 ping。
 func anthSSE(frames ...string) io.Reader {
 	var b strings.Builder
 	for i, f := range frames {
@@ -214,9 +212,9 @@ func anthEventName(payload string) string {
 	return probe.Type
 }
 
-// anthRecorder keeps every event, which is the cheapest possible demonstration
-// of why the agent core emits events instead of printing: these tests assert on
-// an event sequence and never touch stdout.
+// anthRecorder 保留每个事件，这是展示为什么 agent 核心
+// 发出事件而不是打印的最便宜方式：这些测试对事件序列断言，
+// 从不接触 stdout。
 type anthRecorder struct{ events []Event }
 
 func (r *anthRecorder) OnEvent(e Event) { r.events = append(r.events, e) }
@@ -264,8 +262,8 @@ func anthProvider() *anthropicProvider {
 	return newAnthropicProvider("https://opencode.ai/zen/go/v1", "sk-test", "qwen3.7-plus")
 }
 
-// anthParse runs the adapter over a frame list and hands back everything a test
-// might want to assert on.
+// anthParse 在 frame 列表上运行适配器，交回测试可能想
+// 断言的一切。
 func anthParse(t *testing.T, frames []string) (*CallResult, *anthRecorder, error) {
 	t.Helper()
 	rec := &anthRecorder{}
@@ -277,7 +275,7 @@ func anthParse(t *testing.T, frames []string) (*CallResult, *anthRecorder, error
 }
 
 // ---------------------------------------------------------------------------
-// The full §B6 stream.
+// 完整的 §B6 流。
 // ---------------------------------------------------------------------------
 
 func TestAnthropicFullB6Stream(t *testing.T) {
@@ -286,8 +284,8 @@ func TestAnthropicFullB6Stream(t *testing.T) {
 		t.Fatalf("the recorded stream must parse cleanly: %v", err)
 	}
 
-	// A ping before message_start and a ping after message_stop, neither of
-	// which is a token, a message, or a reason to stop reading.
+	// message_start 前的一个 ping 和 message_stop 后的一个 ping，
+	// 都不是一个 token、一条消息，也不是停止读取的理由。
 	if got := rec.count(KindFirstToken); got != 1 {
 		t.Errorf("KindFirstToken emitted %d times, want exactly 1 (a ping is not a token)", got)
 	}
@@ -308,8 +306,8 @@ func TestAnthropicFullB6Stream(t *testing.T) {
 		t.Errorf("second call args = %q, want %q — fragments leaked between content blocks", res.Calls[1].Args, want)
 	}
 
-	// The only text block in this stream was the `</think>` leak, so there is
-	// no visible text at all.
+	// 这个流中唯一的文本块是 `</think>` 泄漏，所以根本
+	// 没有可见文本。
 	if res.Text != "" {
 		t.Errorf("Text = %q, want empty: the only text block was gateway residue", res.Text)
 	}
@@ -337,8 +335,8 @@ func TestAnthropicFullB6Stream(t *testing.T) {
 		t.Errorf("KindResponseEnd.FinishReason = %q, want the raw wire string", end.FinishReason)
 	}
 
-	// Every event carries the turn, so a trace of a multi-turn session can be
-	// sliced back apart.
+	// 每个事件都携带回合，所以多回合会话的 trace
+	// 可以按回合重新切分开。
 	for _, e := range rec.events {
 		if e.Turn != anthTestTurn {
 			t.Fatalf("event %s carries turn %d, want %d", e.Kind, e.Turn, anthTestTurn)
@@ -347,7 +345,7 @@ func TestAnthropicFullB6Stream(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Tool arguments.
+// 工具参数。
 // ---------------------------------------------------------------------------
 
 func TestAnthropicToolArgsReassembly(t *testing.T) {
@@ -357,8 +355,8 @@ func TestAnthropicToolArgsReassembly(t *testing.T) {
 		want   []Block
 	}{
 		{
-			// The observed fragments, verbatim §B6, including the empty first
-			// one and the two that split a path down the middle.
+			// 观察到的片段，逐字 §B6，包括空的第一个
+			// 以及在中间分割路径的两个。
 			name: "observed fragments reassemble",
 			frames: func() []string {
 				f := []string{b6Ping, b6MessageStart, b6ToolStart0}
@@ -375,10 +373,10 @@ func TestAnthropicToolArgsReassembly(t *testing.T) {
 			}},
 		},
 		{
-			// CONSTRUCTED. Two blocks open before either closes and their
-			// fragments interleave, and the higher index opens FIRST — so an
-			// implementation that accumulates into one buffer, or returns calls
-			// in arrival order, fails every run instead of one in two.
+			// **构造的**。两个块在任何一个关闭前打开，
+			// 它们的片段交错，更高索引的块**先**打开——
+			// 所以一个累积到一个缓冲区中，或按到达顺序
+			// 返回调用的实现，每次运行都失败，而不是一半时间。
 			name: "interleaved blocks stay separate and come back index-ordered",
 			frames: []string{
 				b6Ping, b6MessageStart,
@@ -397,9 +395,9 @@ func TestAnthropicToolArgsReassembly(t *testing.T) {
 			},
 		},
 		{
-			// A tool call whose arguments never arrived. The id and name still
-			// have to survive: without the id there is no tool_use_id to answer
-			// with, and the turn cannot be closed at all.
+			// 一个工具调用，其参数从未到达。id 和 name
+			// 仍然必须幸存：没有 id 就没有 tool_use_id 来回答，
+			// 回合根本无法关闭。
 			name: "announced but empty stays announced",
 			frames: []string{
 				b6Ping, b6MessageStart,
@@ -422,16 +420,16 @@ func TestAnthropicToolArgsReassembly(t *testing.T) {
 				t.Errorf("calls =\n  %+v\nwant\n  %+v", res.Calls, tc.want)
 			}
 
-			// The empty first fragment must not become a trace line: an
-			// argument delta carrying no characters is noise in the request
-			// inspector and in every renderer downstream.
+			// 空的第一个片段不应该变成 trace 行：一个
+			// 不携带任何字符的参数 delta 在请求检查器中是噪音，
+			// 在下游的每个渲染器中也是。
 			for _, txt := range rec.textsOf(KindToolArgsDelta) {
 				if txt == "" {
 					t.Error("emitted a KindToolArgsDelta with empty text; the first observed fragment is \"\" and carries nothing")
 				}
 			}
 
-			// Every announcement must name its call.
+			// 每个公告都必须为其调用命名。
 			for _, e := range rec.events {
 				if e.Kind == KindToolCallStart && (e.ToolID == "" || e.ToolName == "") {
 					t.Errorf("KindToolCallStart missing id or name: %+v", e)
@@ -442,7 +440,7 @@ func TestAnthropicToolArgsReassembly(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Usage. The highest-value test in this file.
+// 使用。这个文件中价值最高的测试。
 // ---------------------------------------------------------------------------
 
 func TestAnthropicUsageComesFromMessageDeltaNotMessageStart(t *testing.T) {
@@ -455,11 +453,11 @@ func TestAnthropicUsageComesFromMessageDeltaNotMessageStart(t *testing.T) {
 		wantStop   StopReason
 	}{
 		{
-			// §B6, the disagreeing pair: message_start says input_tokens 56,
-			// message_delta says 291, for the same request. The non-streaming
-			// call with the same prompt agreed with 291. If this assertion ever
-			// reads 56, the adapter is trusting the frame the spec calls
-			// authoritative and this endpoint gets wrong.
+			// §B6，不一致的对：message_start 说 input_tokens 56，
+			// message_delta 说 291，对于同一请求。带有相同
+			// prompt 的非流式调用同意了 291。如果这个断言
+			// 曾经读取 56，适配器就在信任规范称为权威的 frame，
+			// 而这个端点弄错了。
 			name:       "message_start says 56, message_delta says 291, 291 wins",
 			frames:     []string{b6Ping, b6MessageStart, b6ToolStart0, anthArgsDelta(0, `{}`), anthBlockStop(0), b6MessageDelta, b6MessageStop, b6PingWithCost},
 			want:       Usage{Input: 291, Output: 63},
@@ -468,15 +466,15 @@ func TestAnthropicUsageComesFromMessageDeltaNotMessageStart(t *testing.T) {
 			wantStop:   StopToolUse,
 		},
 		{
-			// A warm cache call, verified live: input=18, cache_creation=0,
-			// cache_read=17967. This protocol's input_tokens is ONLY the
-			// uncached remainder, so it maps straight across and the context
-			// size is the SUM — 17,985 — a number no single field on the wire
-			// reports. (§C8 measured the same shape on a smaller handbook:
-			// input 18, cache_read 9,775.)
+			// 一个热缓存调用，在线验证：input=18、cache_creation=0、
+			// cache_read=17967。这个协议的 input_tokens **仅**是
+			// 未缓存的剩余部分，所以它直接映射，上下文大小是
+			// **总和**——17,985——一个单个线上字段不会报告的数字。
+			// （§C8 在较小的手册上测量了相同的形状：input 18、
+			// cache_read 9,775。）
 			//
-			// An adapter that copied the OpenAI direction and subtracted
-			// cache_read from input would report -17,949 here.
+			// 一个复制 OpenAI 方向并从 input 减去 cache_read
+			// 的适配器会报告 -17,949。
 			name:       "warm cache: input is only the uncached remainder",
 			frames:     []string{b6Ping, b6MessageStart, b7TextStart1, anthTextDelta(1, "ACK"), anthBlockStop(1), anthMessageDelta("end_turn", 18, 249, 0, 17967), b6MessageStop},
 			want:       Usage{Input: 18, CacheRead: 17967, Output: 249},
@@ -485,8 +483,8 @@ func TestAnthropicUsageComesFromMessageDeltaNotMessageStart(t *testing.T) {
 			wantStop:   StopEndTurn,
 		},
 		{
-			// The first call against a cold cache writes the prefix. CacheWrite
-			// is its own field because it is billed at ~1.25x, not 0.1x.
+			// 针对冷缓存的第一个调用写入前缀。CacheWrite
+			// 是它自己的字段，因为它按约 1.25 倍计费，而不是 0.1 倍。
 			name:       "cold cache: creation tokens land in CacheWrite",
 			frames:     []string{b6Ping, b6MessageStart, b7TextStart1, anthTextDelta(1, "ACK"), anthBlockStop(1), anthMessageDelta("end_turn", 18, 249, 9775, 0), b6MessageStop},
 			want:       Usage{Input: 18, CacheWrite: 9775, Output: 249},
@@ -495,11 +493,11 @@ func TestAnthropicUsageComesFromMessageDeltaNotMessageStart(t *testing.T) {
 			wantStop:   StopEndTurn,
 		},
 		{
-			// The stream died before message_delta. There is NO fallback to
-			// message_start's figure: a missing number can be seen and chased,
-			// a plausible wrong one ends up in a cost dashboard. And with no
-			// stop_reason at all, the turn is StopUnknown — not "probably
-			// fine".
+			// 流在 message_delta 前死亡。**没有**回退到
+			// message_start 的数字：缺少的数字可以看到并追踪，
+			// 一个看似正确的会出现在成本仪表板上。
+			// 并且没有 stop_reason，回合是 StopUnknown——
+			// 不是"可能没问题"。
 			name:       "no message_delta: no usage, and an unknown stop",
 			frames:     []string{b6Ping, b6MessageStart, b7TextStart1, anthTextDelta(1, "half a sen")},
 			want:       Usage{},
@@ -528,8 +526,8 @@ func TestAnthropicUsageComesFromMessageDeltaNotMessageStart(t *testing.T) {
 				t.Errorf("Stop = %q, want %q", res.Stop, tc.wantStop)
 			}
 
-			// The KindUsage event must carry the same normalised figures, and
-			// must not be emitted at all when nothing was reported.
+			// KindUsage 事件必须携带相同的规范化数字，
+			// 而且什么都不报告时根本不能发出。
 			ev, ok := rec.first(KindUsage)
 			if tc.want == (Usage{}) {
 				if ok {
@@ -548,13 +546,13 @@ func TestAnthropicUsageComesFromMessageDeltaNotMessageStart(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Thinking.
+// 思考。
 // ---------------------------------------------------------------------------
 
 func TestAnthropicThinkingAndTextStaySeparate(t *testing.T) {
-	// §B7 verbatim: a thinking block at index 0 with its own delta type, closed
-	// before the text block opens at index 1. Code that assumes index 0 is text
-	// renders the model's private reasoning to the user.
+	// §B7 逐字：索引 0 处有一个思考块及其自己的 delta 类型，
+	// 在索引 1 处的文本块打开之前关闭。假设索引 0 是文本的代码
+	// 会将模型的私有推理呈现给用户。
 	frames := []string{
 		b6Ping, b6MessageStart,
 		b7ThinkingStart,
@@ -589,9 +587,9 @@ func TestAnthropicThinkingAndTextStaySeparate(t *testing.T) {
 		t.Errorf("KindTextDelta count = %d, want 2", got)
 	}
 
-	// signature_delta is emitted by this gateway and always carries "" (§B7).
-	// It must produce no event of any kind: it is neither text nor a notice,
-	// and there is no signature to round-trip.
+	// signature_delta 由这个网关发出，总是携带 ""（§B7）。
+	// 它不能产生任何类型的事件：它既不是文本也不是通知，
+	// 也没有签名要来回往返。
 	for _, txt := range append(rec.textsOf(KindTextDelta), rec.textsOf(KindReasoningDelta)...) {
 		if txt == "" {
 			t.Error("an empty delta reached the bus; signature_delta must be ignored, not forwarded")
@@ -601,9 +599,9 @@ func TestAnthropicThinkingAndTextStaySeparate(t *testing.T) {
 		t.Errorf("got %d notices, want 0 — signature_delta is expected, not unknown", got)
 	}
 
-	// The first token is the first THINKING token, not the first visible
-	// character. On a reasoning model that is the honest measurement: it is
-	// what the model produced first.
+	// 第一个 token 是第一个**思考** token，
+	// 不是第一个可见字符。在推理模型上，那是诚实的测量：
+	// 它是模型首先生产的东西。
 	if got := rec.count(KindFirstToken); got != 1 {
 		t.Fatalf("KindFirstToken count = %d, want 1", got)
 	}
@@ -613,13 +611,12 @@ func TestAnthropicThinkingAndTextStaySeparate(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// The `</think>` leak. §B6 deviation 4.
+// `</think>` 泄漏。§B6 偏差 4。
 // ---------------------------------------------------------------------------
 
-// THE DECISION UNDER TEST: residue is dropped from user-visible text and
-// reported as a notice. Not rendered (it is not the model's output), not
-// silently swallowed (the trace has to keep the evidence that the gateway is
-// leaking its own harness markup).
+// **受测试的决定**：残基从用户可见文本中丢弃，
+// 并报告为通知。不呈现（它不是模型的输出），
+// 不无声吞咽（trace 必须保留网关泄漏其自己的宿主标记的证据）。
 func TestAnthropicThinkTagLeak(t *testing.T) {
 	cases := []struct {
 		name        string
@@ -628,8 +625,8 @@ func TestAnthropicThinkTagLeak(t *testing.T) {
 		wantNotices int
 	}{
 		{
-			// VERBATIM §B6 / §A3b: an entire text content block whose whole
-			// content is the leaked closing tag.
+			// **逐字** §B6 / §A3b：整个文本内容块，
+			// 其整个内容是泄漏的闭合标签。
 			name:        "the observed leak is dropped and reported",
 			deltas:      []string{b6LeakText},
 			wantText:    "",
@@ -642,19 +639,19 @@ func TestAnthropicThinkTagLeak(t *testing.T) {
 			wantNotices: 1,
 		},
 		{
-			// The opening tag has not been observed leaking, but it is the same
-			// failure with the same fix.
+			// 尚未观察到打开标签泄漏，但这是相同的失败，
+			// 相同的修复。
 			name:        "a bare opening tag is residue too",
 			deltas:      []string{"<think>", "hello"},
 			wantText:    "hello",
 			wantNotices: 1,
 		},
 		{
-			// THE FALSE POSITIVE THIS RULE EXISTS TO AVOID. A model explaining
-			// think-tags — a completely reasonable thing to ask a coding agent —
-			// must come through untouched. Quietly corrupting genuine output to
-			// tidy up vendor garbage is the worse of the two failures, so the
-			// rule is "the whole delta is the tag", not "the delta contains it".
+			// **这个规则存在以避免的假阳性**。一个模型解释思考标签——
+			// 这是要求 coding Agent 做的完全合理的事情——
+			// 必须完全原封不动地通过。悄悄破坏真实输出来整理厂商垃圾
+			// 是两个失败中更糟糕的一个，所以规则是
+			// "整个 delta 是标签"，而不是"delta 包含它"。
 			name:        "a tag inside a sentence is the model talking, not residue",
 			deltas:      []string{"Close the block with </think> and continue."},
 			wantText:    "Close the block with </think> and continue.",
@@ -680,7 +677,7 @@ func TestAnthropicThinkTagLeak(t *testing.T) {
 			if got := rec.count(KindNotice); got != tc.wantNotices {
 				t.Errorf("notice count = %d, want %d (notices: %q)", got, tc.wantNotices, rec.textsOf(KindNotice))
 			}
-			// Dropped means dropped: no renderer may ever see the tag.
+			// 丢弃意味着丢弃：任何渲染器都绝不能看到这个标签。
 			for _, txt := range rec.textsOf(KindTextDelta) {
 				if strings.TrimSpace(txt) == "</think>" || strings.TrimSpace(txt) == "<think>" {
 					t.Errorf("residue %q was forwarded as visible text", txt)
@@ -697,31 +694,30 @@ func TestAnthropicThinkTagLeak(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Event sequence.
+// 事件序列。
 // ---------------------------------------------------------------------------
 
 func TestAnthropicEventSequence(t *testing.T) {
-	// One stream with every payload type in it, so the assertion below is the
-	// complete contract this adapter owes a renderer: same kinds, same order,
-	// same meanings as the OpenAI adapter, from a wire that shares none of its
-	// vocabulary.
+	// 一个流，其中包含每种 payload 类型，所以下面的断言是
+	// 这个适配器欠渲染器的完整契约：相同的类型、
+	// 相同的顺序、相同的含义，来自一个不共享其任何词汇的线上。
 	frames := []string{
-		b6Ping,         // not a token
-		b6MessageStart, // not a token, and its usage is a lie
+		b6Ping,         // 不是一个 token
+		b6MessageStart, // 不是 token，它的使用是谎言
 		b7ThinkingStart,
 		b7ThinkingDelta,
-		b7SignatureDelta, // always empty; produces nothing
+		b7SignatureDelta, // 总是空的；什么都不产生
 		b7BlockStop0,
 		b7TextStart1,
 		b7TextDeltaFirst,
 		anthBlockStop(1),
 		anthToolStart(2, "toolu_x", "bash"),
-		anthArgsDelta(2, ``), // the empty first fragment produces nothing
+		anthArgsDelta(2, ``), // 空的第一个片段什么都不产生
 		anthArgsDelta(2, `{"command": "ls"}`),
 		anthBlockStop(2),
 		b6MessageDelta,
 		b6MessageStop,
-		b6PingWithCost, // after message_stop, and still not a token
+		b6PingWithCost, // message_stop 之后，仍然不是 token
 	}
 
 	_, rec, err := anthParse(t, frames)
@@ -730,13 +726,13 @@ func TestAnthropicEventSequence(t *testing.T) {
 	}
 
 	want := []Kind{
-		KindFirstToken,     // fired by the thinking delta, not by the ping
+		KindFirstToken,     // 由思考 delta 发起，而不是由 ping
 		KindReasoningDelta, //
 		KindTextDelta,      //
-		KindToolCallStart,  // id + name, once
-		KindToolArgsDelta,  // one fragment, the empty one skipped
+		KindToolCallStart,  // id + name，一次
+		KindToolArgsDelta,  // 一个片段，跳过空的那个
 		KindUsage,          // message_delta
-		KindResponseEnd,    // last
+		KindResponseEnd,    // 最后
 	}
 	if got := rec.kinds(); !reflect.DeepEqual(got, want) {
 		t.Errorf("event kinds =\n  %v\nwant\n  %v", got, want)
@@ -750,21 +746,21 @@ func TestAnthropicEventSequence(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Framing edge cases and survivable damage.
+// 帧边界情况和可生存的损坏。
 // ---------------------------------------------------------------------------
 
 func TestAnthropicStreamTolerance(t *testing.T) {
 	t.Run("pings anywhere, and no [DONE] anywhere", func(t *testing.T) {
 		frames := []string{
-			b6Ping, b6Ping, // before message_start
+			b6Ping, b6Ping, // message_start 前
 			b6MessageStart,
 			b7TextStart1,
-			b6Ping, // an ordinary mid-stream keepalive
+			b6Ping, // 一个普通的中流 keepalive
 			anthTextDelta(1, "hello"),
 			anthBlockStop(1),
 			anthMessageDelta("end_turn", 291, 63, 0, 0),
 			b6MessageStop,
-			b6PingWithCost, b6Ping, // after message_stop
+			b6PingWithCost, b6Ping, // message_stop 后
 		}
 		res, rec, err := anthParse(t, frames)
 		if err != nil {
@@ -779,17 +775,17 @@ func TestAnthropicStreamTolerance(t *testing.T) {
 		if got := rec.count(KindNotice); got != 0 {
 			t.Errorf("pings produced %d notices, want 0: %q", got, rec.textsOf(KindNotice))
 		}
-		// The trailing ping arrives AFTER message_stop, so a parser that
-		// returned there would never see `cost`, and would leave bytes in the
-		// socket that stop the connection going back in the keep-alive pool.
+		// 尾部 ping 在 message_stop **后**到达，所以一个
+		// 在那里返回的解析器永远不会看到 `cost`，
+		// 会在套接字中留下字节，停止连接返回到 keep-alive 池。
 		if got := rec.count(KindUsage); got != 1 {
 			t.Errorf("KindUsage count = %d, want 1", got)
 		}
 	})
 
 	t.Run("a non-zero cost on the trailing ping is reported", func(t *testing.T) {
-		// §C10 only ever saw the string "0". A real figure would be the first
-		// cost signal this endpoint has emitted, so it goes in the trace.
+		// §C10 只见过字符串"0"。一个真实数字会是这个端点
+		// 发出的第一个成本信号，所以它进入 trace。
 		frames := []string{
 			b6Ping, b6MessageStart, b7TextStart1, anthTextDelta(1, "hi"), anthBlockStop(1),
 			anthMessageDelta("end_turn", 1, 1, 0, 0), b6MessageStop,
@@ -806,8 +802,8 @@ func TestAnthropicStreamTolerance(t *testing.T) {
 	})
 
 	t.Run("a numeric cost does not break the frame", func(t *testing.T) {
-		// The `cost` key is typed as json.RawMessage precisely so that a change
-		// of JSON type cannot take the whole frame down with it.
+		// `cost` 键被类型化为 json.RawMessage，正是为了
+		// JSON 类型的改变不能把整个 frame 带下来。
 		frames := []string{
 			b6Ping, b6MessageStart, b7TextStart1, anthTextDelta(1, "hi"), anthBlockStop(1),
 			anthMessageDelta("end_turn", 1, 1, 0, 0), b6MessageStop,
@@ -895,14 +891,14 @@ func TestAnthropicStreamTolerance(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Mid-stream failure.
+// 中流故障。
 // ---------------------------------------------------------------------------
 
 func TestAnthropicMidStreamFailureKeepsPartialAndSkipsResponseEnd(t *testing.T) {
 	t.Run("the connection dies", func(t *testing.T) {
-		// Everything up to a complete tool call arrives, then the socket
-		// breaks. The caller needs the partial result to tell "died after a
-		// complete tool call" apart from "produced nothing".
+		// 直到一个完整工具调用的所有东西到达，然后套接字
+		// 破裂。调用方需要部分结果来区分"在完整工具调用后死亡"
+		// 和"什么都没产生"。
 		var b strings.Builder
 		for _, f := range []string{b6Ping, b6MessageStart, b6ToolStart0, anthArgsDelta(0, b6WantArgs), anthBlockStop(0)} {
 			fmt.Fprintf(&b, "event: %s\ndata: %s\n\n", anthEventName(f), f)
@@ -926,10 +922,10 @@ func TestAnthropicMidStreamFailureKeepsPartialAndSkipsResponseEnd(t *testing.T) 
 	})
 
 	t.Run("an error event mid-stream", func(t *testing.T) {
-		// CONSTRUCTED: §D11's errors all arrive as an HTTP status before the
-		// stream opens, so this shape has not been observed on this gateway.
-		// The spec streams overloaded_error mid-body, and a stream that dies
-		// halfway must not be recorded as one that finished.
+		// **构造的**：§D11 的错误都作为 HTTP 状态在流打开前到达，
+		// 所以这个形状在这个网关上未被观察到。规范在正文中间流
+		// overloaded_error，而一个在中间死亡的流不应该被记录为
+		// 一个完成的流。
 		frames := []string{
 			b6Ping, b6MessageStart, b6ToolStart0,
 			anthArgsDelta(0, b6WantArgs), anthBlockStop(0),
@@ -952,13 +948,13 @@ func TestAnthropicMidStreamFailureKeepsPartialAndSkipsResponseEnd(t *testing.T) 
 }
 
 // ---------------------------------------------------------------------------
-// BuildRequest.
+// BuildRequest。
 // ---------------------------------------------------------------------------
 
-// anthWireBody mirrors what BuildRequest is supposed to have produced. It is
-// written out separately from the structs in anthropic.go on purpose: a test
-// that decodes with the same type it encoded with cannot catch a wrong json
-// tag, because both halves share the mistake.
+// anthWireBody 镜像 BuildRequest 应该已经产生的东西。
+// 它从 anthropic.go 中的结构分开写出来是有意的：
+// 一个用编码它的相同类型解码的测试不能捕获错误的 json 标签，
+// 因为双方共享这个错误。
 type anthWireBody struct {
 	Model     string `json:"model"`
 	MaxTokens int    `json:"max_tokens"`
@@ -980,7 +976,7 @@ type anthWireBody struct {
 		Name        string          `json:"name"`
 		Description string          `json:"description"`
 		InputSchema map[string]any  `json:"input_schema"`
-		Function    json.RawMessage `json:"function"` // must never appear
+		Function    json.RawMessage `json:"function"` // 绝不能出现
 		Parameters  json.RawMessage `json:"parameters"`
 	} `json:"tools"`
 }
@@ -1026,8 +1022,9 @@ func TestAnthropicBuildRequestEnvelope(t *testing.T) {
 		t.Errorf("url = %q, want %q", req.URL.String(), want)
 	}
 
-	// x-api-key, NOT Authorization: Bearer. Sending the other protocol's header
-	// here produces "Missing API key.", which reads like a config problem.
+	// x-api-key，**不是** Authorization: Bearer。
+	// 在这里发送其他协议的 header 会产生"Missing API key."，
+	// 这看起来像一个配置问题。
 	for _, h := range []struct{ key, want string }{
 		{"x-api-key", "sk-test"},
 		{"anthropic-version", "2023-06-01"},
@@ -1042,9 +1039,8 @@ func TestAnthropicBuildRequestEnvelope(t *testing.T) {
 		t.Error("an Authorization header leaked in from the other protocol")
 	}
 
-	// The returned bytes must be the bytes on the wire: the caller emits them
-	// as KindRequest, and a request inspector showing something other than what
-	// was sent is worse than no inspector.
+	// 返回的字节必须是线上的字节：调用方以 KindRequest 发出它们，
+	// 而请求检查器显示发送以外的东西比没有检查器更糟。
 	sent, err := io.ReadAll(req.Body)
 	if err != nil {
 		t.Fatalf("reading the request body: %v", err)
@@ -1064,8 +1060,8 @@ func TestAnthropicBuildRequestEnvelope(t *testing.T) {
 		t.Errorf("max_tokens = %d, want 700", got.MaxTokens)
 	}
 
-	// THE ASYMMETRY. The system prompt is a top-level field here; the OpenAI
-	// adapter makes it messages[0]. Neither shape can be the neutral one.
+	// **不对称**。系统提示词在这里是顶级字段；OpenAI 适配器
+	// 让它成为 messages[0]。两个形状都不能是中立的那个。
 	if got.System != "you are a shell" {
 		t.Errorf("system = %q, want it at the top level", got.System)
 	}
@@ -1075,8 +1071,8 @@ func TestAnthropicBuildRequestEnvelope(t *testing.T) {
 		}
 	}
 
-	// Tools are flat: {name, description, input_schema}. No `function` nesting,
-	// no `parameters`.
+	// 工具是扁平的：{name、description、input_schema}。
+	// 没有 `function` 嵌套，没有 `parameters`。
 	if len(got.Tools) != 1 {
 		t.Fatalf("got %d tools, want 1", len(got.Tools))
 	}
@@ -1094,9 +1090,9 @@ func TestAnthropicBuildRequestEnvelope(t *testing.T) {
 		t.Errorf("the OpenAI tool envelope leaked in: function=%s parameters=%s", tool.Function, tool.Parameters)
 	}
 
-	// max_tokens is mandatory here, and §D11 shows what omitting it costs: a
-	// 400 whose body is `{"model":"qwen3.7-plus"}` with no error envelope at
-	// all. A non-positive budget gets a default rather than a mystery.
+	// max_tokens 在这里是强制的，§D11 展示了省略它的代价：
+	// 一个 400，其 body 是 `{"model":"qwen3.7-plus"}`，
+	// 根本没有错误信封。非正预算获得默认值而不是谜团。
 	_, defaulted, err := p.BuildRequest("", []Msg{TextMsg(RoleUser, "hi")}, nil, 0)
 	if err != nil {
 		t.Fatalf("BuildRequest with no budget: %v", err)
@@ -1109,11 +1105,10 @@ func TestAnthropicBuildRequestEnvelope(t *testing.T) {
 	}
 }
 
-// TestAnthropicBuildRequestCollapsesToolResults is the one this file exists
-// for. Three tool results become ONE user message with three tool_result
-// blocks, however the caller happened to arrange them. The OpenAI adapter emits
-// one message per result; getting this backwards is the single most likely bug
-// in anthropic.go.
+// TestAnthropicBuildRequestCollapsesToolResults 是这个文件存在的
+// 原因。三个工具结果变成**一个**用户消息，有三个
+// tool_result 块，不管调用方如何安排它们。OpenAI 适配器每个
+// 结果发出一条消息；把这个弄反是 anthropic.go 中最可能的 bug。
 func TestAnthropicBuildRequestCollapsesToolResults(t *testing.T) {
 	assistant := Msg{Role: RoleAssistant, Blocks: []Block{
 		{Kind: BlockText, Text: "Running three checks."},
@@ -1127,8 +1122,8 @@ func TestAnthropicBuildRequestCollapsesToolResults(t *testing.T) {
 		msgs []Msg
 	}{
 		{
-			// How a loop that appends one message per completed tool naturally
-			// builds it — the arrangement the OpenAI protocol wants.
+			// 一个为每个已完成的工具追加一条消息的循环，会自然地
+			// 构建出这种安排——也就是 OpenAI 协议想要的那种。
 			name: "one neutral message per result",
 			msgs: []Msg{
 				TextMsg(RoleUser, "check three paths"),
@@ -1172,8 +1167,8 @@ func TestAnthropicBuildRequestCollapsesToolResults(t *testing.T) {
 			}
 			got := anthDecodeBody(t, body)
 
-			// user(text) → assistant(text + 3 tool_use) → user(3 tool_result).
-			// Four or six messages here means the results did not collapse.
+			// user(文本) → assistant(文本 + 3 tool_use) → user(3 tool_result)。
+			// 这里四条或六条消息意味着结果没有折叠。
 			if len(got.Messages) != 3 {
 				var shape []string
 				for _, m := range got.Messages {
@@ -1207,8 +1202,8 @@ func TestAnthropicBuildRequestCollapsesToolResults(t *testing.T) {
 				}
 			}
 
-			// The assistant turn replays as one content array: text first, then
-			// the three tool_use blocks in order.
+			// 助手回合重放为一个内容数组：首先是文本，
+			// 然后是三个 tool_use 块，按顺序。
 			asst := got.Messages[1]
 			if asst.Role != "assistant" || len(asst.Content) != 4 {
 				t.Fatalf("assistant message = %s with %d blocks, want assistant with 4", asst.Role, len(asst.Content))
@@ -1231,9 +1226,8 @@ func TestAnthropicBuildRequestCollapsesToolResults(t *testing.T) {
 
 func TestAnthropicBuildRequestMessageShapes(t *testing.T) {
 	t.Run("a following user turn merges into the tool_result message", func(t *testing.T) {
-		// Two user messages in a row is a shape this protocol dislikes, and
-		// tool_result blocks are required to come first in the message that
-		// carries them.
+		// 连续两条用户消息是这个协议不喜欢的形状，
+		// tool_result 块需要首先出现在携带它们的消息中。
 		msgs := []Msg{
 			TextMsg(RoleUser, "go"),
 			{Role: RoleAssistant, Blocks: []Block{{Kind: BlockToolCall, ID: "toolu_1", Name: "bash", Args: `{"command":"ls"}`}}},
@@ -1255,10 +1249,10 @@ func TestAnthropicBuildRequestMessageShapes(t *testing.T) {
 	})
 
 	t.Run("thinking blocks are dropped, and a thinking-only turn vanishes", func(t *testing.T) {
-		// §B7/§A3b: the signature is ALWAYS empty on this endpoint, so a
-		// replayed thinking block cannot validate. Dropping it loses reasoning
-		// from the next turn's context; sending it unsigned risks a 400 that
-		// kills the session. The trace keeps every thinking token either way.
+		// §B7/§A3b：签名在这个端点上**总是**空的，
+		// 所以重放的思考块不能验证。丢弃它会丢失来自下一回合
+		// 上下文的推理；发送它未签名冒着 400 的风险，
+		// 这会杀死会话。trace 无论哪种方式都保留每个思考 token。
 		msgs := []Msg{
 			TextMsg(RoleUser, "go"),
 			{Role: RoleAssistant, Blocks: []Block{{Kind: BlockThinking, Text: "long private plan"}}},
@@ -1284,8 +1278,8 @@ func TestAnthropicBuildRequestMessageShapes(t *testing.T) {
 	})
 
 	t.Run("a system message in msgs is a caller bug, reported loudly", func(t *testing.T) {
-		// Re-labelling it "user" would send a subtly different prompt and
-		// produce a subtly worse agent — the hardest class of bug to notice.
+		// 将其重新标记为"user"会发送略有不同的 prompt，
+		// 并产生略有较差的 Agent——最难注意到的 bug 类别。
 		_, _, err := anthProvider().BuildRequest("sys", []Msg{TextMsg(RoleSystem, "you are a shell"), TextMsg(RoleUser, "hi")}, nil, 700)
 		if err == nil {
 			t.Fatal("want an error for a system message in msgs")
@@ -1296,8 +1290,9 @@ func TestAnthropicBuildRequestMessageShapes(t *testing.T) {
 	})
 
 	t.Run("no messages at all is refused before the network", func(t *testing.T) {
-		// §D11: the gateway's answer to this is a 400 whose body is
-		// `{"model":"qwen3.7-plus"}` — no type, no error, nothing to log.
+		// §D11：这个网关对此的答案是一个 400，
+		// 其 body 是 `{"model":"qwen3.7-plus"}`
+		// ——没有类型、没有错误、没有东西可以记录。
 		if _, _, err := anthProvider().BuildRequest("sys", nil, nil, 700); err == nil {
 			t.Fatal("want an error for an empty conversation")
 		}
@@ -1316,49 +1311,48 @@ func TestAnthropicBuildRequestMessageShapes(t *testing.T) {
 }
 
 func TestAnthropicBuildRequestArgumentBytes(t *testing.T) {
-	// The reason Block.Args is a string and Input is a json.RawMessage: these
-	// bytes must reach the wire unchanged. Round-tripping them through
-	// map[string]any would sort the keys — Go sorts map keys on marshal, the
-	// model emitted them in its own order — and a different byte sequence is a
-	// different prompt prefix, which is a cache miss on every replayed turn.
+	// Block.Args 是字符串而 Input 是 json.RawMessage 的原因：
+	// 这些字节必须到达线上不变。通过 map[string]any 往返
+	// 会对字段排序——Go 在 marshal 上对 map 键排序，
+	// 模型按自己的顺序发出它们——而不同的字节序列是
+	// 不同的 prompt 前缀，这是对每次重放回合的缓存未命中。
 	cases := []struct {
 		name string
 		args string
-		want string // the exact substring the body must contain
+		want string // body 必须包含的确切子字符串
 	}{
 		{
-			// Keys deliberately NOT in alphabetical order, and a command full
-			// of the characters encoding/json would escape by default:
-			// `>` and `&` become u003e/u0026 unless HTML escaping is off, which
-			// would corrupt every redirect in the request inspector.
+			// 有意**不**按字母顺序的键，以及一个充满
+			// encoding/json 会默认转义的字符的命令：
+			// `>` 和 `&` 变成 u003e/u0026，除非 HTML 转义关闭，
+			// 这会破坏请求检查器中的每个重定向。
 			name: "key order and shell metacharacters survive byte for byte",
 			args: `{"z_last":"first","command":"grep -rn 'TODO' . 2>&1 > /tmp/o"}`,
 			want: `"input":{"z_last":"first","command":"grep -rn 'TODO' . 2>&1 > /tmp/o"}`,
 		},
 		{
-			// The ONE thing encoding/json normalises when splicing a
-			// RawMessage: insignificant whitespace between tokens. Key order —
-			// the part that actually breaks caching — is untouched. Recorded
-			// here so the behaviour is a decision and not a surprise.
+			// encoding/json 在拼接 RawMessage 时规范化的
+			// **唯一**东西：token 之间无关紧要的空格。键顺序
+			// ——真正破坏缓存的部分——未被触碰。记录在这里
+			// 所以行为是一个决定，而不是一个惊喜。
 			name: "insignificant whitespace is compacted, order is not",
 			args: `{"command": "ls -la /srv/app"}`,
 			want: `"input":{"command":"ls -la /srv/app"}`,
 		},
 		{
-			// A model calling a zero-argument tool. `input` is required.
+			// 一个调用零参数工具的模型。`input` 是必需的。
 			name: "empty args become an empty object",
 			args: ``,
 			want: `"input":{}`,
 		},
 		{
-			// §A3c: a tool call truncated at max_tokens comes back with
-			// `input` replaced by `{"raw_arguments":"<invalid JSON>"}` while
-			// stop_reason still says "tool_use". If that ever round-trips into
-			// a request, splicing it raw would produce a malformed body — and
-			// §D11 shows this gateway answering a malformed body with a 500,
-			// which a retry policy keyed on 5xx retries forever. So invalid
-			// bytes are wrapped in the gateway's own truncation shape: the body
-			// stays valid and the evidence survives verbatim inside it.
+			// §A3c：在 max_tokens 处截断的工具调用返回时
+			// `input` 被替换为 `{"raw_arguments":"<invalid JSON>"}` 而
+			// stop_reason 仍然说"tool_use"。如果那曾经往返到
+			// 请求中，原始拼接会产生格式错误的 body——§D11 展示了
+			// 这个网关用 500 回答格式错误的 body，一个依据 5xx
+			// 判断的重试策略会永远重试。所以无效字节被包裹在网关自己的
+			// 截断形状中：body 保持有效，证据完全存活在里面。
 			name: "invalid arguments are wrapped, not spliced",
 			args: `{"command": "find`,
 			want: `"input":{"raw_arguments":"{\"command\": \"find"}`,
@@ -1387,10 +1381,9 @@ func TestAnthropicBuildRequestArgumentBytes(t *testing.T) {
 }
 
 func TestAnthropicBuildRequestKeepsToolResultTextIntact(t *testing.T) {
-	// Command output is the least sanitised thing in the whole loop: it is
-	// whatever the shell printed. It must arrive as the model's `content`
-	// byte for byte, including the angle brackets and ampersands that
-	// encoding/json would otherwise escape.
+	// 命令输出是整个循环中最少被清理的东西：它是
+	// shell 打印的任何东西。它必须逐字到达模型的 `content`，
+	// 包括 encoding/json 本来会转义掉的尖括号和 & 符号。
 	out := "total 4\ndrwxr-xr-x 2 root root <dir> & more\nexit 0\n"
 	msgs := []Msg{
 		TextMsg(RoleUser, "go"),
@@ -1412,8 +1405,8 @@ func TestAnthropicBuildRequestKeepsToolResultTextIntact(t *testing.T) {
 }
 
 func TestAnthropicBaseURLTrailingSlash(t *testing.T) {
-	// One character in a .env file; §D11 shows this gateway answering the
-	// resulting double slash with an opaque 500.
+	// 一个 .env 文件中的一个字符；§D11 展示了这个网关
+	// 用不透明的 500 回答生成的双斜杠。
 	p := newAnthropicProvider("https://opencode.ai/zen/go/v1/", "k", "m")
 	req, _, err := p.BuildRequest("", []Msg{TextMsg(RoleUser, "hi")}, nil, 10)
 	if err != nil {

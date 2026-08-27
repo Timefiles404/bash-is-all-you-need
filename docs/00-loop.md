@@ -1,28 +1,22 @@
-# Stage 00 — The Loop
+# 第 00 阶段 — 主循环
 
-**What you build:** a coding agent that can explore a codebase, run commands, edit
-files, and check its own work.
+**你要构建什么**：一个能探索代码库、运行命令、编辑文件、检查自己工作成果的 coding Agent。
 
-**What it costs you:** one file, ~200 lines of Go, no dependencies outside the
-standard library.
+**它要花你什么**：一个文件，约 200 行 Go 代码，不需要标准库之外的依赖。
 
-That ratio is the first lesson. An agent is not a large piece of software. The
-hard parts of this repo are all in the stages that come *after* this one, and
-none of them are about making the agent smarter.
+这个比例就是第一课。Agent 不是一个大软件。这个仓库所有的硬活都在这一阶段**之后**的阶段里，都不是关于让 Agent 更聪明。
 
 ---
 
-## Read it in this order
+## 按这个顺序读
 
-`stages/00-loop/main.go`, three functions:
+`stages/00-loop/main.go`，三个函数：
 
-1. **`main()`** — the loop. Read this first; everything else is a detail it calls.
-2. **`callModel()`** — one HTTP POST. There is no SDK here, and there is nothing
-   underneath an SDK except this.
-3. **`runBash()`** — ten lines. Every action the agent is capable of goes through
-   them.
+1. **`main()`** — 主循环。先读这个；其他一切都是它调用的细节。
+2. **`callModel()`** — 一个 HTTP POST。这里没有 SDK，SDK 下面也没有任何东西，只有这个。
+3. **`runBash()`** — 十行。Agent 能做的每一个动作都通过它们。
 
-## The shape of the loop
+## 主循环的形状
 
 ```
 user types a task
@@ -37,45 +31,34 @@ user types a task
            → back to the top
 ```
 
-Two invariants hold this together, and both are load-bearing:
+撑住它的是两个不变量，两个都是承重的：
 
-**The message array only grows.** Nothing is ever edited or removed. The
-conversation *is* the agent's memory, and every request re-sends all of it.
-Stage 05 is the first time we touch this rule, and it will cost us something to
-break it.
+**消息数组只增不减。** 永远不编辑、不删除任何东西。对话**就是** Agent 的记忆，每一个请求都重新发送整个历史。第 05 阶段是第一次我们触碰这个规则，打破它会有代价。
 
-**Every tool call must get a result.** If the model asks for three commands and
-you answer two, the next request is malformed. If a command fails, the failure
-*is* the result — see below.
+**每个工具调用都必须得到一个结果。** 如果模型要求三个命令而你只回答两个，下一个请求格式就错了。如果一个命令失败了，失败**本身就是**结果——见下面。
 
 ---
 
-## Errors are observations, not exceptions
+## 错误是观察，不是异常
 
-The single most common beginner mistake in `runBash` is this:
+`runBash` 里最常见的初学者错误是这样的：
 
 ```go
 out, err := cmd.CombinedOutput()
 if err != nil {
-    return err          // ← wrong
+    return err          // ← 错了
 }
 ```
 
-A command that exits non-zero has not broken your program. It has produced
-information, and the model is the component that should react to it. Look at
-what happened in the real run below: `python stats.py` exited 1 with a
-`ZeroDivisionError` traceback, we handed the traceback back verbatim, and the
-model used it to locate the bug. Had we returned a Go error there, the agent
-would have stopped exactly where it became useful.
+一个以非零退出码结束的命令没有破坏你的程序。它生成了信息，而模型才是应该对它做出反应的组件。看看下面真实运行里发生了什么：`python stats.py` 退出码 1 带着 `ZeroDivisionError` 回溯，我们原样递交回溯，模型用它找到了 bug。如果我们在那里返回了 Go 错误，Agent 就会在它变得有用的地方停下来。
 
-The same instinct applies all the way up: your job is to report the world
-faithfully to the model, not to protect the model from it.
+同样的本能一路向上贯穿整个系统：你的工作是忠实地向模型报告世界，不是保护模型不去接触它。
 
 ---
 
-## The experiment: watch the bill grow
+## 实验：看账单长大
 
-Set up a scratch directory and run the agent on a bug it has to find by itself.
+设置一个临时目录，在一个它得自己找出来的 bug 上运行 Agent。
 
 ```sh
 go build -o agent ./stages/00-loop
@@ -86,79 +69,57 @@ export AGENT_BASE_URL=... AGENT_API_KEY=... AGENT_MODEL=...
 > There is a bug in this directory's code. Find it, fix it, and verify the fix.
 ```
 
-Here is the token line from an actual run of six turns (find bug → read files →
-run → patch → re-read → verify):
+这是实际运行六个回合（找 bug → 读文件 → 运行 → 补丁 → 重读 → 验证）的 token 行：
 
-| turn | what it did | prompt tokens |
+| 回合 | 它做了什么 | prompt token 数 |
 |---:|---|---:|
 | 1 | `ls -la` | 429 |
 | 2 | `cat README.md && cat stats.py` | 613 |
-| 3 | `python stats.py` → traceback | 737 |
-| 4 | `sed -i ...` to patch it | 932 |
+| 3 | `python stats.py` → 回溯 | 737 |
+| 4 | `sed -i ...` 补丁 | 932 |
 | 5 | `cat stats.py` | 1079 |
-| 6 | `python stats.py` → clean | 1192 |
+| 6 | `python stats.py` → 干净 | 1192 |
 
-Now add up the right-hand column: **4982 tokens billed**, for a conversation
-whose final size was **1192 tokens**. We paid 4.2× the size of the thing we
-built.
+现在把右边那列加起来：**4982 个 token 被计费**，而对话最终大小是**1192 个 token**。我们为我们构建的东西付了 4.2 倍的价格。
 
-This is not a bug in the code. It is what "re-send the whole history every turn"
-means, and it is quadratic: a 40-turn session pays for the early turns forty
-times. Every serious agent has an answer to it. Ours arrives in **stage 04**,
-where the same experiment run twice — once with caching, once with
-`--break-cache` — puts a number on the difference.
+这不是代码里的 bug。它就是"每次回合重新发送整个历史"的意思，而且是平方的：一个 40 回合的会话为早期回合每一个都付费 40 次。每个严肃的 Agent 都有它的答案。我们的答案在**第 04 阶段**，同一个实验运行两次——一次用缓存，一次用 `--break-cache`——把差异用数字表现出来。
 
-Keep this table. It is the baseline the rest of the repo is measured against.
+保留这张表。它是这个仓库其余部分的基准。
 
 ---
 
-## What is deliberately missing
+## 故意缺失的东西
 
-Each of these is a stage-01 topic. Try to trigger them before reading the fix —
-the failure is more memorable than the patch.
+每一个都是第 01 阶段的话题。在读修复前试着触发它们——失败比补丁更容易记住。
 
-| Missing | How to make it bite |
+| 缺失的 | 怎么让它咬人 |
 |---|---|
-| Output truncation | Ask it to `find /` or read a large file. Watch the context window fill with noise. |
-| Command timeout | Ask it to start a dev server. The agent hangs forever. |
-| Process-tree kill | Even with a timeout, a killed shell can leave orphaned children. |
-| Permission gate | Nothing stops `rm -rf`. This is why you use a scratch directory. |
-| Streaming | You stare at a blank terminal for the whole model turn. |
-| `finish_reason` handling | We only branch on "were there tool calls". `length` (hit `max_tokens`) is silently treated as a finished turn. |
+| 输出截断 | 要它 `find /` 或读一个大文件。看上下文窗口填满噪音。 |
+| 命令超时 | 要它启动一个开发服务器。Agent 永远挂起。 |
+| 进程树杀死 | 即使有超时，一个被杀死的 shell 也能留下孤立的子进程。 |
+| 权限闸 | 没什么阻止 `rm -rf`。这是你为什么用临时目录。 |
+| 流式 | 你整个模型回合都瞪着空白终端。 |
+| `finish_reason` 处理 | 我们只在"有没有工具调用"上分支。`length`（击中 `max_tokens`）被无声地当作一个完成的回合。 |
 
-The `maxTurns` fuse is the one survival feature that made it in early, because
-without it a model stuck in a retry loop will burn your key while you are
-reading this file.
+`maxTurns` 保险丝是唯一及早加入的保命特性，因为没有它，一个陷入重试循环的模型会在你读这个文件的时候烧掉你的 key。
 
 ---
 
-## Notes from the wire
+## 线上的备注
 
-Things the real API did that the types in `main.go` had to accommodate:
+真实 API 做过的、`main.go` 里的类型得配上的事情：
 
-- **`content` comes back as `null`** on a tool-calling turn, not `""`. Go's
-  `json.Unmarshal` treats null as a no-op, so a plain `string` field survives it
-  — but a language with stricter null handling will crash here.
-- **`tool_calls[].function.arguments` is a JSON *string*, not an object.** You
-  must parse it. Never string-match it.
-- **`reasoning_content` appears on models that think.** We drop it in this stage;
-  stage 02 renders it, and stage 03 shows how it maps onto the Anthropic
-  protocol's `thinking` blocks.
+- 在工具调用回合上，**`content` 回来的是 `null`**，不是 `""`。Go 的 `json.Unmarshal` 把 null 当作无操作，所以一个普通的 `string` 字段能活过它——但一个有更严格 null 处理的语言会在这里崩溃。
+- **`tool_calls[].function.arguments` 是一个 JSON *字符串*，不是一个对象。** 你必须解析它。永远不要用字符串匹配它。
+- **`reasoning_content` 在会思考的模型上出现。** 我们在这个阶段扔掉它；第 02 阶段渲染它，第 03 阶段展示它怎么映射到 Anthropic 协议的 `thinking` 块。
 
 ---
 
-## Exercises
+## 练习
 
-1. **Break the tool_call pairing.** Skip appending one `role:"tool"` message and
-   read the error the API returns. This teaches you more about the protocol than
-   the docs do.
-2. **Delete the system prompt.** Watch how the agent's behaviour degrades — it
-   starts asking *you* to run commands. Most of "agent quality" lives in that
-   string.
-3. **Change `maxTokens` to 100.** Now `finish_reason` comes back as `length` and
-   the agent silently truncates mid-thought. This is the bug stage 01 fixes.
-4. **Point it at a different model.** Any OpenAI-compatible endpoint works,
-   including a local Ollama. Small models produce malformed tool calls — that is
-   not your code failing, and it is worth seeing early.
+1. **破坏工具调用配对。** 跳过附加一个 `role:"tool"` 消息，读 API 返回的错误。这比文档更能教你关于协议的东西。
+2. **删除系统提示词。** 看 Agent 的行为如何降级——它开始问**你**去运行命令。大部分"Agent 质量"住在那个字符串里。
+3. **把 `maxTokens` 改成 100。** 现在 `finish_reason` 回来的是 `length`，Agent 无声地在想法中途截断。这是第 01 阶段修复的 bug。
+4. **指向一个不同的模型。** 任何 OpenAI 兼容的端点都行，包括一个本地的 Ollama。小模型生成格式错乱的工具调用——那不是你的代码失败，早期看见它是值得的。
 
-→ Next: [Stage 01 — Don't Die](01-dont-die.md)
+→ 下一步：[第 01 阶段 — 别死掉](01-dont-die.md)

@@ -6,8 +6,9 @@ import (
 	"testing"
 )
 
-// The conversation used by every test below: two turns, a tool call and its
-// result, so there is a realistic "last block of the last message" to pin.
+// 每个下面测试使用的对话：两个回合，
+// 一个工具调用和它的结果，所以有一个现实的
+// "最后一条消息的最后块"来固定。
 func cacheFixture() []Msg {
 	return []Msg{
 		TextMsg(RoleUser, "count the go files"),
@@ -42,8 +43,9 @@ func TestCacheBreakpointOnSystemBlock(t *testing.T) {
 	}
 }
 
-// The rolling breakpoint is the one that matters in an agent: it must sit on
-// the newest turn, so each request reads the prefix the previous one wrote.
+// 滚动 breakpoint 是在 Agent 中重要的：
+// 它必须在最新回合上，所以每个请求读取
+// 前一个写的前缀。
 func TestCacheBreakpointRollsToTheNewestTurn(t *testing.T) {
 	got := cacheBuild(t, true)
 	last := got.Messages[len(got.Messages)-1]
@@ -51,9 +53,10 @@ func TestCacheBreakpointRollsToTheNewestTurn(t *testing.T) {
 		t.Error("the last block of the last message is unmarked — the conversation prefix is never pinned")
 	}
 
-	// Every earlier block must stay unmarked. A marker on a block that is not
-	// the newest stops moving with the conversation, so it caches less of it
-	// every turn — and it burns one of the four available slots forever.
+	// 每个更早的块必须保持未标记。一个标记
+	// 在一个不是最新的块上停止随对话移动，
+	// 所以它缓存每个回合的更少——并且
+	// 它永远烧掉四个可用槽中的一个。
 	for mi, m := range got.Messages[:len(got.Messages)-1] {
 		for bi, b := range m.Content {
 			if b.CacheControl != nil {
@@ -64,9 +67,10 @@ func TestCacheBreakpointRollsToTheNewestTurn(t *testing.T) {
 }
 
 func TestCacheBreakpointCountStaysUnderTheLimit(t *testing.T) {
-	// The protocol allows four markers per request. This adapter places two and
-	// leaves two free — a fan-out agent needs an intermediate marker to stay
-	// inside the 20-block lookback window (see markRollingBreakpoint).
+	// 协议允许每个请求四个标记。这个适配器
+	// 放置两个并留下两个空闲——一个扇出 Agent
+	// 需要一个中间标记来保持在 20-块回看
+	// 窗口内（见 markRollingBreakpoint）。
 	got := cacheBuild(t, true)
 	n := 0
 	for _, b := range got.System {
@@ -103,13 +107,12 @@ func TestNoCacheOmitsEveryBreakpoint(t *testing.T) {
 	}
 }
 
-// The invariant that makes the feature safe to add.
+// 使这个特性能安全添加的不变式。
 //
-// If switching caching on changed the bytes of an *unmarked* block, then
-// enabling it would invalidate the very prefix it was meant to preserve — and
-// the first request after the upgrade would silently pay full price. So the
-// only permitted difference between the two bodies is the cache_control keys
-// themselves.
+// 如果打开缓存改变了一个*未标记*块的字节，那么启用它反而会
+// 让它本该保留的那段前缀失效——升级后的第一个请求就会在
+// 悄无声息中支付全价。所以两份 body 之间唯一被允许的差异，
+// 就是 cache_control 键本身。
 func TestEnablingCachingChangesNothingElse(t *testing.T) {
 	p := newAnthropicProvider("https://example.test", "k", "m")
 	tools := []Tool{{Name: "bash", Schema: map[string]any{"type": "object"}}}
@@ -135,18 +138,18 @@ func TestEnablingCachingChangesNothingElse(t *testing.T) {
 	}
 }
 
-// Regression guard for the thing this whole chapter is about.
+// 针对这一整章都在讲的那件事，设下的回归防护。
 //
-// Tool arguments are spliced through as raw bytes precisely so that a replayed
-// turn produces the same prefix it did last time. If anything in the request
-// path ever decodes and re-encodes them, Go will sort the map keys, the bytes
-// will move, and every cached turn after that point becomes a miss — with no
-// error, and no symptom except the bill.
+// 工具参数被原样当作原始字节透传，就是为了让一个重放的回合，
+// 产生和它上次一样的前缀。如果请求路径里的任何环节把它们
+// 解码后又重新编码一遍，Go 就会把 map 的键排序，字节就会
+// 移位，从那之后每个本该命中缓存的回合都会变成一次缺失
+// ——不会报错，唯一的症状就是账单。
 func TestToolArgumentKeyOrderSurvives(t *testing.T) {
 	msgs := []Msg{
 		TextMsg(RoleUser, "go"),
 		{Role: RoleAssistant, Blocks: []Block{
-			// Deliberately NOT alphabetical: "zeta" before "alpha".
+			// 有意**不**按字母顺序："zeta"在"alpha"前。
 			{Kind: BlockToolCall, ID: "t1", Name: "bash", Args: `{"zeta":1,"alpha":2}`},
 		}},
 	}
@@ -165,10 +168,12 @@ func TestToolArgumentKeyOrderSurvives(t *testing.T) {
 	}
 }
 
-// Prompt() is the number a cache-hit rate must be computed against. Reading
-// Input alone under-reports true input by ~500x on a warm call.
+// Prompt() 是缓存命中率必须对其计算的
+// 数字。单独读取 Input 在一个温调用上
+// 低报真实输入 ~500x。
 func TestCacheHitRateUsesPromptNotInput(t *testing.T) {
-	// The shape observed in wire-notes §C8 on a warm call.
+	// 在 wire-notes §C8 的一个温调用上观察到
+	// 的形状。
 	u := Usage{Input: 18, CacheRead: 17967}
 	if u.Prompt() != 17985 {
 		t.Fatalf("Prompt() = %d, want 17985", u.Prompt())
@@ -183,8 +188,9 @@ func TestCacheHitRateUsesPromptNotInput(t *testing.T) {
 	}
 }
 
-// Sanity: the fixture body is valid JSON with cache_control included, so a
-// marked request is still something a server will accept.
+// 健全性检查：fixture body 是包括
+// cache_control 的有效 JSON，所以一个
+// 标记的请求仍然是服务器会接受的东西。
 func TestMarkedBodyIsValidJSON(t *testing.T) {
 	p := newAnthropicProvider("https://example.test", "k", "m")
 	_, body, err := p.BuildRequest("sys", cacheFixture(), nil, 512)

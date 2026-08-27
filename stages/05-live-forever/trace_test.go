@@ -13,23 +13,23 @@ import (
 )
 
 // ---------------------------------------------------------------------------
-// Helpers
+// 辅助函数
 // ---------------------------------------------------------------------------
 
-// traceRecorder is the Subscriber every test asserts against: the point of the
-// event bus is that "what the user saw" is a list you can compare, not a string
-// you have to scrape.
+// traceRecorder 是每个测试都拿来做断言的那个 Subscriber：事件
+// 总线存在的意义，就在于"用户看到了什么"是一份可以拿来比较的
+// 列表，而不是一段还得去抠的字符串。
 type traceRecorder struct{ events []Event }
 
 func (r *traceRecorder) OnEvent(e Event) { r.events = append(r.events, e) }
 
-// traceSameEvent compares two events the way the file format actually promises.
+// traceSameEvent 按照文件格式实际承诺的方式，比较两个事件。
 //
-// reflect.DeepEqual on the whole struct is wrong here, and the reason is worth
-// knowing: time.Now() carries a monotonic reading and a local *time.Location,
-// while a timestamp parsed back out of JSON has neither. The two values name the
-// same instant and are never deeply equal. Compare instants with Equal, then
-// compare everything else structurally.
+// 对整个结构使用 reflect.DeepEqual，在这里是错的，理由值得说
+// 一说：time.Now() 携带着一个单调时钟读数和一个本地
+// *time.Location，而一个从 JSON 里解析回来的时间戳，两样都
+// 没有。这两个值指向同一个时刻，但永远不会深度相等。拿 Equal
+// 来比较时刻，其余部分再按结构逐项比较。
 func traceSameEvent(a, b Event) bool {
 	if !a.T.Equal(b.T) {
 		return false
@@ -38,10 +38,9 @@ func traceSameEvent(a, b Event) bool {
 	return reflect.DeepEqual(a, b)
 }
 
-// traceSample is one realistic session: a user message, a streamed reply, a
-// tool call that runs a command, cached token accounting, and an error. Seq and
-// T are left zero on purpose — the Bus stamps them, and forging them in a test
-// would be testing the test.
+// traceSample 是一次真实对话：用户消息、流式回复、运行命令的工具调用、
+// 缓存 token 记账、一个错误。Seq 和 T 故意留作零——Bus 会加盖它们，
+// 在测试里伪造它们就变成了测试测试本身。
 func traceSample() []Event {
 	return []Event{
 		{Kind: KindUserMessage, Text: "how big is this repo?"},
@@ -58,9 +57,9 @@ func traceSample() []Event {
 		{Kind: KindCommandStart, Turn: 1, ToolID: "call_01", Command: `find . -name '*.go' | xargs wc -l`},
 		{Kind: KindCommandEnd, Turn: 1, ToolID: "call_01", ExitCode: 0, Millis: 143, Bytes: 2048},
 		{Kind: KindToolResult, Turn: 1, ToolID: "call_01", Text: "  1204 total\n[exit 0 · 143ms]", Bytes: 30},
-		// The shape this whole repo exists to make visible: 18 tokens billed at
-		// full price, 17,967 read from cache. Anything that reports "18 input
-		// tokens" as the size of this call is off by a factor of a thousand.
+		// 这整个仓库存在就是为了让这个形状可见：18 个 token 按全价计费，
+		// 17,967 个从缓存读取。任何报告"18 个输入 token"作为这个调用大小
+		// 的系统都偏离了千倍。
 		{Kind: KindUsage, Turn: 1, Usage: &Usage{Input: 18, CacheRead: 17967, Output: 214, Reasoning: 96}},
 		{Kind: KindResponseEnd, Turn: 1, FinishReason: "tool_calls", Millis: 2210},
 		{Kind: KindTurnEnd, Turn: 1},
@@ -74,14 +73,13 @@ func traceSample() []Event {
 	}
 }
 
-// traceRecordSession emits traceSample through a real Bus with a TraceWriter
-// attached, and returns the path plus exactly what the bus delivered.
+// traceRecordSession 通过一个实际的 Bus（附加了 TraceWriter）
+// 发出 traceSample，然后返回路径加上 Bus 实际交付的数据。
 func traceRecordSession(t *testing.T) (string, []Event) {
 	t.Helper()
 
-	// A subdirectory that does not exist yet: real traces are written to
-	// traces/<date>/, so NewTraceWriter creating its parent is part of the
-	// contract, not a convenience.
+	// 一个还不存在的子目录：真实 trace 写到 traces/<date>/，
+	// 所以 NewTraceWriter 创建它的父目录是契约的一部分，不是方便。
 	path := filepath.Join(t.TempDir(), "traces", "session.jsonl")
 	w, err := NewTraceWriter(path)
 	if err != nil {
@@ -103,7 +101,7 @@ func traceRecordSession(t *testing.T) (string, []Event) {
 }
 
 // ---------------------------------------------------------------------------
-// The trace file
+// trace 文件
 // ---------------------------------------------------------------------------
 
 func TestTraceRoundTrip(t *testing.T) {
@@ -127,8 +125,8 @@ func TestTraceRoundTrip(t *testing.T) {
 		}
 	}
 
-	// Spot-check the fields a sloppy schema loses silently: the pointer-valued
-	// Usage, and the raw request body.
+	// 抽查这些字段——潦草的 schema 会无声丢掉的字段：指针类型的
+	// Usage，以及原始请求体。
 	usage := got[13]
 	if usage.Kind != KindUsage || usage.Usage == nil {
 		t.Fatalf("event 13 = %+v, want a usage event with a Usage payload", usage)
@@ -137,11 +135,10 @@ func TestTraceRoundTrip(t *testing.T) {
 		t.Errorf("Usage = %+v, want {Input:18 CacheRead:17967 Output:214 Reasoning:96}", *usage.Usage)
 	}
 
-	// Request is a json.RawMessage, so byte equality is the real assertion —
-	// and it only holds because the bodies in traceSample are compact and free
-	// of <, > and &, which encoding/json escapes on the way out. Anything that
-	// re-indents or re-marshals a captured body has stopped being a record of
-	// what was sent.
+	// Request 是 json.RawMessage，所以字节相等才是真的断言——它之所以
+	// 成立，只是因为 traceSample 里的 body 是紧凑的，没有 <、> 和 &，
+	// encoding/json 在输出时会转义掉这些。任何重新缩进或重新排列捕获的
+	// body，都不再是"发送了什么"的记录。
 	wantBody := traceSample()[2].Request
 	if !bytes.Equal(got[2].Request, wantBody) {
 		t.Errorf("request body changed:\n got %s\nwant %s", got[2].Request, wantBody)
@@ -151,8 +148,8 @@ func TestTraceRoundTrip(t *testing.T) {
 func TestTraceTruncatedFinalLine(t *testing.T) {
 	path, want := traceRecordSession(t)
 
-	// Chop the last line in half: exactly what a SIGKILL between write(2) and
-	// the end of the buffer leaves behind.
+	// 砍掉最后一行的后半部分：SIGKILL 在 write(2) 和缓冲区末尾之间
+	// 留下的情形。
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("ReadFile: %v", err)
@@ -163,7 +160,7 @@ func TestTraceTruncatedFinalLine(t *testing.T) {
 	}
 	last := lines[len(lines)-1]
 	maimed := append(bytes.Join(lines[:len(lines)-1], []byte("\n")), '\n')
-	maimed = append(maimed, last[:len(last)/2]...) // no trailing newline: the giveaway
+	maimed = append(maimed, last[:len(last)/2]...) // 没有末尾换行：泄露的信号
 	if err := os.WriteFile(path, maimed, 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
@@ -173,7 +170,7 @@ func TestTraceTruncatedFinalLine(t *testing.T) {
 		t.Fatalf("ReadTrace on a truncated trace must not fail: %v", err)
 	}
 
-	// Everything before the wound, plus one synthetic notice explaining it.
+	// 伤口之前的一切，加上一个解释它的合成通知。
 	recovered := len(want) - 1
 	if len(got) != recovered+1 {
 		t.Fatalf("got %d events, want %d recovered + 1 notice", len(got), recovered)
@@ -192,8 +189,8 @@ func TestTraceTruncatedFinalLine(t *testing.T) {
 		t.Errorf("notice %q must carry %q so a renderer can tell it from an agent notice",
 			notice.Text, TraceNoticePrefix)
 	}
-	// "Report the situation" means saying how much survived, in the text a
-	// human reads — not in an error that a caller is likely to fatal on.
+	// "报告情况"意思是说清楚还剩下多少，用人类读的文本——不是一个
+	// 调用者可能会 fatal 的错误。
 	for _, substr := range []string{"partial line", "22 event(s) recovered"} {
 		if !strings.Contains(notice.Text, substr) {
 			t.Errorf("notice %q does not mention %q", notice.Text, substr)
@@ -205,17 +202,16 @@ func TestTraceTruncatedFinalLine(t *testing.T) {
 }
 
 func TestTraceUnknownKindStillLoads(t *testing.T) {
-	// Hand-written rather than recorded: this is a file from a *future* build of
-	// the agent, with a kind and a field this binary has never heard of. A
-	// reader that validates kinds against its own constants breaks replay for
-	// every trace recorded after the next feature lands, which is the opposite
-	// of what a durable file format is for.
+	// 手写的而不是记录下来的：这是一个来自*将来*版本 Agent 的文件，
+	// 带着一个这个二进制从未听说过的 kind，和一个从未听说过的字段。
+	// 一个按自己常量去校验 kind 的读取器，会让下一个特性上线之后
+	// 记录的每一份 trace 都无法重放——这正好和持久文件格式存在的意义相反。
 	path := filepath.Join(t.TempDir(), "future.jsonl")
 	body := strings.Join([]string{
 		`{"seq":1,"t":"2026-08-27T09:15:00.123456789Z","kind":"user_message","text":"hi"}`,
 		`{"seq":2,"t":"2026-08-27T09:15:01Z","kind":"subagent_spawn","text":"reviewer","depth":2,"budget":{"usd":0.5}}`,
 		`{"seq":3,"t":"2026-08-27T09:15:02Z","kind":"turn_end","turn":1}`,
-		``, // a stray blank line, which is not damage
+		``, // 一行流浪的空行，这不是损害
 	}, "\n")
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
@@ -250,8 +246,8 @@ func TestTraceWriterDegradesInsteadOfDying(t *testing.T) {
 
 	w.OnEvent(Event{Seq: 1, T: time.Now(), Kind: KindUserMessage, Text: "recorded fine"})
 
-	// Yank the file out from under the writer: a full disk, an unmounted
-	// volume, an operator running `rm` on the trace directory.
+	// 从写入器下方拉走文件：满盘、未挂载的卷、操作员对 trace
+	// 目录跑了一次 `rm`。
 	if err := w.f.Close(); err != nil {
 		t.Fatalf("closing the underlying file: %v", err)
 	}
@@ -273,8 +269,8 @@ func TestTraceWriterDegradesInsteadOfDying(t *testing.T) {
 		t.Errorf("second Close() = %v, want nil (main defers it, a signal handler may also call it)", err)
 	}
 
-	// And the events that made it are still readable: degrading kept the file
-	// valid instead of leaving a half-written line behind.
+	// 而且已经写进文件的那些事件仍然可读：降级让文件保持有效，
+	// 而不是留下半写的一行。
 	got, err := ReadTrace(path)
 	if err != nil || len(got) != 1 {
 		t.Fatalf("ReadTrace = %d events, %v; want the 1 event written before the failure", len(got), err)
@@ -282,7 +278,7 @@ func TestTraceWriterDegradesInsteadOfDying(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Summarize
+// 总结
 // ---------------------------------------------------------------------------
 
 func TestSummarizeUsesPromptNotInput(t *testing.T) {
@@ -302,17 +298,16 @@ func TestSummarizeUsesPromptNotInput(t *testing.T) {
 		t.Errorf("Errors = %d, want 1", s.Errors)
 	}
 
-	// The two usage events are {18, cache_read 17967, out 214} and
-	// {512, cache_write 4096, out 88}: a real shape, where the uncached
-	// remainder is 2% of what was actually sent.
+	// 两个用量事件是 {18, cache_read 17967, out 214} 和
+	// {512, cache_write 4096, out 88}：一个真实形状，其中未缓存
+	// 的剩余是实际发送数据的 2%。
 	want := Usage{Input: 530, CacheWrite: 4096, CacheRead: 17967, Output: 302, Reasoning: 96}
 	if s.TotalUsage != want {
 		t.Errorf("TotalUsage = %+v, want %+v", s.TotalUsage, want)
 	}
 
-	// This is the assertion the whole struct exists for. Summing Input gives
-	// 530 — a number that looks like tokens, sorts like tokens, and is wrong by
-	// 22,063 of them.
+	// 这整个 struct 存在的意义，就是这一句断言。求和 Input 给出 530——一个看起来像
+	// token、排序起来也像 token 的数字，却错了 22,063 个。
 	if s.PromptTokens() != 22593 {
 		t.Errorf("PromptTokens() = %d, want 22593 (Input + CacheWrite + CacheRead)", s.PromptTokens())
 	}
@@ -320,8 +315,8 @@ func TestSummarizeUsesPromptNotInput(t *testing.T) {
 		t.Fatalf("PromptTokens() must not be the sum of Input alone")
 	}
 
-	// The header a student reads before a replay has to show the split, or the
-	// cheap tokens and the expensive ones look identical.
+	// 学生在重放前读的标题必须把这个切分显示出来，不然便宜的 token
+	// 和昂贵的 token 看起来就完全一样。
 	header := s.String()
 	for _, substr := range []string{"prompt 22593", "full 530", "write 4096", "read 17967", "output 302", "1 error"} {
 		if !strings.Contains(header, substr) {
@@ -335,12 +330,11 @@ func TestSummarizeEmptyAndClockSafety(t *testing.T) {
 		t.Errorf("Summarize(nil) = %+v, want a zero summary", s)
 	}
 
-	// One event with no timestamp at all (hand-built, or written by a future
-	// version). Duration must not become a 55-year interval measured from the
-	// zero time.
+	// 一个根本没有时间戳的事件（手做的，或者由将来版本写的）。
+	// Duration 一定不能变成从零时间测量的 55 年时间间隔。
 	base := time.Date(2026, 8, 27, 9, 0, 0, 0, time.UTC)
 	s := Summarize([]Event{
-		{Seq: 1, Kind: KindNotice}, // T is zero
+		{Seq: 1, Kind: KindNotice}, // T 是零
 		{Seq: 2, T: base, Kind: KindTurnStart},
 		{Seq: 3, T: base.Add(90 * time.Second), Kind: KindTurnEnd},
 	})
@@ -353,7 +347,7 @@ func TestSummarizeEmptyAndClockSafety(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Replay
+// 重放
 // ---------------------------------------------------------------------------
 
 func TestReplayDeliversEveryEventInOrder(t *testing.T) {
@@ -374,7 +368,7 @@ func TestReplayDeliversEveryEventInOrder(t *testing.T) {
 	}
 	for i := range want {
 		if !traceSameEvent(rec.events[i], want[i]) {
-			// Replay must not restamp T: the recorded clock is the evidence.
+			// 重放一定不能重新加盖 T：记录的时钟就是证据。
 			t.Fatalf("replayed event %d differs from the recorded one:\n got %+v\nwant %+v",
 				i, rec.events[i], want[i])
 		}
@@ -403,17 +397,16 @@ func TestReplayFilterShowsOnlyMatchingEvents(t *testing.T) {
 	if rec.events[0].Kind != KindCommandStart || rec.events[1].Kind != KindCommandEnd {
 		t.Errorf("got kinds %s,%s; want command_start,command_end", rec.events[0].Kind, rec.events[1].Kind)
 	}
-	// The header still describes the whole session, so a filtered view can
-	// never be mistaken for the session itself.
+	// 标题仍然描述整个对话，所以一个筛选视图绝不能被误认为
+	// 对话本身。
 	if !strings.Contains(out.String(), "23 events") || !strings.Contains(out.String(), "showing 2 of 23") {
 		t.Errorf("filtered header should summarise the whole trace and say what is hidden:\n%s", out.String())
 	}
 }
 
-// traceLineFeeder hands out exactly one line per Read and counts them, so the
-// test can assert how much input Replay *consumed* rather than how much it was
-// offered. A bufio.Reader built inside the loop would read ahead and eat the
-// user's next keystrokes; this is how that bug is caught.
+// traceLineFeeder 每个 Read 只交付一行并计数它们，所以测试可以
+// 断言重放*消耗*了多少输入，而不是提供了多少。bufio.Reader 建在
+// 循环内会向前读并吃掉用户的下一次按键；这就是那个 bug 被捕捉的方式。
 type traceLineFeeder struct {
 	lines []string
 	n     int
@@ -425,7 +418,7 @@ func (f *traceLineFeeder) Read(p []byte) (int, error) {
 	}
 	line := f.lines[f.n]
 	if len(p) < len(line) {
-		return 0, io.ErrShortBuffer // only reachable if this helper is the bug
+		return 0, io.ErrShortBuffer // 只有这个助手是 bug 才可以到达
 	}
 	f.n++
 	return copy(p, line), nil
@@ -435,7 +428,7 @@ func TestReplayStepConsumesOneLinePerEvent(t *testing.T) {
 	_, events := traceRecordSession(t)
 	events = events[:5]
 
-	feeder := &traceLineFeeder{lines: []string{"\n", "\n", "\n", "\n", "\n", "\n"}} // one spare
+	feeder := &traceLineFeeder{lines: []string{"\n", "\n", "\n", "\n", "\n", "\n"}} // 一个备用的
 	rec := &traceRecorder{}
 	var out bytes.Buffer
 	if err := Replay(events, rec, ReplayOpts{Step: true}, feeder, &out); err != nil {
@@ -454,8 +447,8 @@ func TestReplayStepConsumesOneLinePerEvent(t *testing.T) {
 		}
 	}
 
-	// Input running out is Ctrl-D, and Ctrl-D stops the replay rather than
-	// silently playing the rest unattended.
+	// 输入耗尽就是 Ctrl-D，而 Ctrl-D 会让重放停下来，而不是在无人看管的情况下，
+	// 悄悄把剩下的都播放完。
 	short := &traceLineFeeder{lines: []string{"\n", "\n"}}
 	rec2 := &traceRecorder{}
 	var out2 bytes.Buffer
@@ -469,7 +462,7 @@ func TestReplayStepConsumesOneLinePerEvent(t *testing.T) {
 		t.Errorf("replay should say why it stopped:\n%s", out2.String())
 	}
 
-	// And "q" quits without consuming the rest.
+	// 还有"q"退出而不消耗剩下的。
 	quit := &traceLineFeeder{lines: []string{"\n", "q\n", "\n", "\n"}}
 	rec3 := &traceRecorder{}
 	if err := Replay(events, rec3, ReplayOpts{Step: true}, quit, io.Discard); err != nil {
@@ -481,8 +474,8 @@ func TestReplayStepConsumesOneLinePerEvent(t *testing.T) {
 }
 
 func TestReplayClampsAbsurdGaps(t *testing.T) {
-	// A session where the user went to lunch between two events. Replayed at
-	// wall-clock speed with no cap this sleeps for 41 minutes.
+	// 一个用户在两个事件之间去午餐的对话。以挂钟速度重放，
+	// 没有上限会睡 41 分钟。
 	base := time.Date(2026, 8, 27, 12, 0, 0, 0, time.UTC)
 	events := []Event{
 		{Seq: 1, T: base, Kind: KindTurnEnd},
@@ -492,8 +485,8 @@ func TestReplayClampsAbsurdGaps(t *testing.T) {
 
 	rec := &traceRecorder{}
 	started := time.Now()
-	// Speed scales the *capped* gap, so a large speed shrinks even the worst
-	// case: 5s / 1000 = 5ms.
+	// 速度缩放的是*有上限的*间隔，所以大速度即使最坏情况也缩小：
+	// 5s / 1000 = 5ms。
 	if err := Replay(events, rec, ReplayOpts{Speed: 1000}, nil, io.Discard); err != nil {
 		t.Fatalf("Replay: %v", err)
 	}

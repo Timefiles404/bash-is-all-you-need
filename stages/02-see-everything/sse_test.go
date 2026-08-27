@@ -1,13 +1,13 @@
-// Tests for the SSE reader and the OpenAI stream parser.
+// SSE 读取器和 OpenAI 流解析器的测试。
 //
-// Every frame constant below is copied out of docs/wire-notes.md — these are
-// bytes this endpoint actually sent, not bytes invented to make a parser look
-// good. That is the entire point: a fixture you wrote from the specification
-// tests your reading of the specification, and this endpoint does not match the
-// specification (see §B4 frames 11 and 13). Where a fixture had to be
-// reconstructed or invented, the comment above it says so and says why.
+// 下面的每个帧常数都从 docs/wire-notes.md 复制出——这些是这个端点
+// 实际发送的字节，不是为了让解析器看起来好而发明的字节。这才是
+// 重点：一个照着规范写出来的夹具，测试的只是你对规范的理解，而
+// 这个端点本身就不符合规范（见 §B4 帧 11 和 13）。夹具必须被重构
+// 或发明的地方，上面的注释会说明这一点，并说明原因。
 //
-// No network, no API key, no `-short` skips. The whole file runs on a plane.
+// 没有网络，没有 API 密钥，没有 `-short` 跳过。整个文件在飞机上
+// 也能跑。
 package main
 
 import (
@@ -22,33 +22,32 @@ import (
 )
 
 // ---------------------------------------------------------------------------
-// §B4 — the full 13-frame tool-call stream, in order.
+// §B4——完整的 13 帧工具调用流，按顺序。
 //
-// Request that produced it: `bash` tool, tool_choice:"required",
-// reasoning_effort:"none", prompt "Call the bash tool once with command set to:
-// ls -la /srv/app".
+// 产生它的请求：`bash` 工具，tool_choice:"required"，
+// reasoning_effort:"none"，prompt "调用 bash 工具一次，命令设置为：
+// ls -la /srv/app"。
 //
-// Frames 1, 10, 11, 12 and 13 are recorded whole in §B4 and are copied verbatim.
-// Frames 2–9 are recorded there as the `delta` object alone; the envelope around
-// them is reconstructed from frames 1 and 10, which are complete. The `delta`
-// objects themselves — including every explicit `null` — are verbatim.
+// 帧 1、10、11、12 和 13 在 §B4 中被完整记录，并被逐字复制。
+// 帧 2–9 在那里只被记录为 `delta` 对象；它们周围的信封，是根据
+// 完整的帧 1 和帧 10 重构出来的。`delta` 对象本身——包括每个
+// 显式的 `null`——都是逐字的。
 // ---------------------------------------------------------------------------
 
 const (
-	// 1. Role opener. Note `content` is "", not null, and that it carries no
-	//    payload at all: this frame is why TTFT must not be measured from the
-	//    first frame received.
+	// 1. 角色开启。注意 `content` 是""，不是 null，它不携带任何
+	//    载荷：这个帧就是为什么 TTFT 不得从第一个接收的帧测量。
 	b4RoleOpener = `{"choices":[{"index":0,"finish_reason":null,"delta":{"role":"assistant","content":"","reasoning_content":null,"tool_calls":null}}]}`
 
-	// 2. Tool-call opener — the ONLY chunk carrying `id` and `function.name`.
+	// 2. 工具调用开启——**唯一**携带 `id` 和 `function.name` 的块。
 	b4ToolOpener = `{"choices":[{"index":0,"finish_reason":null,"delta":{"role":null,"content":null,"reasoning_content":null,"tool_calls":[{"index":0,"id":"call_8d4f0377bc594026a4765cfc","type":"function","function":{"name":"bash","arguments":""}}]}}]}`
 
-	// 3.–9. Argument fragments. `id` and `function.name` are now explicitly
-	//       null, `index` stays 0, and `type` stays "function" — it is not
-	//       nulled, which is exactly why "the key is there" proves nothing.
+	// 3.–9. 参数片段。`id` 和 `function.name` 现在显式是 null，`index` 保持 0，
+	//       `type` 保持"function"——它不是 null，这恰好就是为什么
+	//       "键在那里"证明不了什么。
 	//
-	//       The splits are not JSON-aligned: fragment 1 ends mid-object,
-	//       fragment 4 ends mid-path (`/srv`), fragment 5 resumes it (`/app`).
+	//       分裂不是 JSON 对齐的：片段 1 在对象中途结束，片段 4 在
+	//       路径中途结束（`/srv`），片段 5 把它接上（`/app`）。
 	b4Arg1 = `{"choices":[{"index":0,"finish_reason":null,"delta":{"role":null,"content":null,"reasoning_content":null,"tool_calls":[{"index":0,"id":null,"type":"function","function":{"name":null,"arguments":"{\"command\": "}}]}}]}`
 	b4Arg2 = `{"choices":[{"index":0,"finish_reason":null,"delta":{"role":null,"content":null,"reasoning_content":null,"tool_calls":[{"index":0,"id":null,"type":"function","function":{"name":null,"arguments":"\""}}]}}]}`
 	b4Arg3 = `{"choices":[{"index":0,"finish_reason":null,"delta":{"role":null,"content":null,"reasoning_content":null,"tool_calls":[{"index":0,"id":null,"type":"function","function":{"name":null,"arguments":"ls"}}]}}]}`
@@ -57,24 +56,24 @@ const (
 	b4Arg6 = `{"choices":[{"index":0,"finish_reason":null,"delta":{"role":null,"content":null,"reasoning_content":null,"tool_calls":[{"index":0,"id":null,"type":"function","function":{"name":null,"arguments":"\""}}]}}]}`
 	b4Arg7 = `{"choices":[{"index":0,"finish_reason":null,"delta":{"role":null,"content":null,"reasoning_content":null,"tool_calls":[{"index":0,"id":null,"type":"function","function":{"name":null,"arguments":"}"}}]}}]}`
 
-	// 10. Finish chunk — empty delta, finish_reason set.
+	// 10. 完成块——空 delta，finish_reason 设置。
 	b4Finish = `{"choices":[{"index":0,"finish_reason":"tool_calls","delta":{"role":null,"content":null,"reasoning_content":null,"tool_calls":null}}]}`
 
-	// 11. Usage chunk. `choices` is an EMPTY ARRAY. Any code reaching for
-	//     choices[0] panics right here, on the second-to-last frame of every
-	//     real request. (§B5: this frame is present by default, with no
-	//     stream_options sent — and sending stream_options changes nothing.)
+	// 11. 使用情况块。`choices` 是一个**空数组**。任何伸手去够 choices[0]
+	//     的代码都会在这里当场崩溃——就在每个真实请求的倒数第二帧上。
+	//     （§B5：这个帧默认就存在，不需要发送 stream_options——发送了
+	//     stream_options 也不会改变什么。）
 	b4Usage = `{"id":"...","object":"chat.completion.chunk","created":1787768844,"model":"mimo-v2.5","choices":[],"usage":{"prompt_tokens":506,"completion_tokens":26,"total_tokens":532,"prompt_tokens_details":{"cached_tokens":192},"completion_tokens_details":{"reasoning_tokens":0}}}`
 
-	// 12. The sentinel.
+	// 12. 哨兵。
 	b4Done = `[DONE]`
 
-	// 13. A frame AFTER the sentinel. Every spec-conforming client discards it.
-	//     `choices` is empty here too.
+	// 13. 哨兵**之后**的一个帧。每个规范兼容的客户端丢弃它。
+	//     `choices` 这里也是空的。
 	b4PostDone = `{"choices":[],"cost":"0"}`
 )
 
-// b4ToolCallStream is §B4 end to end, in the recorded order.
+// b4ToolCallStream 是 §B4 端到端，按记录的顺序。
 var b4ToolCallStream = []string{
 	b4RoleOpener,
 	b4ToolOpener,
@@ -85,23 +84,22 @@ var b4ToolCallStream = []string{
 	b4PostDone,
 }
 
-// b4WantArgs is what §B4 says the fragments concatenate to.
+// b4WantArgs 是 §B4 说片段连接到的东西。
 const b4WantArgs = `{"command": "ls -la /srv/app"}`
 
-// b4WantUsage is frame 11 after the direction reversal described on
-// sseUsage.normalise: prompt_tokens 506 CONTAINS cached_tokens 192, so the
-// full-price Input is the difference and Prompt() must come back out at 506.
+// b4WantUsage 是帧 11 在 sseUsage.normalise 描述的方向反转之后的样子：
+// prompt_tokens 506 **包含**了 cached_tokens 192，所以全价 Input 是
+// 两者的差，而 Prompt() 最终必须仍然等于 506。
 var b4WantUsage = Usage{Input: 314, CacheRead: 192, Output: 26, Reasoning: 0}
 
 // ---------------------------------------------------------------------------
-// §B7 — reasoning and text on the same delta object.
+// §B7——推理和文本在同一个 delta 对象上。
 //
-// The five `reasoning_content` deltas and the role opener are verbatim §B7
-// `delta` objects in a reconstructed envelope. §B7 records that this run had 44
-// reasoning frames and 1 content frame but does not print the content frame, so
-// the two `content` frames here are constructed in the identical shape — enough
-// to prove the two fields land in two different accumulators, which is the
-// thing being tested.
+// 五个 `reasoning_content` delta 和角色开启，是重构信封里逐字照抄
+// 的 §B7 `delta` 对象。§B7 记录了这个运行有 44 个推理帧和 1 个
+// content 帧，但没有打印出 content 帧，所以这里的两个 `content` 帧
+// 被构建成同一种形状——足以证明这两个字段落在两个不同的累积器
+// 里，这正是要测试的东西。
 // ---------------------------------------------------------------------------
 
 const (
@@ -112,7 +110,7 @@ const (
 	b7Reason4    = `{"choices":[{"index":0,"finish_reason":null,"delta":{"role":null,"content":null,"reasoning_content":" the product of ","tool_calls":null}}]}`
 	b7Reason5    = `{"choices":[{"index":0,"finish_reason":null,"delta":{"role":null,"content":null,"reasoning_content":"17 and ","tool_calls":null}}]}`
 
-	// Constructed, not recorded — see the block comment above.
+	// 构建，不是记录——见上面的块注释。
 	b7Text1 = `{"choices":[{"index":0,"finish_reason":null,"delta":{"role":null,"content":"17 * 23 = ","reasoning_content":null,"tool_calls":null}}]}`
 	b7Text2 = `{"choices":[{"index":0,"finish_reason":null,"delta":{"role":null,"content":"391","reasoning_content":null,"tool_calls":null}}]}`
 
@@ -129,20 +127,19 @@ var b7ReasoningStream = []string{
 }
 
 // ---------------------------------------------------------------------------
-// Two parallel tool calls.
+// 两个并行工具调用。
 //
-// CONSTRUCTED, not recorded: §B4 captured a single-call stream, and §D12 only
-// establishes that `parallel_tool_calls:false` is accepted and ignored, so
-// parallel calls are reachable but no verbatim capture exists. The chunk shape
-// is copied exactly from §B4 — the only changes are the `index`, the ids, and
-// the fragment text.
+// **构建，不是记录**：§B4 捕获的是一个单调用流，§D12 只证明了
+// `parallel_tool_calls:false` 会被接受但被忽视，所以并行调用是可能
+// 到达的，只是没有逐字的实录。块的形状完全照抄 §B4——唯一改变的
+// 是 `index`、ids 和片段文本。
 //
-// Two deliberate distortions, both to make a bug visible rather than likely:
+// 两个故意的扭曲，都是为了让 bug 一定可见，而不是只是可能出现：
 //
-//   - index 1 opens BEFORE index 0, so an implementation that returns calls in
-//     arrival order fails every time instead of half the time.
-//   - the fragments interleave, so an implementation that appends to a single
-//     shared buffer produces visible garbage rather than a subtle mix-up.
+//   - index 1 在 index 0 **之前**打开，所以按到达顺序返回调用的
+//     实现，会每次都失败，而不是只有一半时间失败。
+//   - 片段是交错的，所以追加到单一共享缓冲区的实现，会产生明显
+//     可见的垃圾，而不是一次不易察觉的混乱。
 // ---------------------------------------------------------------------------
 
 const (
@@ -165,13 +162,11 @@ var parallelToolCallStream = []string{
 	b4PostDone,
 }
 
-// ---------------------------------------------------------------------------
-// Helpers.
-// ---------------------------------------------------------------------------
+// 辅助函数。
 
-// sseBody renders payloads the way §B4 shows this endpoint rendering them:
-// `data: <payload>` then one blank line, LF-terminated (the doc shows it with
-// `cat -A`, where every line ends `$` and no `^M` appears).
+// sseBody 渲染载荷的方式，和 §B4 里这个端点渲染它们的方式一样：
+// `data: <payload>`，然后一个空行，以 LF 结尾（文档用 `cat -A`
+// 显示过，每行结尾是 `$`，没有出现 `^M`）。
 func sseBody(frames ...string) io.Reader {
 	var b strings.Builder
 	for _, f := range frames {
@@ -182,9 +177,9 @@ func sseBody(frames ...string) io.Reader {
 	return strings.NewReader(b.String())
 }
 
-// sseRecorder is a Subscriber that keeps everything, which is the cheapest
-// possible demonstration of why the agent core emits events instead of
-// printing: the test asserts on the event sequence and never touches stdout.
+// sseRecorder 是一个保留所有东西的 Subscriber，这是演示"Agent 核心
+// 为什么发出事件而不是直接打印"成本最低的方式：测试只对事件序列
+// 做断言，从不碰 stdout。
 type sseRecorder struct{ events []Event }
 
 func (r *sseRecorder) OnEvent(e Event) { r.events = append(r.events, e) }
@@ -216,9 +211,7 @@ func (r *sseRecorder) first(k Kind) (Event, bool) {
 	return Event{}, false
 }
 
-// ---------------------------------------------------------------------------
-// readSSE: framing only.
-// ---------------------------------------------------------------------------
+// readSSE：只管分帧。
 
 func TestReadSSEFraming(t *testing.T) {
 	cases := []struct {
@@ -227,22 +220,22 @@ func TestReadSSEFraming(t *testing.T) {
 		want []sseFrame
 	}{
 		{
-			// The shape this stage actually meets: `data:` and nothing else.
+			// 阶段实际遇到的形状：只有 `data:`，没有别的。
 			name: "openai style, data lines only",
 			in:   "data: a\n\ndata: b\n\n",
 			want: []sseFrame{{Name: "", Data: "a"}, {Name: "", Data: "b"}},
 		},
 		{
-			// Not observed on this endpoint, which sends bare LF — but SSE is
-			// specified over CRLF and any proxy in the path may rewrite line
-			// endings, so a parser that only handles LF leaves a stray \r on
-			// the end of every payload and fails to decode the JSON.
+			// 这一点在这个端点上没有被观察到——它发送的是裸 LF。但 SSE 的
+			// 规范建立在 CRLF 之上，路径中的任何代理都可能重写行尾，所以一个
+			// 只处理 LF 的解析器，会在每个载荷末尾留下一个多余的 \r，导致
+			// JSON 解码失败。
 			name: "CRLF line endings",
 			in:   "data: a\r\n\r\ndata: b\r\n\r\n",
 			want: []sseFrame{{Name: "", Data: "a"}, {Name: "", Data: "b"}},
 		},
 		{
-			// What stage 03 needs (§B6). Nothing in this stage produces it.
+			// 阶段 03 需要的东西（§B6）。这个阶段本身不产生它。
 			name: "anthropic style, event plus data",
 			in:   "event: content_block_delta\ndata: {\"type\":\"text_delta\"}\n\n",
 			want: []sseFrame{{Name: "content_block_delta", Data: `{"type":"text_delta"}`}},
@@ -253,15 +246,13 @@ func TestReadSSEFraming(t *testing.T) {
 			want: []sseFrame{{Name: "", Data: "line one\nline two\nline three"}},
 		},
 		{
-			// Keep-alives. They must not terminate the frame in progress and
-			// must not produce one of their own.
+			// Keep-alive。它们不能终止正在进行的帧，也不能产生自己的帧。
 			name: "comment lines are ignored",
 			in:   ": keep-alive\ndata: a\n: mid-frame comment\ndata: b\n\n: trailing\n\n",
 			want: []sseFrame{{Name: "", Data: "a\nb"}},
 		},
 		{
-			// The bug this catches is silent: the last frame of a stream is
-			// usually the one carrying usage.
+			// 这里要防的 bug 是无声的：流的最后一帧，往往就是携带使用情况的那一帧。
 			name: "no trailing blank line at EOF",
 			in:   "data: a\n\ndata: last",
 			want: []sseFrame{{Name: "", Data: "a"}, {Name: "", Data: "last"}},
@@ -287,30 +278,29 @@ func TestReadSSEFraming(t *testing.T) {
 			want: []sseFrame{{Name: "", Data: " two spaces"}},
 		},
 		{
-			// Every payload on this wire is JSON, so splitting on the last
-			// colon (or on all of them) corrupts every single frame.
+			// 这条线上的每个载荷都是 JSON，所以按最后一个冒号拆分（或者按所有冒号拆
+			// 分），都会破坏每一帧。
 			name: "only the first colon separates field from value",
 			in:   "data: {\"model\":\"mimo-v2.5\",\"t\":\"12:34:56\"}\n\n",
 			want: []sseFrame{{Name: "", Data: `{"model":"mimo-v2.5","t":"12:34:56"}`}},
 		},
 		{
-			// Spec fields for resuming a dropped stream. Deliberately ignored,
-			// but they must not be mistaken for data.
+			// 规范字段，用于恢复一个掉线的流。故意被忽视，但不能被误认成数据。
 			name: "id and retry fields are ignored, not treated as data",
 			in:   "id: 42\nretry: 3000\ndata: a\n\n",
 			want: []sseFrame{{Name: "", Data: "a"}},
 		},
 		{
-			// Per the spec, and it matters: the event-type buffer has to reset,
-			// or the name leaks onto the next frame.
+			// 根据规范，重要的是：事件类型缓冲区必须重置，否则名字
+			// 泄漏到下一帧。
 			name: "a frame with no data line is not dispatched and does not leak its name",
 			in:   "event: ping\n\ndata: a\n\n",
 			want: []sseFrame{{Name: "", Data: "a"}},
 		},
 		{
-			// readSSE knows nothing about sentinels. Deciding what [DONE] means
-			// is the payload parser's job, which is what keeps this half
-			// reusable for a protocol that has no sentinel at all (§B6).
+			// readSSE 对哨兵一无所知。决定 [DONE] 是什么意思，是载荷解析器的
+			// 工作，正是这一点，让这一半代码对一个根本没有哨兵的协议
+			// （§B6）也能保持可重用。
 			name: "the DONE sentinel is just another frame down here",
 			in:   "data: [DONE]\n\ndata: {\"choices\":[],\"cost\":\"0\"}\n\n",
 			want: []sseFrame{{Name: "", Data: "[DONE]"}, {Name: "", Data: `{"choices":[],"cost":"0"}`}},
@@ -359,9 +349,9 @@ func TestReadSSEStopsOnCallbackError(t *testing.T) {
 }
 
 func TestReadSSEHandlesLinesOverScannerLimit(t *testing.T) {
-	// bufio.Scanner would fail this at 64KB with ErrTooLong. A single delta
-	// this large is not hypothetical: it is what one `cat` of a big file,
-	// echoed back through a tool result, looks like on the way out.
+	// bufio.Scanner 到 64KB 就会失败，报 ErrTooLong。这么大的单个 delta
+	// 不是假设出来的：这就是一次大文件 `cat`，经工具结果回显后，在
+	// 传出去的路上会呈现的样子。
 	huge := strings.Repeat("x", 200*1024)
 
 	var got []sseFrame
@@ -377,7 +367,7 @@ func TestReadSSEHandlesLinesOverScannerLimit(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// parseOpenAIStream: the recorded streams, end to end.
+// parseOpenAIStream：记录的流，端到端。
 // ---------------------------------------------------------------------------
 
 func TestParseOpenAIStream(t *testing.T) {
@@ -391,7 +381,7 @@ func TestParseOpenAIStream(t *testing.T) {
 		wantUsage     Usage
 	}{
 		{
-			// The headline case: §B4 verbatim, all 13 frames.
+			// 头号用例：§B4 逐字重现，全部 13 帧。
 			name:       "B4 tool call, all thirteen frames",
 			frames:     b4ToolCallStream,
 			wantFinish: "tool_calls",
@@ -403,7 +393,7 @@ func TestParseOpenAIStream(t *testing.T) {
 			}},
 		},
 		{
-			// §B7: two fields on one delta object must land in two places.
+			// §B7：一个 delta 对象上的两个字段必须在两个地方。
 			name:          "B7 reasoning and text are kept apart",
 			frames:        b7ReasoningStream,
 			wantText:      "17 * 23 = 391",
@@ -412,29 +402,29 @@ func TestParseOpenAIStream(t *testing.T) {
 			wantUsage:     b4WantUsage,
 		},
 		{
-			// The frame that panics a choices[0] parser, on its own.
+			// 让 choices[0] 解析器崩溃的帧，独自。
 			name:      "usage frame alone, choices is an empty array",
 			frames:    []string{b4Usage},
 			wantUsage: b4WantUsage,
 		},
 		{
-			// §B4 frame 13, on its own: empty choices AND an unknown top-level
-			// key. Arriving after the sentinel is what makes it easy to never
-			// have tested this.
+			// §B4 帧 13，单独来看：空 choices，**并且**带一个未知的顶级键。
+			// 正因为它是在哨兵之后到达的，才让人很容易从来没测试过这种
+			// 情况。
 			name:   "post-DONE cost frame alone",
 			frames: []string{b4Done, b4PostDone},
 		},
 		{
-			// Draining past the sentinel is only defensible if it actually
-			// picks something up. Move usage behind [DONE] and this is the
-			// difference between correct accounting and a silent zero.
+			// 在哨兵之后继续排空，只有在它确实取回了什么东西时，才站得住脚。
+			// 把使用情况挪到 [DONE] 后面——这就是正确记账和无声报零之间的
+			// 差别所在。
 			name:       "frames after the sentinel are still read",
 			frames:     []string{b4RoleOpener, b4Finish, b4Done, b4Usage, b4PostDone},
 			wantFinish: "tool_calls",
 			wantUsage:  b4WantUsage,
 		},
 		{
-			// Parallel calls: independent accumulation, ascending index order.
+			// 并行调用：独立累积，升序索引顺序。
 			name:       "two parallel tool calls interleaved",
 			frames:     parallelToolCallStream,
 			wantFinish: "tool_calls",
@@ -445,8 +435,7 @@ func TestParseOpenAIStream(t *testing.T) {
 			},
 		},
 		{
-			// A stream that produced nothing at all still has to come back
-			// clean rather than half-initialised.
+			// 一个什么都没产生的流，也必须干干净净地返回，而不是停在半初始化的状态。
 			name:       "role opener and finish only",
 			frames:     []string{b4RoleOpener, b4Finish, b4Done},
 			wantFinish: "tool_calls",
@@ -478,9 +467,9 @@ func TestParseOpenAIStream(t *testing.T) {
 	}
 }
 
-// TestB4ArgsReassembleIntoValidJSON is the payoff for never parsing a fragment.
-// Not one of the seven pieces in §B4 is valid JSON on its own; the concatenation
-// is, and that is the only place a parse is allowed to happen.
+// TestB4ArgsReassembleIntoValidJSON 是"从不解析单个片段"这件事的
+// 回报。§B4 里的七个片段没有一个单独是合法 JSON；拼接后的结果才
+// 是，而这也是唯一允许解析发生的地方。
 func TestB4ArgsReassembleIntoValidJSON(t *testing.T) {
 	got, err := parseOpenAIStream(sseBody(b4ToolCallStream...), NewBus(), 1, time.Now())
 	if err != nil {
@@ -501,10 +490,10 @@ func TestB4ArgsReassembleIntoValidJSON(t *testing.T) {
 	}
 }
 
-// TestToolIDSurvivesTheNullChunks is the id-latching regression, stated on its
-// own so the failure message names the actual disease. Frames 3–9 all carry
-// `"id":null`; an unguarded assignment leaves this empty and the tool call
-// becomes unanswerable, because the API requires that id back in the reply.
+// TestToolIDSurvivesTheNullChunks 是 id 锁定的回归测试，单独列出来，
+// 好让失败信息指向真正的病根。帧 3–9 都携带 `"id":null`；不加防范
+// 的赋值会让它留空，工具调用就变得无法回答，因为 API 要求回复里
+// 带回那个 id。
 func TestToolIDSurvivesTheNullChunks(t *testing.T) {
 	got, err := parseOpenAIStream(sseBody(b4ToolCallStream...), NewBus(), 1, time.Now())
 	if err != nil {
@@ -521,11 +510,11 @@ func TestToolIDSurvivesTheNullChunks(t *testing.T) {
 	}
 }
 
-// TestParallelToolCallsComeBackInIndexOrder runs the same stream many times
-// because Go randomises map iteration order on purpose. One pass would catch a
-// missing sort roughly half the time — a test that fails one commit in two is
-// worse than no test, because it teaches people to re-run CI. Twenty passes
-// puts a false pass at about one in a million.
+// TestParallelToolCallsComeBackInIndexOrder 把同一个流跑了很多遍，
+// 因为 Go 故意把 map 的迭代顺序随机化了。只跑一次，大约有一半
+// 的机会能捕捉到缺失的排序——一个每两次提交里就有一次失败的
+// 测试，比根本没有测试还糟，因为它教会大家的是重新跑一遍 CI。
+// 跑二十次，能把误判通过的概率压到大约百万分之一。
 func TestParallelToolCallsComeBackInIndexOrder(t *testing.T) {
 	want := []streamToolCall{
 		{ID: "call_first", Name: "bash", Args: `{"command": "ls -la"}`},
@@ -544,7 +533,7 @@ func TestParallelToolCallsComeBackInIndexOrder(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Usage normalisation — the direction reversal.
+// 使用情况规范化——方向反转。
 // ---------------------------------------------------------------------------
 
 func TestUsageNormalisation(t *testing.T) {
@@ -554,45 +543,43 @@ func TestUsageNormalisation(t *testing.T) {
 		want Usage
 	}{
 		{
-			// §B4 frame 11, verbatim. 506 is the FULL prompt with 192 cached
-			// tokens inside it, so full-price Input is 314 and Prompt() must
-			// still come back out at 506.
+			// §B4 帧 11，逐字照录。506 是**完整**的 prompt，里面包含了 192
+			// 个缓存 token，所以全价 Input 是 314，Prompt() 必须仍然算出 506。
 			name: "B4 frame 11 without stream_options",
 			in:   b4Usage,
 			want: Usage{Input: 314, CacheRead: 192, Output: 26, Reasoning: 0},
 		},
 		{
-			// §B5: the same request WITH stream_options:{include_usage:true}.
-			// The parameter is a no-op; only cached_tokens differs, and it
-			// differs because cache state varies between runs.
+			// §B5：同一个请求 **WITH** stream_options:{include_usage:true}。
+			// 参数是 no-op；只有 cached_tokens 不同，它不同因为缓存状态
+			// 在运行间变化。
 			name: "B5 frame 11 with stream_options, a no-op",
 			in:   `{"choices":[],"usage":{"prompt_tokens":506,"completion_tokens":26,"total_tokens":532,"prompt_tokens_details":{"cached_tokens":448},"completion_tokens_details":{"reasoning_tokens":0}}}`,
 			want: Usage{Input: 58, CacheRead: 448, Output: 26},
 		},
 		{
-			// A cold request: nothing cached, so Input is the whole prompt.
+			// 冷请求：什么都没缓存，所以 Input 是整个 prompt。
 			name: "no cache hit",
 			in:   `{"choices":[],"usage":{"prompt_tokens":506,"completion_tokens":26,"total_tokens":532,"prompt_tokens_details":{"cached_tokens":0},"completion_tokens_details":{"reasoning_tokens":0}}}`,
 			want: Usage{Input: 506, Output: 26},
 		},
 		{
-			// Reasoning is a SUBSET of completion_tokens, not an addition.
+			// 推理是 completion_tokens 的一个**子集**，不是外加的东西。
 			name: "a thinking model reports reasoning inside completion",
 			in:   `{"choices":[],"usage":{"prompt_tokens":100,"completion_tokens":900,"total_tokens":1000,"prompt_tokens_details":{"cached_tokens":40},"completion_tokens_details":{"reasoning_tokens":850}}}`,
 			want: Usage{Input: 60, CacheRead: 40, Output: 900, Reasoning: 850},
 		},
 		{
-			// The detail objects nulled outright. Every field on this endpoint
-			// can be null, so the parser has to survive it — zeroes, not a
-			// crash and not a negative.
+			// 细节对象整个是 null。这个端点的每个字段都可能是 null，所以
+			// 解析器得扛得住——结果是零，不是崩溃，也不是负数。
 			name: "null detail objects",
 			in:   `{"choices":[],"usage":{"prompt_tokens":80,"completion_tokens":9,"total_tokens":89,"prompt_tokens_details":null,"completion_tokens_details":null}}`,
 			want: Usage{Input: 80, Output: 9},
 		},
 		{
-			// Defensive: more cached than prompt is arithmetically impossible,
-			// but exporting a negative token count would poison Prompt() and
-			// every cost estimate downstream. Clamp and move on.
+			// 防卫性写法：缓存比 prompt 还多，这在算术上是不可能的，但导出
+			// 一个负的 token 计数，会连累 Prompt() 和下游每一个成本估计。
+			// 限制住，然后继续。
 			name: "cached exceeds prompt, clamped rather than negative",
 			in:   `{"choices":[],"usage":{"prompt_tokens":10,"completion_tokens":1,"total_tokens":11,"prompt_tokens_details":{"cached_tokens":99}}}`,
 			want: Usage{Input: 0, CacheRead: 99, Output: 1},
@@ -612,9 +599,9 @@ func TestUsageNormalisation(t *testing.T) {
 	}
 }
 
-// TestUsagePromptRoundTrips states the invariant that makes the reversal
-// checkable without doing the subtraction again: whatever the split, Prompt()
-// has to equal the prompt_tokens the endpoint reported.
+// TestUsagePromptRoundTrips 陈述的这个不变量，让人不用再做一次
+// 减法，就能检验这个反转对不对：无论怎么拆分，Prompt() 都必须
+// 等于端点报告的 prompt_tokens。
 func TestUsagePromptRoundTrips(t *testing.T) {
 	got, err := parseOpenAIStream(sseBody(b4Usage), NewBus(), 1, time.Now())
 	if err != nil {
@@ -629,7 +616,7 @@ func TestUsagePromptRoundTrips(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// The event stream. These are the tests the event bus exists for.
+// 事件流。这些是事件总线存在的测试。
 // ---------------------------------------------------------------------------
 
 func TestEventSequenceForB4ToolCall(t *testing.T) {
@@ -639,14 +626,14 @@ func TestEventSequenceForB4ToolCall(t *testing.T) {
 	}
 
 	want := []Kind{
-		KindFirstToken,    // frame 2: the tool-call opener is the first real payload
-		KindToolCallStart, // same frame, once id and name are latched
-		// frames 3-9. The opener's `"arguments":""` produces nothing, which is
-		// why there are seven of these and not eight.
+		KindFirstToken,    // 帧 2：工具调用开启是第一个真实载荷
+		KindToolCallStart, // 同一帧，一旦 id 和 name 被锁定
+		// 帧 3-9。开启端的 `"arguments":""` 什么都不产生，这就是为什么
+		// 这里是七个，而不是八个。
 		KindToolArgsDelta, KindToolArgsDelta, KindToolArgsDelta, KindToolArgsDelta,
 		KindToolArgsDelta, KindToolArgsDelta, KindToolArgsDelta,
-		KindUsage,       // frame 11, the empty-choices one
-		KindResponseEnd, // after draining frames 12 and 13
+		KindUsage,       // 帧 11，空 choices 的
+		KindResponseEnd, // 在排空帧 12 和 13 之后
 	}
 	if got := rec.kinds(); !reflect.DeepEqual(got, want) {
 		t.Errorf("event kinds\n got %v\nwant %v", got, want)
@@ -656,24 +643,24 @@ func TestEventSequenceForB4ToolCall(t *testing.T) {
 		t.Errorf("KindFirstToken emitted %d times, want exactly 1", n)
 	}
 
-	// Frame 1 carries `content: ""`, which is not a token. If TTFT were
-	// measured from it, first_token would land before the model had generated
-	// anything and the number would flatter every request.
+	// 帧 1 携带 `content: ""`，这不是 token。如果 TTFT 是从它测量的，
+	// first_token 就会在模型生成任何东西之前到达，数字会奉承每一个
+	// 请求。
 	if start, ok := rec.first(KindToolCallStart); !ok {
 		t.Error("no tool_call_start")
 	} else if start.ToolID != "call_8d4f0377bc594026a4765cfc" || start.ToolName != "bash" {
 		t.Errorf("tool_call_start got id=%q name=%q", start.ToolID, start.ToolName)
 	}
 
-	// Every event carries the turn, so a trace can be split by round without
-	// re-deriving anything.
+	// 每个事件都携带着回合，这样 trace 就能按往返拆分，不用重新
+	// 推导任何东西。
 	for _, e := range rec.events {
 		if e.Turn != 7 {
 			t.Fatalf("event %s has turn %d, want 7", e.Kind, e.Turn)
 		}
 	}
 
-	// The usage event has to carry the NORMALISED struct, not the wire numbers.
+	// 使用情况事件得携带**规范化的**结构，不是线上数字。
 	if u, ok := rec.first(KindUsage); !ok {
 		t.Error("no usage event")
 	} else if u.Usage == nil {
@@ -696,7 +683,7 @@ func TestEventSequenceForB7Reasoning(t *testing.T) {
 	}
 
 	want := []Kind{
-		KindFirstToken, // the first reasoning delta, not the role opener
+		KindFirstToken, // 第一个推理 delta，不是角色开启
 		KindReasoningDelta, KindReasoningDelta, KindReasoningDelta, KindReasoningDelta, KindReasoningDelta,
 		KindTextDelta, KindTextDelta,
 		KindUsage,
@@ -709,9 +696,8 @@ func TestEventSequenceForB7Reasoning(t *testing.T) {
 		t.Errorf("KindFirstToken emitted %d times, want exactly 1", n)
 	}
 
-	// The renderer distinguishes thinking from speech by kind alone, so a
-	// reasoning fragment leaking out as a text delta prints the model's private
-	// scratchpad to the user.
+	// 渲染器仅凭 kind 就能把思考和说话区分开，所以一旦推理片段当作
+	// 文本 delta 泄露出去，就等于把模型的私密草稿纸打印给用户看。
 	if e, ok := rec.first(KindReasoningDelta); !ok {
 		t.Error("no reasoning_delta")
 	} else if e.Text != "Okay" {
@@ -730,15 +716,15 @@ func TestParallelToolCallEventsAreRoutableByID(t *testing.T) {
 		t.Fatalf("parseOpenAIStream: %v", err)
 	}
 
-	// Two starts, in arrival order — the sort applies to the returned result,
-	// not to the live event stream, which must stay in wire order so a renderer
-	// can show things as they happen.
+	// 两个启动，按到达顺序——这个排序只适用于返回的结果，不适用于
+	// 实时事件流；实时事件流必须保持线上顺序，这样渲染器才能按事情
+	// 发生的样子实时显示出来。
 	if n := rec.count(KindToolCallStart); n != 2 {
 		t.Fatalf("want 2 tool_call_start events, got %d", n)
 	}
 
-	// Every args delta has to name its call, or a renderer with two calls open
-	// cannot tell which box a fragment belongs in.
+	// 每个 args delta 得命名它的调用，否则一个有两个调用打开的
+	// 渲染器不能说一个片段属于哪个框。
 	byID := map[string]string{}
 	for _, e := range rec.events {
 		if e.Kind == KindToolArgsDelta {
@@ -758,13 +744,13 @@ func TestParallelToolCallEventsAreRoutableByID(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// TTFT.
+// TTFT。
 // ---------------------------------------------------------------------------
 
 func TestTTFTMeasuresFromTheRequest(t *testing.T) {
-	// Pretend the request went out 1.5s ago. Backdating `started` is how this
-	// gets asserted without a sleep: TTFT is a duration since a caller-supplied
-	// instant, so the test can choose the instant.
+	// 假装请求是 1.5 秒前发出的。把 `started` 的时间往回调，就是不用
+	// sleep 也能断言这一点的办法：TTFT 是从调用者提供的某个时刻算起
+	// 的一段时长，所以测试可以自己选定这个时刻。
 	started := time.Now().Add(-1500 * time.Millisecond)
 
 	rec := &sseRecorder{}
@@ -789,10 +775,9 @@ func TestTTFTMeasuresFromTheRequest(t *testing.T) {
 }
 
 func TestTTFTIsZeroWhenNothingStreamed(t *testing.T) {
-	// The role opener carries `content: ""` and the finish chunk carries an
-	// empty delta. Neither is output, so there is no first token to time —
-	// and reporting a plausible-looking TTFT for a response that produced
-	// nothing is worse than reporting none.
+	// 角色开启携带 `content: ""`，完成块携带一个空 delta。两者都不算
+	// 输出，所以没有第一个 token 可供计时——对一个什么都没产生的
+	// 响应，报告一个看似合理的 TTFT，比干脆不报告还要糟糕。
 	rec := &sseRecorder{}
 	got, err := parseOpenAIStream(sseBody(b4RoleOpener, b4Finish, b4Usage, b4Done), NewBus(rec), 1, time.Now().Add(-time.Second))
 	if err != nil {
@@ -807,15 +792,15 @@ func TestTTFTIsZeroWhenNothingStreamed(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Damaged streams.
+// 破坏的流。
 // ---------------------------------------------------------------------------
 
 func TestMalformedFrameIsSurvivedAndReported(t *testing.T) {
-	// One bad frame in the middle must not cost us a tool call that had already
-	// completed. It must also not pass unnoticed — a notice puts it in the
-	// trace, where it can be found later.
+	// 中间一帧坏帧，不能让我们损失一个已经完成的工具调用。它也不能
+	// 悄无声息地就这么过去——发一条通知，把它记进 trace，这样以后
+	// 就能找到它。
 	frames := append([]string{}, b4ToolCallStream[:2]...)
-	frames = append(frames, `{"choices":[{"delta":`) // truncated JSON
+	frames = append(frames, `{"choices":[{"delta":`) // 截断的 JSON
 	frames = append(frames, b4ToolCallStream[2:]...)
 
 	rec := &sseRecorder{}
@@ -834,10 +819,10 @@ func TestMalformedFrameIsSurvivedAndReported(t *testing.T) {
 func TestTruncatedStreamReturnsPartialResultAndError(t *testing.T) {
 	boom := errors.New("connection reset by peer")
 
-	// A complete tool call, then the socket dies before the finish chunk. This
-	// is the streaming version of the stage-01 truncation lesson: the danger is
-	// not the error, it is a caller that ignores it and ships a result with no
-	// finish_reason as though the model had stopped on purpose.
+	// 一个完整的工具调用，接着套接字在完成块到达之前就死掉了。
+	// 这是阶段 01 截断教训的流式版本：危险的不是这个错误本身，而是
+	// 调用者忽视了它，把一个没有 finish_reason 的结果发出去，就好像
+	// 模型是故意停下来的一样。
 	good := sseBody(b4ToolCallStream[:9]...)
 	rec := &sseRecorder{}
 
@@ -860,8 +845,8 @@ func TestTruncatedStreamReturnsPartialResultAndError(t *testing.T) {
 }
 
 func TestNilBusIsTolerated(t *testing.T) {
-	// Parsing with no subscribers is how a test, or a batch tool, uses this
-	// without standing up a bus.
+	// 不带订阅者进行解析，就是测试或批处理工具在不搭建总线的
+	// 情况下使用这个函数的方式。
 	got, err := parseOpenAIStream(sseBody(b4ToolCallStream...), nil, 1, time.Now())
 	if err != nil {
 		t.Fatalf("parseOpenAIStream: %v", err)

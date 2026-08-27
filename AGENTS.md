@@ -1,44 +1,23 @@
 # AGENTS.md
 
-Conventions for this repository. Stage 05's agent reads this file at startup and
-puts it in its system prompt, so this is both documentation and a live
-demonstration of the feature — see [docs/05-live-forever.md](docs/05-live-forever.md).
+这个仓库的约定。第 05 阶段的 Agent 在启动时读这个文件，把它放在系统提示词里，所以这既是文档又是这个特性的一个现场演示 —— 见 [docs/05-live-forever.md](docs/05-live-forever.md)。
 
-## What this repo is
+## 这个仓库是什么
 
-A progressive course. Each directory under `stages/` is a **complete, standalone
-snapshot** of the agent at one point in the course. Duplication between them is
-deliberate: a reader should be able to `diff stages/04-the-cache
-stages/05-live-forever` and see exactly one idea arrive.
+一个渐进式课程。`stages/` 下的每个目录都是 Agent 在课程某个点的**完整、独立的快照**。它们之间的重复是刻意的：读者应该能做 `diff stages/04-the-cache stages/05-live-forever` 然后看到恰好一个想法降临。
 
-**Do not refactor shared code into a common package.** That is the one change
-that would break the thing this repo is for.
+**不要把共享代码重构进一个通用包。** 那是唯一会破坏这个仓库存在意义的改变。
 
-## Rules
+## 规则
 
-- **No dependencies** beyond the standard library and `golang.org/x/sys`, which
-  is pinned at v0.41.0 because v0.42+ declares `go 1.25.0`. No SDKs, no TUI
-  framework, no JSON library, no test framework.
-  Stage 08 is the single exception (`mvdan.cc/sh/v3`, pinned at v3.12.0 with
-  `golang.org/x/term` at v0.33.0 to keep the module floor at go 1.24.0). Before
-  adding anything, read the new `go.mod` — a dependency's `go` directive is part
-  of its cost, and it is the part nothing announces.
-- **Every teaching claim rests on `docs/wire-notes.md`**, which records what one
-  real gateway actually sends, byte by byte. Where the protocol documentation
-  and the observed behaviour disagree, the observation wins and the disagreement
-  gets written down.
-- **Comments explain *why*, and name the failure they prevent.** They never
-  restate the code. Match the density of `stages/04-the-cache/render.go`.
-- **A chapter reports what it measured**, including when the measurement
-  undercuts the chapter's thesis. Stage 04 found that no cache markers beat
-  markers on a short session; stage 05 found that compaction costs more than it
-  saves. Both say so.
-- **Tests are accepted only after mutation testing.** Break the code on purpose,
-  one change at a time, and confirm a test fails for each. A mutation that
-  survives means a missing test. A mutation that fails to *compile* proves
-  nothing — check that the test binary built before believing a "caught".
+- **没有依赖**，标准库和 `golang.org/x/sys` 除外，后者钉在 v0.41.0 因为 v0.42+ 声明了 `go 1.25.0`。没有 SDK、没有 TUI 框架、没有 JSON 库、没有测试框架。
+  第 08 阶段是唯一的例外（`mvdan.cc/sh/v3`，钉在 v3.12.0，`golang.org/x/term` 在 v0.33.0 来保持模块底线在 go 1.24.0）。在加任何东西之前，读一下新的 `go.mod` —— 一个依赖的 `go` 指令是它成本的一部分，也是没有东西会公告的那部分。
+- **每个教学声明都建立在 `docs/wire-notes.md` 上**，它记录一个真实网关实际发出的东西，逐字节。在协议文档和观测到的行为不一致的地方，观测赢了，不一致也会被记录下来。
+- **注释解释*为什么*，并命名它们阻止的失败。** 它们从不重申代码。匹配 `stages/04-the-cache/render.go` 的密度。
+- **一个章节报告它测量到的东西**，包括测量破坏了章节论点的时候。第 04 阶段发现没有缓存标记比短会话上有标记更好；第 05 阶段发现上下文压缩花的比省的多。双方都直说了。
+- **测试只有在变异测试以后才接受。** 故意破坏代码，一次一个改变，然后确认一个测试对每个改变都失败。一个存活的变异意味着一个丢失的测试。一个**编译**失败的变异不能证明任何东西 —— 在相信一次"被捕捉"之前，先确认测试二进制真的编译通过了。
 
-## Commands
+## 命令
 
 ```sh
 go build ./stages/06-the-composer      # or any stage
@@ -49,11 +28,9 @@ GOOS=linux go build ./stages/06-the-composer    # the platform files are real
 GOOS=darwin go build ./stages/06-the-composer
 ```
 
-## Running the agent
+## 运行 Agent
 
-It executes what the model says. Use `sandbox/` (gitignored) as the working
-directory, never the repo root. Credentials come from `.env`, which is
-gitignored and never committed:
+它执行模型说的话。用 `sandbox/`（gitignored）作为工作目录，永远不要用仓库根。凭证来自 `.env`，它被 gitignore 了从不提交：
 
 ```sh
 set -a && . ./.env && set +a

@@ -7,19 +7,17 @@ import (
 	"unicode/utf8"
 )
 
-// The whole suite prints strings with %q. Escape sequences are invisible in a
-// terminal by definition — a failure message that renders them for real just
-// paints the assertion output red and eats characters, which is how you end up
-// debugging your test harness instead of your code.
+// 整个测试套件用 %q 打印字符串。转义序列在终端里根本不可见——要是失败消息
+// 真把它们渲染出来，就只会把断言输出涂成红色、吃掉字符，这样你最终调试的就是
+// 测试宿主，而不是代码。
 
 // ---------------------------------------------------------------------------
-// The table's invariant
+// 表的不变量
 // ---------------------------------------------------------------------------
 
-// TestWideRangesSorted guards inRanges' unchecked precondition. A binary search
-// over an unsorted table does not crash; it silently misses. The symptom is one
-// character that is the wrong width in one font on one machine, which is a
-// terrible thing to debug and a trivial thing to assert.
+// TestWideRangesSorted 守护 inRanges 的未检查前提条件。对无序表的二分查找
+// 不会崩溃，但会无声地遗漏。症状是：某个字符在某种字体、某一台机器上宽度
+// 错误，这是一件令人恐惧的调试工作，也是一件平凡的断言工作。
 func TestWideRangesSorted(t *testing.T) {
 	for i, r := range wideRanges {
 		if r.lo > r.hi {
@@ -116,11 +114,11 @@ func TestDispWidth(t *testing.T) {
 	}
 }
 
-// TestBytesRunesColumnsAreThreeDifferentNumbers is the thesis of the file, made
-// executable. If you only remember one test from this package, remember that
-// these three counts disagree and only the last one lays out a screen.
+// TestBytesRunesColumnsAreThreeDifferentNumbers 就是这个文件的论点，只是写成了
+// 可执行的代码。如果这个包里的测试你只记得一个，那就记住：这三个计数互不
+// 相同，只有最后一个才能真正排出一屏。
 func TestBytesRunesColumnsAreThreeDifferentNumbers(t *testing.T) {
-	const s = "é" // "e" plus COMBINING ACUTE ACCENT — renders as "é"
+	const s = "é" // "e" 加 COMBINING ACUTE ACCENT — 渲染成 "é"
 
 	if got := len(s); got != 3 {
 		t.Errorf("len(%q) = %d, want 3 — this is the BYTE count, and it is the number "+
@@ -135,7 +133,7 @@ func TestBytesRunesColumnsAreThreeDifferentNumbers(t *testing.T) {
 			"terminal agrees with. The accent stacks onto the e; it takes no column of its own", s, got)
 	}
 
-	// And the same three numbers for CJK, where they diverge the other way.
+	// CJK 的相同三个数字，它们的偏离方式相反。
 	const cjk = "你好"
 	if len(cjk) != 6 || utf8.RuneCountInString(cjk) != 2 || dispWidth(cjk) != 4 {
 		t.Errorf("%q: bytes=%d runes=%d columns=%d, want 6/2/4 — bytes over-count, runes "+
@@ -175,32 +173,30 @@ func TestTruncCols(t *testing.T) {
 	}
 }
 
-// TestTruncColsWideBoundary is the one everybody gets wrong.
+// TestTruncColsWideBoundary 是大家都搞错的那个。
 //
-// Cutting "你好世界" at 3 columns cannot be done cleanly: 你 is 2 and 好 would
-// make 4. Half a 好 must never reach the terminal, so we stop before it — and
-// then we owe the caller the orphan column, because a cell that is one column
-// short shears a table exactly as badly as one that is one column long.
+// 在 3 列处截断 "你好世界" 无法干净完成：你 是 2，好 会变成 4。半个 好
+// 绝不能到达终端，所以我们在它之前停下——然后我们欠调用者孤立列，
+// 因为一个少一列的单元格会像一个多一列的单元格一样完全损坏表。
 func TestTruncColsWideBoundary(t *testing.T) {
-	// The comments sit above their rows rather than after them. gofmt aligns
-	// trailing comments by rune count, so on a table full of CJK literals it
-	// produces something it considers aligned and your terminal does not — the
-	// same bug this package exists to fix, in the formatter.
+	// 注释写在对应行的上方，而不是行尾。gofmt 按 rune 数对齐行尾注释，所以
+	// 面对一张写满 CJK 字面量的表，它生成的东西自己觉得对齐了，你的终端却不
+	// 这么看——这正是这个包本来要修复的同一个 bug，只是这次出现在格式化器
+	// 自己身上。
 	cases := []struct {
 		s    string
 		n    int
 		want string
 	}{
-		// One wide char fits, then a space for the orphan column.
+		// 一个宽字符放下，然后为孤立列留一个空格。
 		{"你好世界", 3, "你 "},
-		// Two wide chars fit, then a space.
+		// 两个宽字符放下，然后一个空格。
 		{"你好世界", 5, "你好 "},
-		// Nothing fits at all, and the result is still exactly one column.
+		// 根本放不下任何东西，结果仍然恰好是一列。
 		{"你好世界", 1, " "},
-		// The wide char straddles the limit.
+		// 宽字符跨越极限。
 		{"a你b", 2, "a "},
-		// The reset comes before the pad, so the filler space is not painted
-		// with an open background colour.
+		// 重置发生在填充之前，所以那些填充用的空格，不会被涂上一层还没关闭的背景色。
 		{"\x1b[36m你好", 3, "\x1b[36m你\x1b[0m "},
 	}
 	for _, c := range cases {
@@ -224,10 +220,10 @@ func TestTruncColsWideBoundary(t *testing.T) {
 	}
 }
 
-// TestTruncColsDoesNotSplitEscape cuts a string at a column that falls in the
-// middle of an escape sequence's bytes. Naive s[:n] leaves "\x1b[3" dangling;
-// the terminal then swallows the next character printed anywhere in the program
-// as that sequence's missing final byte.
+// TestTruncColsDoesNotSplitEscape 会在某一列处截断字符串，而这一列恰好落在
+// 转义序列字节的中间。朴素的 s[:n] 会把 "\x1b[3" 晾在那里悬空；终端接下来
+// 会把程序里任何地方打印出的下一个字符，当成这个序列缺失的最后一个字节，
+// 直接吞掉。
 func TestTruncColsDoesNotSplitEscape(t *testing.T) {
 	const s = "ab\x1b[31mcd"
 	const want = "ab\x1b[31mc\x1b[0m"
@@ -244,14 +240,14 @@ func TestTruncColsDoesNotSplitEscape(t *testing.T) {
 		t.Errorf("truncCols(%q, 3) = %q is %d columns, want 3 — escape bytes must not "+
 			"count toward n", s, got, dispWidth(got))
 	}
-	// For contrast, and to make the failure mode concrete: what a byte slice does.
+	// 为了对比，也为了使失败模式具体化：字节切片做什么。
 	if broken := s[:3]; broken != "ab\x1b" {
 		t.Errorf("sanity check on the counter-example changed: s[:3] = %q", broken)
 	}
 }
 
-// TestTruncColsClosesOpenSGR is the test that stops a program from leaving the
-// user's shell prompt permanently red.
+// TestTruncColsClosesOpenSGR 是阻止程序让用户 shell 提示符永久保持红色的
+// 测试。
 func TestTruncColsClosesOpenSGR(t *testing.T) {
 	cases := []struct {
 		name string
@@ -275,8 +271,8 @@ func TestTruncColsClosesOpenSGR(t *testing.T) {
 		}
 	}
 
-	// The mirror image: do not staple a reset onto a string that never opened a
-	// colour, and do not add a second one when the source already closed it.
+	// 镜像：不要把重置钉在从未打开颜色的字符串上，也不要在来源已经关闭时
+	// 加第二个。
 	if got := truncCols("plain", 3); strings.Contains(got, "\x1b") {
 		t.Errorf("truncCols(%q, 3) = %q — an uncoloured string must come back with no "+
 			"escapes at all", "plain", got)
@@ -296,7 +292,7 @@ func TestPadCols(t *testing.T) {
 		name string
 		s    string
 		n    int
-		want string // "" means: only check the column count
+		want string // "" 表示：仅检查列计数
 	}{
 		{"ASCII short", "ab", 5, "ab   "},
 		{"ASCII exact", "abc", 3, "abc"},
@@ -324,9 +320,9 @@ func TestPadCols(t *testing.T) {
 	}
 }
 
-// TestPadColsBuildsAlignedTable is the acceptance test the doc comment promises:
-// a column of mixed ASCII, CJK and coloured names, all landing in the same place.
-// fmt's %-12s cannot do this, which is the entire reason padCols exists.
+// TestPadColsBuildsAlignedTable 是 doc 注释承诺的验收测试：由 ASCII、CJK 和
+// 彩色名称混合而成的一列，全部落在同一个地方。fmt 的 %-12s 做不到这一点，
+// 这正是 padCols 存在的原因。
 func TestPadColsBuildsAlignedTable(t *testing.T) {
 	names := []string{"main.go", "读我.md", "\x1b[36mREADME\x1b[0m", "日本語テキスト.txt", "éclair.txt"}
 	const col = 12
@@ -386,9 +382,9 @@ func TestWrapCols(t *testing.T) {
 	}
 }
 
-// TestWrapColsReopensColour checks that colour spanning a wrap point survives on
-// both sides. A continuation line that inherits nothing goes uncoloured the
-// moment anything repaints the screen between the two lines.
+// TestWrapColsReopensColour 检查的是：颜色跨越换行点时，两侧是否都能保留下来。
+// 一条延续行如果什么都不继承，那么只要两行之间发生了任意一次屏幕重绘，它就会
+// 立刻变得没有颜色。
 func TestWrapColsReopensColour(t *testing.T) {
 	cases := []struct {
 		name string
@@ -442,17 +438,15 @@ func TestWrapColsReopensColour(t *testing.T) {
 	}
 }
 
-// TestWrapColsNarrowerThanAWideRune is a TERMINATION test.
+// TestWrapColsNarrowerThanAWideRune 是一个**终止**测试。
 //
-// n == 1 and a 2-column character is unsatisfiable: the rune cannot fit on an
-// empty line, so the natural "flush the line and retry this rune" loop retries
-// forever. The first version of wrapCols hung here, and it hung inside a redraw,
-// so the symptom was a frozen UI with no stack trace and no CPU spike anyone
-// thought to look at.
+// n == 1 且一个 2 列字符无法满足：rune 无法在空行上放下，所以自然的
+// "刷新行并重试这个 rune" 循环永远重试。wrapCols 的第一个版本在这里
+// 挂起，它在重绘内挂起，所以症状是一个冻结的 UI，没有堆栈追踪，没有
+// 任何人想查看的 CPU 飙升。
 //
-// The chosen behaviour is to emit the rune alone and overflow by one column
-// rather than drop it: an overflowing glyph is visible and diagnosable, a
-// silently deleted character is neither.
+// 选择的行为是单独发出 rune 并溢出一列，而不是丢弃它：溢出的字形
+// 可见、可诊断，无声删除的字符两者都不是。
 func TestWrapColsNarrowerThanAWideRune(t *testing.T) {
 	inputs := []string{"你好", "a你b", "你", "\x1b[31m你好\x1b[0m", "你\n好"}
 
@@ -462,8 +456,7 @@ func TestWrapColsNarrowerThanAWideRune(t *testing.T) {
 
 		select {
 		case got := <-done:
-			// Every character must still be present. Overflowing is the accepted
-			// compromise; losing the user's text is not.
+			// 每个字符必须仍然存在。溢出是接受的妥协；失去用户文本不是。
 			var joined string
 			for _, line := range got {
 				joined += line
@@ -477,7 +470,7 @@ func TestWrapColsNarrowerThanAWideRune(t *testing.T) {
 			if len(got) == 0 {
 				t.Errorf("wrapCols(%q, 1) returned no lines at all", s)
 			}
-			// No empty line may be bolted onto the end by the degenerate path.
+			// 退化路径不能在末尾钉上一个空行。
 			if len(got) > 1 && got[len(got)-1] == "" && !strings.HasSuffix(s, "\n") {
 				t.Errorf("wrapCols(%q, 1) = %q ends with a spurious empty line", s, got)
 			}
@@ -489,7 +482,7 @@ func TestWrapColsNarrowerThanAWideRune(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// The escape scanner, directly
+// 转义扫描器，直接
 // ---------------------------------------------------------------------------
 
 func TestAnsiLen(t *testing.T) {

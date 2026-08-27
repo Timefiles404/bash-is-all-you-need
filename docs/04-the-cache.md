@@ -1,28 +1,25 @@
-# Stage 04 — The Cache
+# 第 04 阶段——缓存
 
-Stage 03 ended on an asymmetry it refused to explain: the same task, the same
-size of conversation, and one protocol's cache bar was green while the other's
-was entirely red.
+第 03 阶段以一个它拒绝解释的不对称性结束：同样的任务、同样大小的
+对话，一个协议的缓存条是绿的，另一个的完全是红的。
 
-This chapter fixes it, and then spends most of its length on the part that
-matters more — that **prompt caching is a discipline, not a feature.** The code
-is about forty lines. The rules around those forty lines are worth far more than
-the lines.
+这一章修复了它，然后把大部分篇幅都花在更重要的部分——**prompt 缓存是
+一门纪律，不是一个特性。** 代码大约四十行。那四十行周围的规则比这些
+行本身值钱得多。
 
 ---
 
-## The mechanism, in one paragraph
+## 机制，一段话讲完
 
-The rendered prompt is `tools`, then `system`, then `messages`, in that order.
-Caching is a **prefix match**: a `cache_control` marker says *everything up to
-here is a reusable prefix*. Two consequences follow immediately, and everything
-else in this chapter is a consequence of them:
+渲染后的 prompt 的顺序是 `tools`、`system`、`messages`。缓存是一个**前缀
+匹配**：一个 `cache_control` 标记说*到这里为止的所有东西都是可重用的
+前缀*。立即产生两个后果，这一章的其他一切都是这两个后果的推论：
 
-- A marker only helps if everything **before** it is byte-identical next time.
-- A byte that changes early invalidates every marker after it — so the ordering
-  of stable-to-volatile content matters more than the markers do.
+- 一个标记要起作用，前提是它**之前**的所有内容下一次逐字节相同。
+- 前面改变的一个字节会使它后面的每个标记都失效——所以内容按稳定
+  到易变排列的顺序，比标记本身更重要。
 
-Four markers are allowed per request. This adapter places two:
+每个请求允许四个标记。这个适配器放两个：
 
 ```
 tools ─────────┐
@@ -32,16 +29,16 @@ messages
   turn N ──────────▶ [2] rolling: everything up to the newest turn
 ```
 
-Marker 1 pays for itself on every request after the first. **Marker 2 is the one
-that matters in an agent**, because each turn re-sends the entire conversation:
-without it, every turn re-reads the whole history at full price. That is the
-re-send ratio stage 00 measured at 4.2x and could not explain.
+标记 1 在第一个请求之后的每个请求上都收回成本。**标记 2 才是 Agent
+中真正重要的那个**，因为每个回合都要重新发送整个对话：没有它，每个
+回合都要以全价重新读取整个历史。那正是第 00 阶段测出为 4.2x、却始终
+没能解释清楚的重新发送比。
 
 ---
 
-## Lesson zero: the marker is not the mechanism
+## 课程零：标记不是机制
 
-The first run of this chapter's experiment produced this:
+这一章实验的第一次运行产生了这样的结果：
 
 ```
   │ in 528    ████████████████████  full 528 · write 0 · read 0
@@ -49,24 +46,22 @@ The first run of this chapter's experiment produced this:
   │ in 746    ████████████████████  full 746 · write 0 · read 0
 ```
 
-`cache_control` was on. Nothing cached. No error, no warning, no complaint.
+`cache_control` 打开了。什么都没缓存。没有错误、没有警告、没有抱怨。
 
-**The prompt was too short.** There is a minimum cacheable prefix — model
-dependent, commonly 1,024 to 4,096 tokens — and below it a marker is silently
-ignored. Not rejected: *ignored*, with `cache_creation_input_tokens: 0` and a
-200 OK.
+**prompt 太短了。** 有一个最小的可缓存前缀——取决于模型，通常是 1,024
+到 4,096 个 token——在它下面标记会被默默忽略。不是被拒绝：*被忽略*，
+带着 `cache_creation_input_tokens: 0` 和一个 200 OK。
 
-Two things to take from that. Short agent sessions do not cache at all, so
-"caching is on" is not a thing you can know from your config — only from your
-usage numbers. And **the absence of an error is not evidence of success**, which
-is the recurring theme of this entire repo.
+要从中吸取两件事。短的 Agent 会话根本不缓存，所以"缓存打开了"不是
+一件你能从配置知道的事——只能从使用数字知道。而且**错误的缺失不是
+成功的证据**，这是整个仓库反复出现的主题。
 
 ---
 
-## The experiment
+## 实验
 
-One task, three arms, on the same 56KB file (~10,000 tokens once read into
-context):
+一个任务、三个分支、同一个 56KB 文件（读进上下文后大约 10,000 个
+token）：
 
 ```sh
 agent --yolo --max-output 60000                # A: cache_control on
@@ -74,7 +69,7 @@ agent --yolo --max-output 60000 --no-cache     # B: no markers (implicit only)
 agent --yolo --max-output 60000 --break-cache  # C: a fresh timestamp per request
 ```
 
-### Arm A — explicit `cache_control`
+### 分支 A——明确的 `cache_control`
 
 ```
   │ in 535    ████████████████████  full 535 · write 0     · read 0
@@ -88,11 +83,10 @@ agent --yolo --max-output 60000 --break-cache  # C: a fresh timestamp per reques
   prompt tokens billed: 65217  (full 571 · write 11270 · read 53376)
 ```
 
-Read the read column: **10342, 10478, 10649, 10799, 11108** — each one is exactly
-the previous turn's prompt. The rolling marker is doing its job; every turn reads
-what the last turn wrote, and writes only the delta.
+看读的列：**10342、10478、10649、10799、11108**——每一个都恰好是前一个
+回合的 prompt。滚动标记在做它的工作；每个回合读前一个回合写的，只写增量。
 
-### Arm B — no markers, implicit caching only
+### 分支 B——无标记，仅隐式缓存
 
 ```
   │ in 10348  ███░░░░░░░░░░░░░░░░   full 1900 · write 0 · read 8448   82% cached
@@ -104,17 +98,15 @@ what the last turn wrote, and writes only the delta.
   prompt tokens billed: 55935  (full 10751 · write 0 · read 45184)
 ```
 
-Caching still happens — this gateway caches implicitly. But look at the read
-column: **8448, 8704, 8448, 8704, 10880.** Every one is a multiple of 64
-(132×64, 136×64, 170×64), and they **go down as well as up** while the
-conversation only grows.
+缓存仍然发生——这个网关隐式缓存。但看读列：**8448、8704、8448、8704、
+10880。** 每一个都是 64 的倍数（132×64、136×64、170×64），它们**既会
+下降也会上升**，而对话只增长。
 
-That is the difference in one line. The implicit cache matches on **64-token
-block boundaries** and re-decides every request; `cache_control` **pins the exact
-prefix**, and the hits become monotonic and predictable. Explicit caching buys
-you *determinism* — the ability to tell a regression from noise.
+这个区别一句话就能说清：隐式缓存在**64 个 token 块边界**上匹配，每个
+请求都重新决定一次；`cache_control` **钉住了确切的前缀**，命中变得
+单调而可预测。明确缓存买到的是*确定性*——分辨回归和噪声的能力。
 
-### Arm C — a timestamp in the system prompt
+### 分支 C——系统提示词中的时间戳
 
 ```
   │ in 10387  █▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓  full 6 · write 10381 · read 0
@@ -125,149 +117,136 @@ you *determinism* — the ability to tell a regression from noise.
   prompt tokens billed: 54267  (full 597 · write 53670 · read 0)
 ```
 
-**`read 0` on every single call.** Every turn writes a brand new cache entry that
-nobody will ever read, and pays the write premium to do it.
+**每次调用都 `read 0`。** 每个回合都写一个全新的缓存条目，没有人会
+读它，并且付出写的溢价来做这件事。
 
-Convert all three to full-price-equivalent tokens using the common multipliers
-(write ≈1.25x, read ≈0.1x):
+用常见的乘数把这三个都转换成等价的全价 token（write ≈1.25x、
+read ≈0.1x）：
 
-| Arm | full | write | read | equivalent |
+| 分支 | full | write | read | 等价 |
 |---|---:|---:|---:|---:|
-| A — explicit | 571 | 11,270 | 53,376 | **~20,000** |
-| B — implicit only | 10,751 | 0 | 45,184 | **~15,300** |
-| C — broken | 597 | 53,670 | 0 | **~67,700** |
+| A——明确 | 571 | 11,270 | 53,376 | **~20,000** |
+| B——仅隐式 | 10,751 | 0 | 45,184 | **~15,300** |
+| C——破损 | 597 | 53,670 | 0 | **~67,700** |
 
-**A broken cache is worse than no cache** — 3.4x worse than arm A and 4.4x worse
-than arm B — because you pay the write premium on every token and collect
-nothing. Nothing errors. The only symptom is the bill.
+**破损的缓存比没有缓存更糟**——比分支 A 糟 3.4 倍、比分支 B 糟 4.4 倍
+——因为你为每个 token 都付出了写的溢价，却什么也没换到。没什么错误。
+唯一的症状是账单。
 
-### And the honest part: B beat A
+### 诚实的部分：B 打败了 A
 
-On this six-call session, the arm with no markers came out **cheapest**. That is
-a real result and it deserves to be stated rather than buried.
+在这个六次调用的会话上，没有标记的分支反而**最便宜**。这是一个真实的
+结果，理应被如实说出，而不该被掩盖。
 
-Why: the rolling marker writes a new entry every turn, and the first write is
-the whole 10K-token prefix at 1.25x. Six calls is not enough reads to amortise
-that against an implicit cache that costs nothing to write and was already
-getting 75–93%. The write premium needs volume — and on a long agent session,
-where the same prefix is read dozens of times, the arithmetic flips.
+为什么：滚动标记每个回合都写一个新条目，第一次写入的是整个 10K token
+前缀，按 1.25 倍计价。六次调用带来的读取次数不够多，不足以摊销这笔
+成本——相比之下，隐式缓存写入不花钱，而且早就能拿到 75–93% 的命中率。
+写的溢价需要靠量摊薄——在一个长 Agent 会话上，同一个前缀被读几十次，
+算术就翻转了。
 
-Three caveats you should hold onto, because they are the difference between a
-measurement and a slogan:
+有三点你应该记住，因为它们是测量和口号之间的差异：
 
-- **The multipliers are assumptions.** This gateway reports `cost: "0"` on every
-  response (wire-notes §C10), so the dollar column is computed from the common
-  industry ratios, not from this provider's actual bill. Token counts are
-  measured; money is inferred.
-- **The arms are not perfectly controlled.** The model answered slightly
-  differently each run, so the totals differ. The *proportions* are the finding,
-  not the absolute numbers.
-- **Your break-even depends on your session length and your provider's
-  multipliers.** Measure it. The point of this chapter is not that you should
-  turn caching on; it is that you should be able to *tell*.
+- **乘数是假设。** 这个网关在每个响应上报告 `cost: "0"`（wire-notes
+  §C10），所以美元列是从常见的业界比率计算的，不是从这个供应商的
+  实际账单。Token 计数是测量的；钱是推断的。
+- **分支不是完全受控的。** 模型每次运行回答略有不同，所以总数不同。
+  *比例*是发现，不是绝对数字。
+- **你的收支平衡取决于你的会话长度和你的供应商的乘数。** 测量它。
+  这一章的要点不是你应该打开缓存，而是你应该能够*分辨*。
 
 ---
 
-## Lesson two: where you compute a value decides whether it hurts
+## 课程二：你在哪里计算一个值决定它是否伤害
 
-`--break-cache` did not work the first time. Injecting the timestamp **once at
-startup** left the cache working perfectly — because a value that is constant
-for a session is a constant prefix for that session.
+`--break-cache` 第一次没工作。**只在启动时注入一次**时间戳，缓存就
+工作得完美无缺——因为一个在某次会话中保持不变的值，对那次会话来说
+就是一个常数前缀。
 
-The bug that actually gets shipped is `datetime.now()` inside a prompt builder
-that runs on **every call**. Same line of code, same variable, thirty lines apart
-in the call graph, and a 3.4x difference in cost.
+实际上被发布的 bug 是 `datetime.now()` 在一个 prompt 构建器内，而这个
+构建器在**每个调用**上都会运行。相同的代码行、相同的变量，在调用图里
+相隔三十行，成本却相差 3.4 倍。
 
-So the audit question is not "is there a timestamp in my prompt". It is **"is
-there anything in my prefix whose value can differ between two consecutive
-requests"** — and that is a question about *where the code runs*, not about what
-it says.
+所以审计问题不是"我的 prompt 中有时间戳吗"，而是**"有没有东西在我的
+前缀中，其值在两个连续请求之间可能不同"**——那是一个关于*代码在哪里
+运行*的问题，不是关于它说什么。
 
 ---
 
-## The five disciplines
+## 五个纪律
 
-Everything the code does is small. This is the part to remember.
+代码做的所有东西都很小。这是要记住的部分。
 
-**1. Freeze the system prompt for the session.** Anything dynamic — the date, a
-user id, a mode flag, a feature toggle — belongs *after* the last breakpoint,
-in the message stream, never at the front of the prefix. A message appended at
-turn 5 invalidates nothing before turn 5.
+**1. 为会话冻结系统提示词。** 任何动态的东西——日期、用户 id、模式
+标志、特性开关——属于在最后的断点*之后*，在消息流中，永远不在前缀的
+前面。在回合 5 追加的消息使前面的什么都不失效。
 
-**2. Freeze the tool list.** Tools render at position zero, so adding, removing
-or reordering one invalidates *everything*, markers included. Serialise them
-deterministically. If you need "modes", pass the mode in a message; do not swap
-the tool set.
+**2. 冻结工具列表。** 工具在位置零渲染，所以添加、移除或重新排序一个
+会使*所有东西*失效，标记也包括在内。确定性地序列化它们。如果你需要"模式"，
+在消息中传递模式；不要交换工具集。
 
-**3. Append only; never rewrite history.** Editing an old message moves every
-byte after it. This is also why compaction — stage 05 — is expensive in a way
-that does not show up in its own token numbers: it rewrites the prefix, so the
-turn after a compaction is a guaranteed full-price miss.
+**3. 仅追加；永远不重写历史。** 编辑一条旧消息会移动它后面的每个字节。
+这也是为什么压缩——第 05 阶段——开销很贵，却不会体现在它自己的 token
+数字里：它重写了前缀，所以压缩后的那个回合必然是一次全价未命中。
 
-**4. Keep serialisation byte-stable.** Go sorts map keys; a model does not.
-Decode-and-re-encode a tool call's arguments and the bytes move, which is why
-`Block.Args` is a raw string all the way from stage 03. `TestToolArgumentKeyOrderSurvives`
-exists to make that regression loud, and mutation-checking it produced the
-warning verbatim:
+**4. 保持序列化字节稳定。** Go 排序 map 键；模型不。把工具调用的参数
+解码再重新编码，字节就会挪位——这正是为什么 `Block.Args` 从第 03 阶段
+到现在，一直是一个原始字符串。`TestToolArgumentKeyOrderSurvives` 这个
+测试的存在，就是为了让那类回归闹得足够响；对它做变异测试，得到的
+警告一字不差如下：
 
 ```
 tool arguments were re-serialised: keys came back sorted, so the prompt prefix
 moved and every cached turn is now a miss
 ```
 
-**5. Watch the read column, not the config.** Caching has no success signal. The
-only way to know it is working is that `cache_read` is large and growing
-monotonically. That is why the instrument panel from stage 02 exists.
+**5. 看读列，不要看配置。** 缓存没有成功信号。知道它在工作的唯一方式
+是 `cache_read` 很大并且单调增长。这就是第 02 阶段的仪表盘存在的原因。
 
 ---
 
-## Two traps that produce no error at all
+## 两个从不产生错误的陷阱
 
-**The minimum prefix.** Below roughly 1K–4K tokens (model dependent), a marker is
-ignored. Your careful placement does nothing and nothing tells you.
+**最小前缀。** 低于大约 1K–4K 个 token（取决于模型），标记会被忽略。
+你精心的放置不会有任何效果，也没有什么会提示你。
 
-**The 20-block lookback.** A breakpoint searches backwards a limited number of
-content blocks for an existing entry. An agent turn that fires many parallel
-tools can add more blocks than that in one go — after which the next marker
-finds nothing, and you silently pay full price. One tool per turn stays well
-inside the window. A fan-out agent needs an intermediate marker, which is what
-two of the four slots are still free for.
+**20 块的回看范围。** 一个断点会向后搜索有限数量的内容块，来寻找现有
+条目。一个 Agent 回合如果并行触发了很多工具，可能一次性就添加比这更多
+的块——此后下一个标记找不到任何东西，你就默默付出了全价。每回合一个
+工具，稳稳留在窗口范围以内。一个扇出 Agent 需要一个中间标记，这正是
+四个槽位里还留两个空着的用途。
 
 ---
 
-## A note on the bar
+## 关于这个条的一个说明
 
-The three-way split is drawn with three different **glyphs**, not just three
-colours:
+三向拆分用三个不同的**字形**，不只是三个颜色：
 
 ```
 ████▓▓░░░░░░░░░░░░░░   █ full price   ▓ cache write   ░ cache read
 ```
 
-That was not the original design. The first version used one glyph in three
-colours, which looked fine in a terminal and became a featureless block the
-moment the output went through `grep`, into a file, or into a CI log — which is
-exactly how people look at agent output when something is wrong. **A chart that
-only works in a colour terminal is blank precisely when someone is trying to
-show you a problem.**
+那不是最初的设计。第一个版本用一个字形配三种颜色，在终端里看起来
+还不错，可是输出一旦经过 `grep`、写进文件，或者进了 CI 日志，就变成
+一整块看不出差别的东西——而这恰恰是人们在出问题的时候查看 Agent 输出
+的方式。**一个只在彩色终端里能用的图表，恰好会在有人试图向你展示
+问题的那一刻变成空白。**
 
 ---
 
-## Exercises
+## 练习
 
-1. **Run the three arms yourself** and compare the read columns. Then run arm A
-   twice as long and see whether the crossover happens.
-2. **Add a fifth marker.** Watch the API reject it, and decide which of your four
-   you would give up.
-3. **Move the rolling marker to a fixed position** — say, always message 3 — and
-   watch the hit rate decay turn by turn as the conversation grows past it.
-4. **Break discipline 4 deliberately**: decode and re-encode the tool arguments.
-   The bytes look identical to you and the read column collapses.
-5. **Find your break-even.** Run the same task at 5, 20 and 50 turns with and
-   without markers, and find the session length where explicit caching starts
-   winning on your provider. That number is worth more than any advice in this
-   chapter.
+1. **自己运行三个分支**并比较读列。然后把分支 A 运行两倍长的时间，看交叉点
+   是否发生。
+2. **添加第五个标记。** 看 API 拒绝它，决定你会放弃四个里的
+   哪一个。
+3. **将滚动标记移到一个固定位置**——比如，始终是消息 3——并随着对话
+   在它之外增长，看命中率逐回合衰减。
+4. **故意打破纪律 4**：解码和重新编码工具参数。字节对你看起来相同，
+   读列崩溃。
+5. **找到你的收支平衡。** 分别在有标记和没有标记的情况下，用 5、20
+   和 50 个回合运行同样的任务，找到明确缓存开始在你的供应商上获胜的
+   那个会话长度。那个数字比这一章的任何建议值钱得多。
 
-→ Next: Stage 05 — Live Forever *(planned)*
+→ 下一步：第 05 阶段——永远活着 *(计划中)*
 
-→ Reference: [Wire notes](wire-notes.md) §C8–C10
+→ 参考：[Wire notes](wire-notes.md) §C8–C10

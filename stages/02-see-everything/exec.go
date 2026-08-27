@@ -1,13 +1,12 @@
-// Stage 02 — running commands.
+// 阶段 02——运行命令。
 //
-// Carried over from stage 01 with one change of principle: nothing in this file
-// prints. runBash returns a result; the caller turns it into events. That is
-// what lets the same command appear on a terminal, in a trace file, and in a
-// replay months later without three copies of the formatting.
+// 从阶段 01 继承而来，只改了一条原则：这个文件中没有东西
+// 打印。runBash 返回一个结果；调用者把它转成事件。这就是为什么
+// 同一条命令，能够出现在终端上、trace 文件里，以及几个月后的
+// 一次重放中，却不需要三份格式化代码的原因。
 //
-// The reasoning behind the timeout, the process-tree kill, the head+tail
-// truncation and the sanitising trio is all in docs/01-dont-die.md. It has not
-// changed; only its plumbing has.
+// 超时、进程树杀死、头 + 尾截断，以及清理三部曲背后的推理，
+// 都在 docs/01-dont-die.md 里。它没有改变；只是它的管道改了。
 package main
 
 import (
@@ -72,8 +71,8 @@ func runBash(shell, command string, timeout time.Duration) execResult {
 
 	res := execResult{TimedOut: timedOut, Unreaped: unreaped, Duration: time.Since(started)}
 	if unreaped {
-		// The copying goroutines may still be writing into the buffers; reading
-		// them here would be a data race. Report, take nothing.
+		// 复制 goroutine 仍然可能在缓冲区中写入；在这里读它们会是
+		// 数据竞争。报告，不取任何东西。
 		res.ExitCode = -1
 		return res
 	}
@@ -87,15 +86,15 @@ func runBash(shell, command string, timeout time.Duration) execResult {
 		res.Stderr += "\n" + waitErr.Error()
 	}
 	if adoptErr != nil {
-		// Containment was lost but the command still ran. Say so in the one
-		// place the model and the trace will both see it.
+		// 遏制失效了，但命令还是运行了。要在模型和 **trace** 都能看到
+		// 的那个唯一地方，把这一点说清楚。
 		res.Stderr += fmt.Sprintf("\n[harness: process group adoption failed: %v — a timeout can only kill the shell itself]", adoptErr)
 	}
 	return res
 }
 
-// render turns a result into the exact text the model will see, and reports
-// whether anything was dropped so the caller can put that in an event.
+// render 把结果转成模型将看到的确切文本，并报告是否有内容
+// 被丢弃，好让调用者把这一点放进事件里。
 func (r execResult) render(maxOutput int) (string, bool) {
 	var b strings.Builder
 
@@ -131,8 +130,8 @@ func (r execResult) render(maxOutput int) (string, bool) {
 	return b.String(), cut
 }
 
-// truncate keeps the head and the tail and drops the middle. See
-// docs/01-dont-die.md for why head-only truncation loses the line that mattered.
+// truncate 保留头和尾，丢弃中间。参见 docs/01-dont-die.md，
+// 了解为什么只截取开头会丢失真正重要的那一行。
 func truncate(s string, max int) (string, bool) {
 	if max < 256 {
 		max = 256
@@ -155,8 +154,9 @@ func truncate(s string, max int) (string, bool) {
 
 var ansiRE = regexp.MustCompile(`\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\a\x1b]*(\a|\x1b\\)|\x1b[@-Z\\-_]`)
 
-// sanitize strips ANSI escapes, normalises CRLF, and replaces invalid UTF-8 so
-// a program writing in the local code page fails visibly rather than silently.
+// sanitize 剥离 ANSI 转义、标准化 CRLF、替换掉无效的 UTF-8，
+// 这样一个用本地代码页写入的程序，会明显地失败，而不是悄无
+// 声息地失败。
 func sanitize(s string) string {
 	s = ansiRE.ReplaceAllString(s, "")
 	s = strings.ReplaceAll(s, "\r\n", "\n")
@@ -166,9 +166,10 @@ func sanitize(s string) string {
 	return s
 }
 
-// parseBashArgs validates before dispatching. An unmarshal that returns no
-// error is not a validated call — see docs/01-dont-die.md for the observed
-// `{"raw_arguments": ""}` payload this exists to reject.
+// parseBashArgs 会在分派前做验证。一次不返回错误的 unmarshal，
+// 不等于一次经过验证的调用——具体见 docs/01-dont-die.md 中实际
+// 观察到的 `{"raw_arguments": ""}` 载荷，这个函数存在，就是为了
+// 拒绝这种载荷。
 func parseBashArgs(raw string) (string, error) {
 	var args struct {
 		Command *string `json:"command"`

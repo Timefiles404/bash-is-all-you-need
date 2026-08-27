@@ -31,8 +31,8 @@ func TestTruncateShortStringUntouched(t *testing.T) {
 }
 
 func TestTruncateNeverSplitsRunes(t *testing.T) {
-	// Chinese text: every rune is 3 bytes, so a naive byte slice will land
-	// mid-character for most budgets.
+	// 中文文本：每个 rune 是 3 字节，所以朴素的字节切片对于大多数预算会
+	// 落在字符中间。
 	s := strings.Repeat("中文测试", 500)
 	for budget := 256; budget < 1200; budget += 7 {
 		out, _ := truncate(s, budget)
@@ -56,8 +56,8 @@ func TestSanitizeNormalisesCRLF(t *testing.T) {
 }
 
 func TestSanitizeRepairsInvalidUTF8(t *testing.T) {
-	// Bytes that are valid GBK but not valid UTF-8 — what a native Windows
-	// program prints on a Chinese system.
+	// 合乎 GBK 编码、但不合乎 UTF-8 编码的字节——本地 Windows 程序
+	// 在中文系统上会打印出来的东西。
 	gbk := string([]byte{0xD6, 0xD0, 0xCE, 0xC4})
 	got := sanitize(gbk)
 	if !utf8.ValidString(got) {
@@ -90,8 +90,8 @@ func TestRenderLabelsStderr(t *testing.T) {
 	}
 }
 
-// These cases are taken verbatim from what the gateway actually returned when a
-// tool call was cut short. See parseBashArgs for the story.
+// 这些情况逐字取自网关的真实返回——就是那次工具调用被切短
+// 时，网关实际返回的内容。详情见 parseBashArgs。
 func TestParseBashArgsRejectsUnusableCalls(t *testing.T) {
 	for _, tc := range []struct {
 		name string

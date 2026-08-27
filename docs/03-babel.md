@@ -1,26 +1,18 @@
-# Stage 03 — Babel
+# 第 03 阶段 — Babel
 
-Two protocols, one agent. Give it a URL, a key, a protocol name and a model, and
-it works — a local Ollama and a frontier API are the same four fields.
+两个协议，一个 Agent。给它一个 URL、一个 key、一个协议名和一个模型，它就能工作——本地 Ollama 和前沿 API 都是同样的四个字段。
 
-The interesting part is not that it can be done. It is **what you have to decide
-in order to do it**, because the two protocols disagree about nearly everything,
-and every disagreement forces you to pick a neutral form that belongs to
-neither.
+有趣的地方不在于这能做到。而在于**为了做到这一点你必须做什么决定**，因为这两个协议在几乎每一件事上都不同意，每一处分歧都迫使你选一种中立的形式，它既不属于这个协议，也不属于那个协议。
 
 ---
 
-## The rule
+## 规则
 
-> **The agent loop must never contain a vendor's word.**
+> **Agent 主循环里绝对不能出现某个供应商的词。**
 
-No `tool_calls`, no `stop_reason`, no `input_tokens`, no `chat/completions`. If
-one leaks into the loop, the second protocol stops being an adapter and becomes
-an `if` statement — and then a hundred of them.
+没有 `tool_calls`，没有 `stop_reason`，没有 `input_tokens`，没有 `chat/completions`。如果一个泄漏进循环，第二个协议就不再是适配器，而是变成了一个 `if` 语句——然后是一百个。
 
-The test of the abstraction is not that it compiles. It is: **did adding the
-second protocol change the agent loop?** Compare `stages/03-babel`'s loop with
-stage 02's. It is the same loop with its vocabulary replaced.
+抽象的考验不在于它能不能编译。而在于：**加入第二个协议改变了 Agent 主循环吗？** 对比 `stages/03-babel` 的循环和第 02 阶段的。循环是同一个，词汇被替换了。
 
 ```
 main.go            speaks Msg, Block, StopReason, Usage — and nothing else
@@ -31,80 +23,57 @@ main.go            speaks Msg, Block, StopReason, Usage — and nothing else
   └─ anthropic.go  the other vendor's opinions, quarantined
 ```
 
-`sse.go` is the piece worth noticing. It was carved out of stage 02, and the cut
-is exactly where mechanism ends and opinion begins: **framing is shared, payload
-is not.** One protocol sends only `data:` lines with a `[DONE]` sentinel; the
-other sends `event:` + `data:` with no sentinel at all. Same reader.
+`sse.go` 是值得注意的部分。它是从第 02 阶段切出来的，切点恰好是机制结束、观点开始的地方：**框架是共享的，负载不是。** 一个协议只发 `data:` 行加一个 `[DONE]` 哨兵；另一个发 `event:` + `data:` 没有哨兵。同一个 reader。
 
 ---
 
-## What actually differs
+## 实际上有什么区别
 
-Every row is observed, not read off a spec. Evidence in
-[wire-notes.md](wire-notes.md).
+每一行都是观察的结果，不是从规范里念出来的。证据在 [wire-notes.md](wire-notes.md)。
 
-| | OpenAI protocol | Anthropic protocol |
+| | OpenAI 协议 | Anthropic 协议 |
 |---|---|---|
-| **System prompt** | `messages[0]`, `role:"system"` | top-level `system` field |
-| **Tool definitions** | nested under `{"type":"function","function":{…,"parameters":…}}` | flat `{"name","description","input_schema"}` |
-| **Tool call arguments** | a JSON **string** | a JSON **object** |
-| **Tool results** | one separate `role:"tool"` message **per call** | **all** results as blocks inside **one `user` message** |
-| **Stop reason** | `finish_reason`: `tool_calls`/`stop`/`length` | `stop_reason`: `tool_use`/`end_turn`/`max_tokens` |
-| **Reasoning** | `reasoning_content`, a sibling field in the same delta | a separate indexed content block with `thinking_delta` |
-| **SSE framing** | `data:` only, `[DONE]` sentinel, **plus a frame after it** | `event:` + `data:`, no sentinel, `ping` **before** `message_start` and **after** `message_stop` |
-| **Where usage lives** | a chunk whose `choices` array is **empty** | `message_delta` only — `message_start`'s figure is **wrong** (56 vs 291 for the same request) |
-| **Token accounting** | `prompt_tokens` is the total; `cached_tokens` is nested **inside** it | `input_tokens` is the **uncached remainder**; cache counters sit **beside** it |
-| **Cache control** | implicit only, 64-token block aligned, varies run to run | explicit `cache_control` pins the exact prefix |
+| **系统提示词** | `messages[0]`, `role:"system"` | 顶层 `system` 字段 |
+| **工具定义** | 嵌套在 `{"type":"function","function":{…,"parameters":…}}` | 平铺的 `{"name","description","input_schema"}` |
+| **工具调用参数** | 一个 JSON **字符串** | 一个 JSON **对象** |
+| **工具结果** | 一个单独的 `role:"tool"` 消息**每个调用一个** | **所有**结果作为块在**一个 `user` 消息**里 |
+| **停止理由** | `finish_reason`: `tool_calls`/`stop`/`length` | `stop_reason`: `tool_use`/`end_turn`/`max_tokens` |
+| **推理** | `reasoning_content`，同一个 delta 里的兄弟字段 | 一个单独的索引化内容块，带 `thinking_delta` |
+| **SSE 框架** | `data:` 只有，`[DONE]` 哨兵，**加上后面的一个帧** | `event:` + `data:`，没有哨兵，`ping` **在** `message_start` **之前**和 `message_stop` **之后** |
+| **usage 在哪儿** | 一个 `choices` 数组**为空**的块 | `message_delta` 只有——`message_start` 的数字**是错的**（同一个请求 56 vs 291） |
+| **token 记账** | `prompt_tokens` 是总数；`cached_tokens` 嵌套**在它里面** | `input_tokens` 是**已经去掉缓存的剩余部分**；缓存计数器**并排**坐着 |
+| **缓存控制** | 仅隐式，64-token 块对齐，每次运行都变 | 显式 `cache_control` 钉住确切的前缀 |
 
-Two of these rows are where the design gets made.
+其中两行是设计被做出来的地方。
 
-### Tool results, and why there is no `RoleTool`
+### 工具结果，以及为什么没有 `RoleTool`
 
-One protocol answers a tool call with its own message, one per call. The other
-gathers every result into a single `user` message. There is no neutral role that
-means both, so **the neutral form has neither**: a tool result is a *Block*, and
-each adapter decides what message shape carries it.
+一个协议用自己的消息回答一个工具调用，每个调用一个。另一个把每个结果都收集进一个 `user` 消息。没有中立的角色能表示两个，所以**中立的形式两个都没有**：一个工具结果是一个 *Block*，每个适配器决定什么消息形状运载它。
 
-That is the entire reason `Msg` holds blocks rather than a flat string. Picking
-either vendor's shape as "neutral" would have smuggled one of them into the core
-— and the leak would only become visible when the second protocol arrived, which
-is exactly when it is most expensive to fix.
+那是 `Msg` 持有块而不是平坦字符串的完整理由。把任何一个供应商的形状选作"中立"会把其中一个偷偷运进核心——而泄漏只会在第二个协议到达时才可见，那正是最贵的修复时机。
 
-### Tool arguments stay raw bytes
+### 工具参数保持原始字节
 
-`Block.Args` is a `string` holding raw JSON, not a decoded `map[string]any`. One
-protocol wants a JSON string, the other a JSON object; raw bytes are the only
-form that reaches both without re-serialising.
+`Block.Args` 是一个持有原始 JSON 的 `string`，不是一个解码的 `map[string]any`。一个协议想要 JSON 字符串，另一个要 JSON 对象；原始字节是唯一能到达两边而不需要重新序列化的形式。
 
-And re-serialising is not free: Go's map iteration order is not stable, so a
-decode-then-encode round trip can produce different bytes for the same value —
-which changes the prompt prefix, which **invalidates the cache** the next chapter
-is entirely about. A "harmless" normalisation in the wrong place costs real
-money two chapters later.
+重新序列化不是免费的：Go 的 map 迭代顺序不稳定，所以一个解码-再编码往返可以为同一个值产生不同的字节——这改变了 prompt 前缀，**使缓存失效**，下一章完全是关于这个的。一个在错误地方的"无害"规范化会在两章后花真实的钱。
 
-### Normalise the stop reason, but keep the original
+### 规范化停止理由，但保留原始的
 
 ```go
 type CallResult struct {
-    Stop    StopReason  // normalised: end_turn / tool_use / max_tokens / filtered / unknown
-    RawStop string      // the provider's literal string
+    Stop    StopReason  // 规范化的：end_turn / tool_use / max_tokens / filtered / unknown
+    RawStop string      // 供应商的逐字字符串
 }
 ```
 
-This is not redundancy. On this gateway, a tool call truncated at `max_tokens`
-comes back with `stop_reason: "tool_use"` and an unusable body — **the envelope
-lies** (wire-notes §A3c). When a session goes wrong, `Stop` tells you what the
-agent believed and `RawStop` tells you what it was told, and the gap between them
-is the bug.
+这不是冗余。在这个网关上，一个在 `max_tokens` 处截断的工具调用带着 `stop_reason: "tool_use"` 和一个无用的 body 回来——**信封说谎了**（wire-notes §A3c）。当一个会话出问题了，`Stop` 告诉你 Agent 相信了什么，`RawStop` 告诉你它被告知了什么，两者之间的间隙就是 bug。
 
-**Never normalise away your only evidence.** And note the other half of this
-rule: unknown strings map to `StopUnknown`, not to `StopEndTurn`. A state machine
-that maps anything unrecognised to "probably fine" will eventually map a refusal,
-a quota event, or a new safety stop to "probably fine".
+**永远不要规范化掉你唯一的证据。** 并注意这个规则的另一半：未知字符串映射到 `StopUnknown`，不是 `StopEndTurn`。一个把任何未认出的东西映射到"可能没问题"的状态机最终会把一个拒绝、一个配额事件或一个新的安全停止映射到"可能没问题"。
 
 ---
 
-## Configuration
+## 配置
 
 ```json
 {
@@ -128,75 +97,55 @@ a quota event, or a new safety stop to "probably fine".
 }
 ```
 
-Three deliberate choices:
+三个刻意的选择：
 
-- **JSON, not TOML.** TOML would be a dependency, or a hundred lines of parser
-  that teach nothing about agents. Ugly and free beats elegant and costly in a
-  repo whose claim is that you can read all of it.
-- **`api_key_env`, never `api_key`.** A config file gets committed eventually —
-  every one of them does. The only reliable defence is for the secret to have
-  nowhere to sit in the file at all.
-- **The env-var path still works.** `AGENT_BASE_URL` / `AGENT_API_KEY` /
-  `AGENT_MODEL` run without any config file. Config formats are for when you
-  have several endpoints; making the simple case require one is how tools become
-  annoying.
+- **JSON，不是 TOML。** TOML 要么是一个依赖，要么是一百行教不了关于 Agent 的解析器。丑陋且免费打败优雅且昂贵，在一个声称你能读完所有东西的仓库里。
+- **`api_key_env`，永不 `api_key`。** 一个配置文件最终会被提交——每一个都会。唯一可靠的防御是密钥在文件里没有地方坐。
+- **env-var 路径仍然有效。** `AGENT_BASE_URL` / `AGENT_API_KEY` / `AGENT_MODEL` 在没有配置文件的情况下运行。配置格式是给你有多个端点的时候用的；让简单情况也必须用上一个，工具就是这样变烦人的。
 
-Mapping a protocol name onto an implementation is thirteen lines in `config.go`,
-and it is the only place in the repo that does it.
+映射一个协议名到一个实现是 `config.go` 里的十三行，它是仓库里唯一做这个的地方。
 
 ---
 
-## What this buys, beyond portability
+## 这买来了什么，超越便携性
 
-- **A trace records events, not wire format.** A session captured against one
-  protocol replays identically — the renderer never knew which one it was.
-- **Reasoning renders the same either way.** Two entirely different wire
-  representations, one `KindReasoningDelta`.
-- **The instrument panel keeps working**, because `Usage` was already neutral —
-  which is why it has no field called `prompt_tokens`.
+- **一个 trace 记录事件，不是线上格式。** 一个针对一个协议捕获的会话完全相同地重放——渲染器从来不知道是哪一个。
+- **推理的呈现方式两个协议都一样。** 两个完全不同的线上表示，一个 `KindReasoningDelta`。
+- **仪表板保持工作**，因为 `Usage` 已经是中立的——这就是为什么它没有一个叫 `prompt_tokens` 的字段。
 
-That last point is worth dwelling on. `Usage` was designed in stage 02, one
-chapter before the second protocol existed, and it needed no change here. Not
-foresight: it came from writing down *what the number means* (`Input` = "billed
-at full price") instead of *what the API called it*. Names that describe meaning
-survive a second implementation; names copied off a vendor's JSON do not.
+最后一点值得思量。`Usage` 在第 02 阶段被设计，比第二个协议的出现还早一章，这里不需要任何改变。不是先见之明：它来自于写下*数字的含义*（`Input` = "按完整价格计费"）而不是*API 叫它什么*。描述意义的名字能在第二个实现中存活；从供应商的 JSON 里复制的名字不存活。
 
 ---
 
-## The accounting reversal, one more time
+## 记账反转，再一次
 
-The two protocols count in opposite directions, and both adapters have to
-normalise into the same struct:
+两个协议向相反方向计算，两个适配器都必须规范化进同一个 struct：
 
 ```go
-// OpenAI: prompt_tokens is the TOTAL, cached_tokens is nested inside it
+// OpenAI: prompt_tokens 是总数，cached_tokens 嵌套在它里面
 Input     = prompt_tokens - cached_tokens
 CacheRead = cached_tokens
 
-// Anthropic: input_tokens is ALREADY the uncached remainder
+// Anthropic: input_tokens 已经是去掉缓存的剩余部分
 Input      = input_tokens
 CacheRead  = cache_read_input_tokens
 CacheWrite = cache_creation_input_tokens
 ```
 
-Get the OpenAI side wrong — copy `prompt_tokens` straight across — and
-`Prompt()` reports 698 for a 506-token prompt. Notice when that bug is
-invisible: **the error is exactly the size of the cache hit.** Zero on a cold
-request. Looks perfect in testing. Gets steadily worse the better your caching
-works.
+把 OpenAI 这一边弄错——直接复制 `prompt_tokens`——`Prompt()` 会为一个 506-token 提示词报告 698。注意那个 bug 什么时候是看不见的：**错误恰好是缓存命中的大小。** 在一个冷请求上是零。在测试里看起来完美。随着缓存工作得越来越好而逐渐恶化。
 
 ---
 
-## From a real run
+## 来自真实运行
 
-The same task, the same binary, the same loop, on both protocols:
+同一个任务，同一个二进制，同一个循环，在两个协议上：
 
 ```sh
 echo "count the .py files here" | agent --provider oai --trace oai.jsonl   # openai / mimo-v2.5
 echo "count the .py files here" | agent --provider ant --trace ant.jsonl   # anthropic / qwen3.7-plus
 ```
 
-Collapse the delta runs in each trace and compare the sequence of event kinds:
+折叠每个 trace 里的 delta 运行并比较事件种类的序列：
 
 ```
 oai:  user_message turn_start request first_token reasoning_delta tool_call_start
@@ -210,83 +159,59 @@ ant:  user_message turn_start request first_token reasoning_delta tool_call_star
       text_delta usage response_end turn_end
 ```
 
-**Identical, item for item.** Now compare the bytes those events came from:
+**完全一样，逐项。** 现在比较这些事件来自的字节：
 
 ```
 oai  request keys: max_tokens, messages, model, stream, stream_options, tools
 ant  request keys: max_tokens, messages, model, stream, system, tools
 ```
 
-Different envelopes, different framing, different accounting, different tool
-shapes — and one agent loop that cannot tell. That equality is the deliverable;
-everything else in this chapter is what it cost.
+不同的信封，不同的框架，不同的记账，不同的工具形状——和一个无法分辨的 Agent 循环。那种平等是可交付物；这章里的其他一切，都是为它付出的代价。
 
-The Anthropic trace also replays with no key and no provider configured, because
-what was recorded was events, not wire format.
+Anthropic trace 也可以在没有 key 也没有配置的供应商的情况下重放，因为记录的是事件，不是线上格式。
 
-### One difference the panels do show
+### 仪表板展示的一个区别
 
-Look at the two instrument readouts from those runs:
+看看从这些运行来的两个仪表板读数：
 
 ```
 openai    / mimo-v2.5     in 579   full 131 · write 0 · read 448
 anthropic / qwen3.7-plus  in 592   full 592 · write 0 · read 0
 ```
 
-Same task, same size of conversation — and one bar is mostly green while the
-other is entirely red. The second protocol cached **nothing**.
+同一个任务，同样大小的对话——一个条形图大多是绿色而另一个完全是红色。第二个协议缓存了**什么都没有**。
 
-That is not a bug in the adapter, and it is not the model being different. It is
-the missing half of this chapter: one protocol caches implicitly and the other
-expects to be *asked*. Fixing it is one field in one request, and it is worth an
-entire chapter, because the discipline around that field is worth far more than
-the field.
+那不是适配器里的一个 bug，也不是模型不同。那是这一章缺失的一半：一个协议隐式地缓存，另一个期望被*问到*。修复它是一个请求里的一个字段，它值得一整章，因为围绕那个字段的纪律远比那个字段本身值钱。
 
-→ that is stage 04.
+→ 那是第 04 阶段。
 
 ---
 
-## The HTML-escaping trap
+## HTML-转义陷阱
 
-Found while reconciling the two adapters, and worth knowing whatever you are
-building.
+在协调两个适配器时找到的，无论你在构建什么都值得知道。
 
-Go's `json.Marshal` escapes `<`, `>` and `&` into `\u003c`, `\u003e` and
-`\u0026`. It is a browser-safety default, and it is actively hostile to a shell
-agent, where those three characters are `2>&1`, `>/tmp/out` and `<<EOF`:
+Go 的 `json.Marshal` 把 `<`、`>` 和 `&` 转义成 `\u003c`、`\u003e` 和 `\u0026`。这是一个浏览器安全默认，它对一个 shell Agent 是实打实的敌意——这三个字符正是 `2>&1`、`>/tmp/out` 和 `<<EOF`：
 
 ```
 json.Marshal        : {"command":"grep -rn 'x' . 2\u003e\u00261 | head -5 \u003e/tmp/out"}
 SetEscapeHTML(false): {"command":"grep -rn 'x' . 2>&1 | head -5 >/tmp/out"}
 ```
 
-The server decodes it, so the model reads the same string either way. Two things
-still make it worth four lines of `json.Encoder`. The request inspector exists to
-show you what you sent, and the first version is not readable. And whether the
-escaping shifts a provider's cache key depends on whether it hashes raw bytes or
-decoded content — which we do not know, and which is a reason to be *consistent*
-rather than a reason to guess.
+服务器解码它，所以不管哪种写法，模型读到的字符串都一样。两件事仍然让四行 `json.Encoder` 是值得的。请求检查器存在来展示你发送了什么，第一个版本不可读。而转义是否移动一个供应商的缓存 key 取决于它是否散列原始字节或解码内容——我们不知道，那是一个成为*一致*而不是猜测的理由。
 
-Consistency is the real argument: the two adapters originally disagreed, and two
-adapters emitting different bytes for the same conversation is a wart in a
-chapter about normalising away exactly that kind of difference.
+一致性是真实的论点：两个适配器最初不同意，两个适配器为同一个对话发出不同的字节——这本身就是个瑕疵，因为这一章讲的正是把这种差异规范化掉。
 
 ---
 
-## Exercises
+## 练习
 
-1. **Run the same task on both protocols** and diff the traces. The events
-   should be nearly identical; the `request` events will share nothing.
-2. **Point it at a local Ollama.** Small models emit malformed tool calls — that
-   is not your code failing, and `parseBashArgs` will tell you so.
-3. **Try to leak a vendor word into the loop.** Add a special case in `main.go`
-   for one protocol and notice how quickly it wants a second.
-4. **Add a third protocol.** Google's is a reasonable exercise. Count how many
-   files you have to touch; the answer should be one, plus thirteen lines of
-   `config.go`.
-5. **Break the raw-bytes rule.** Decode `Args` into a map and re-encode it, then
-   watch the cache-read column in stage 04 collapse.
+1. **在两个协议上运行同一个任务** 并 diff traces。事件应该几乎相同；`request` 事件不会共享任何东西。
+2. **指向一个本地 Ollama。** 小模型发出格式不规范的工具调用——那不是你的代码失败，`parseBashArgs` 会告诉你。
+3. **尝试把一个供应商词泄漏进循环。** 在 `main.go` 中为一个协议加一个特殊情况，并注意它多快就想要第二个。
+4. **加第三个协议。** Google 的是一个合理的练习。数一下你必须接触多少个文件；答案应该是一个，加上 `config.go` 里的十三行。
+5. **破坏原始字节规则。** 解码 `Args` 进一个 map 再编码它，然后看第 04 阶段的缓存读列如何崩溃。
 
-→ Next: Stage 04 — The Cache
+→ 下一步：第 04 阶段 — 缓存
 
-→ Reference: [Wire notes](wire-notes.md)
+→ 参考：[线上注释](wire-notes.md)

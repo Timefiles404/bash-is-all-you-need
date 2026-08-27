@@ -1,29 +1,26 @@
-// Stage 06 — display width.
+// 阶段 06 —— 显示宽度。
 //
-// Three different numbers get confused for each other, and only one of them is
-// the one a terminal cares about:
+// 三个不同的数字很容易被互相混淆，而终端真正关心的只有其中一个：
 //
-//	len("你好")                     == 6   bytes
-//	utf8.RuneCountInString("你好")  == 2   runes
-//	dispWidth("你好")               == 4   COLUMNS  ← the only one that lays out
+//	len("你好")                     == 6   字节
+//	utf8.RuneCountInString("你好")  == 2   rune
+//	dispWidth("你好")               == 4   列  ← 唯一决定布局的那个
 //
-// Neither of the first two is columns. This matters the first time somebody
-// pastes a Chinese filename into your beautifully aligned `%-20s` table and the
-// whole thing shears in half — `%-20s` pads to twenty *bytes*, so a name with
-// six CJK characters (18 bytes, 12 columns) gets no padding at all and the next
-// column starts eight places early. Every other row still looks fine, which is
-// why the bug reads as "the terminal is broken" rather than "my format verb is
-// counting the wrong thing".
+// 头两个都不是列数。等哪天有人把一个中文文件名粘贴进你那张排得整整齐
+// 齐的 `%-20s` 表格，整张表从中间裂开的时候，这件事就要命了——
+// `%-20s` 是填充到二十**字节**，所以一个六个 CJK 字符的名字 (18 字
+// 节，12 列) 完全得不到任何填充，下一列就足足提前了八格开始。别的每
+// 一行看起来都还好好的，这就是为什么这个 bug 会被读成"终端坏了"，而
+// 不是"我的格式动词算错了东西"。
 //
-// The same file also has to survive ANSI escape sequences, because the strings
-// a TUI measures are usually already coloured. "\x1b[31mred\x1b[0m" is 12 bytes
-// and 3 columns; measure the bytes and every coloured cell in the table is nine
-// places too wide. So every function here walks the string with an escape-aware
-// scanner instead of ranging over it.
+// 同一个文件，还得扛得住 ANSI 转义序列，因为 TUI 要测量的字符串通常已
+// 经上了色。"\x1b[31mred\x1b[0m" 是 12 字节、3 列；如果按字节测量，表
+// 里每一个上色的单元格都会宽出九格。所以这个文件里的每一个函数，都是
+// 用一个能识别转义序列的扫描器去遍历字符串，而不是直接用 range 遍历。
 //
-// Everything is standard library. There is a good third-party package for this
-// (go-runewidth); the point of writing it out is that when your table shears you
-// will know which of the three numbers went wrong.
+// 这一切都只靠标准库。这方面有一个不错的第三方包 (go-runewidth)；自己
+// 写一遍的意义在于：等你的表真的裂开的时候，你会知道是这三个数字里的
+// 哪一个出了问题。
 package main
 
 import (
@@ -41,29 +38,28 @@ const (
 // runeWidth
 // ---------------------------------------------------------------------------
 
-// runeWidth returns how many terminal columns a rune occupies: 0, 1 or 2.
+// runeWidth 返回一个 rune 占多少终端列：0、1 或 2。
 //
-// Control characters count as 0. That is a deliberate choice and it has a sharp
-// edge: TAB IS ZERO. A tab does not have a width, it has a *destination* — its
-// effect depends on the cursor's current column, which a pure function of one
-// rune cannot know. Guessing 8 is wrong whenever the caller is not sitting on a
-// multiple of 8; guessing 1 is wrong always. Callers must expand tabs before
-// measuring. Newline and carriage return are 0 for the same reason: they are
-// cursor motion, not ink — which also means dispWidth of a multi-line string is
-// meaningless. Split on "\n" first, or hand it to wrapCols, which breaks there
-// itself.
+// 控制字符计为 0。这是一个有意的选择，而且有一处很扎人的细节：**制表符是零**。一个制表符没有宽度，它有一个
+// *目的地*——它的效果取决于
+// 光标当前所在的列，而这是一个只接受单个 rune 的纯函数无法知道的。调用
+// 者不坐在 8 的倍数上时，猜 8 就是错的；猜 1 则永远是错的。调用者必须
+// 在测量之前展开制表符。出于同样的原因，换行符和回车符也是 0：它们是
+// 光标运动，不是墨水——这也意味着多行字符串的 dispWidth 是没有意义
+// 的。先按 "\n" 拆开，或者直接交给 wrapCols，它自己会在那些地方断
+// 行。
 func runeWidth(r rune) int {
-	// Fast path first: nearly everything a TUI measures is printable ASCII, and
-	// it would be a shame to binary-search a 100-entry table to discover that
-	// 'a' is one column wide.
+	// 先走快速路径：一个 TUI 测量的几乎所有东西都是可打印的 ASCII，要是
+	// 为了发现 'a' 是一列宽，就去对一张 100 条目的表做二分查找，那就太可
+	// 惜了。
 	if r < 0x7f {
 		if r < 0x20 {
-			return 0 // C0 controls, \t and \n among them — see above
+			return 0 // C0 控制字符，\t 和 \n 也在其中——见上面
 		}
 		return 1
 	}
 	if r < 0xa0 {
-		return 0 // DEL (0x7f) and the C1 control block
+		return 0 // DEL (0x7f) 和 C1 控制块
 	}
 	if isZeroWidth(r) {
 		return 0
@@ -71,51 +67,50 @@ func runeWidth(r rune) int {
 	if inRanges(wideRanges, r) {
 		return 2
 	}
-	// Everything unclaimed is one column. That includes East Asian *Ambiguous*
-	// characters — Greek, Cyrillic, box drawing, "…", "±" — which are 2 columns
-	// under a CJK locale and 1 everywhere else. We always answer 1: the
-	// alternative is reading LANG at measure time, and a layout whose shape
-	// depends on an environment variable is a worse bug than a box that is
-	// occasionally a column narrow.
+	// 一切未认领的是一列。这包括东亚**不确定的**
+	// 字符——希腊字、西里尔字、框绘、"…"、"±"——在 CJK 区域设置下是 2 列
+	// 而在其他地方是 1。我们总是回答 1：另一种选择是在测量时读取 LANG，
+	// 如果一个布局的形状会跟着环境变量变来变去，那就是比偶尔窄了一列
+	// 的框更糟糕的 bug。
 	return 1
 }
 
-// isZeroWidth covers the characters that occupy no column of their own because
-// they attach to, or annotate, the character before them.
+// isZeroWidth 覆盖的是那些自身不占任何列的字符，因为它们依附在前一
+// 个字符上，或者是在给前一个字符做注解。
 //
-// It must run BEFORE the wide table, not after. U+3099 and U+309A — the
-// combining kana voiced-sound marks — sit inside the Katakana block and would
-// otherwise be measured as 2. They stack onto the preceding kana. They are 0.
+// 它必须**在宽表之前**运行，而不是之后。U+3099 和 U+309A——结合假名
+// 浊音标记——位于片假名块内，如果不做处理，本来会被测量成 2。它们
+// 堆在前面的假名上。它们是 0。
 func isZeroWidth(r rune) bool {
 	switch {
 	case r >= 0x200b && r <= 0x200f:
-		// ZWSP, ZWNJ, ZWJ (U+200D), LRM, RLM. The ZWJ is swept up by the range
-		// rather than checked on its own — see the emoji note on wideRanges for
-		// why zeroing it is necessary and nowhere near sufficient.
+		// ZWSP, ZWNJ, ZWJ (U+200D), LRM, RLM。ZWJ 不是被单独检查的，而是被
+		// 某个范围顺带扫了进去——具体原因见 wideRanges 里关于 emoji 的说明：
+		// 把它清零是必要的，但远远不够。
 		return true
 	case r == 0xfeff:
-		return true // BOM / zero-width no-break space
+		return true // BOM / 零宽不换行空格
 	}
-	// Mn = non-spacing mark (the accent in "é"), Me = enclosing mark.
-	// Mc — *spacing* combining marks, used by Devanagari and friends — is
-	// deliberately absent: those do advance the cursor.
+	// Mn = 非间距标记 (在"é"中的重音)，Me = 包围标记。
+	// Mc —— **间距**结合标记，用于天城文一类的文字系统——
+	// 故意没有算进来：因为这些标记确实会推进光标。
 	return unicode.Is(unicode.Mn, r) || unicode.Is(unicode.Me, r)
 }
 
 // ---------------------------------------------------------------------------
-// The wide table
+// 宽表
 // ---------------------------------------------------------------------------
 
 type wrange struct{ lo, hi rune }
 
-// inRanges binary-searches a sorted, non-overlapping range table.
+// inRanges 对一张排序好、互不重叠的范围表做二分查找。
 //
-// The obvious implementation is a chain of `if r >= x && r <= y`, and it is fine
-// right until the table has a hundred entries and runs on every rune of every
-// frame of a redraw: seven comparisons instead of a hundred. The precondition —
-// sorted and disjoint — is not checked here because checking would cost more
-// than the search; it is asserted once in the test suite, which is the right
-// place for an invariant about a constant.
+// 最直接的实现是一串 `if r >= x && r <= y` 的链条，这样写不是不行——
+// 直到这张表长到上百个条目，而且这条链要在每一帧重绘时、对每一个符
+// 文都跑一遍：这时候七次比较对上一百次比较的差距就出来了。前提条件
+// ——排序且互不相交——这里不做检查，因为检查的开销会比搜索本身还
+// 大；它只在测试套件里断言一次——对于一个关于常量的不变式来说，那
+// 才是它该待的地方。
 func inRanges(t []wrange, r rune) bool {
 	lo, hi := 0, len(t)-1
 	for lo <= hi {
@@ -132,37 +127,37 @@ func inRanges(t []wrange, r rune) bool {
 	return false
 }
 
-// wideRanges lists the code points that occupy two columns: East Asian Wide and
-// Fullwidth, plus the emoji that terminals draw double-width.
+// wideRanges 列出占有两列的代码点：东亚宽和全宽，加上终端绘制双宽的
+// emoji。
 //
-// MUST STAY SORTED BY lo AND NON-OVERLAPPING. inRanges binary-searches it, so a
-// misplaced entry produces neither a compile error nor a panic — it produces a
-// character that is silently the wrong width, in one font, on one machine.
-// TestWideRangesSorted exists to make that failure loud.
+// 必须**按 lo 保持排序且不重叠**。inRanges 对它做二分查找，所以一个
+// 放错位置的条目既不会产生编译错误，也不会产生 panic——它产生的只
+// 是一个宽度悄悄错了的字符，而且只在某一种字体、某一台机器上才会这
+// 样。TestWideRangesSorted 存在的意义，就是让这种失败闹得足够响。
 //
-// EMOJI HONESTY. Single-code-point emoji below are measured correctly. Composed
-// ones are not, and cannot be by anything with runeWidth's signature:
+// **EMOJI 诚实**。下面的单码点 emoji 会被正确测量。组合起来的则不
+// 会，而且任何有 runeWidth 这种签名的函数都做不到：
 //
-//	"👨‍👩‍👧‍👦"  a family: 4 people joined by 3 ZWJs. One glyph, 2 columns on
-//	           screen. We measure 4×2 + 3×0 = 8. Six columns too wide.
-//	"🇯🇵"      a flag: 2 regional indicators. One glyph, 2 columns on screen.
-//	           We measure 4. Two columns too wide.
-//	"👍🏽"      skin tone: base + modifier. One glyph, 2 columns. We measure 4.
-//	"❤️"       text-presentation base + VS16. One glyph, 2 columns. We measure 1.
+//	"👨‍👩‍👧‍👦"  一个家庭：4 个人由 3 个 ZWJ 连接。一个字形，屏幕上 2 列。
+//	           我们测量 4×2 + 3×0 = 8。六列太宽。
+//	"🇯🇵"      一面旗：2 个区域指示符。一个字形，屏幕上 2 列。
+//	           我们测量 4。两列太宽。
+//	"👍🏽"      肤色：基础 + 修饰符。一个字形，2 列。我们测量 4。
+//	"❤️"       文本呈现基础 + VS16。一个字形，2 列。我们测量 1。
 //
-// All four are the same bug from both directions: width is a property of a
-// *grapheme cluster*, and runeWidth is handed one rune at a time. Fixing it
-// needs UAX #29 extended grapheme cluster segmentation — split the string into
-// clusters, then width each cluster from its base plus the emoji-presentation
-// rules — which is a table-driven state machine about the size of this whole
-// file, and which is why the good third-party packages exist.
+// 这四个例子，从两个方向看都是同一个 bug：宽度是**字素集群**的属
+// 性，而 runeWidth 每次都只会拿到一个 rune。要修好这个问题，需要用
+// 到 UAX #29 定义的扩展字素集群分割——先把字符串切分成一个个集群，
+// 再根据每个集群的基础字符加上 emoji 呈现规则去算宽度——这是一个体
+// 量跟这整个文件差不多大的、由表驱动的状态机，这也是为什么那些靠谱
+// 的第三方包会存在。
 //
-// This is written down rather than hidden because the failure is otherwise
-// inscrutable: the table looks perfect for a week and then one user with an
-// emoji in a commit message reports ragged borders. If you put user-supplied
-// emoji in a fixed layout, you need the real thing.
+// 把这些写下来，而不是藏起来，是因为这种失败一旦发生就非常难以捉
+// 摸：这张表可能完美无缺地运行一整个星期，然后就会有个用户在提交信
+// 息里用了个 emoji，回报说边框参差不齐。如果你要在一个固定布局里塞
+// 进用户提供的 emoji，你需要的是真正靠谱的实现。
 var wideRanges = []wrange{
-	{0x1100, 0x115f}, // Hangul Jamo, initial consonants
+	{0x1100, 0x115f}, // 韩文字母，初始辅音
 	{0x231a, 0x231b}, // ⌚⌛
 	{0x2329, 0x232a}, // 〈〉
 	{0x23e9, 0x23ec},
@@ -170,7 +165,7 @@ var wideRanges = []wrange{
 	{0x23f3, 0x23f3},
 	{0x25fd, 0x25fe},
 	{0x2614, 0x2615},
-	{0x2648, 0x2653}, // zodiac
+	{0x2648, 0x2653}, // 黄道带
 	{0x267f, 0x267f},
 	{0x2693, 0x2693},
 	{0x26a1, 0x26a1},
@@ -194,63 +189,62 @@ var wideRanges = []wrange{
 	{0x2795, 0x2797},
 	{0x27b0, 0x27b0},
 	{0x27bf, 0x27bf},
-	// U+2600–U+27BF is mostly NARROW, so it is picked apart above rather than
-	// widened in one blanket range. Only the entries listed have
-	// Emoji_Presentation=Yes and get drawn double-width; ✓ (U+2713), ★, ☺, ✗ and
-	// the rest of the dingbats are one column. Widening the whole block is the
-	// usual shortcut and it breaks every box someone drew with ✓ and ✗.
+	// U+2600–U+27BF 大多是**窄**的，所以上面把它拆开列出，而不是笼统
+	// 地整体加宽。只有列出的这些条目有 Emoji_Presentation=Yes，会被绘制
+	// 成双宽；✓ (U+2713)、★、☺、✗ 和其余的装饰符号都是一列。加宽整个
+	// 块是常见的走捷径做法，而且会打破所有用 ✓ 和 ✗ 画出来的框。
 	{0x2b1b, 0x2b1c},
 	{0x2b50, 0x2b50},
 	{0x2b55, 0x2b55},
-	{0x2e80, 0x2e99}, // CJK Radicals Supplement
+	{0x2e80, 0x2e99}, // CJK 部首补充
 	{0x2e9b, 0x2ef3},
-	{0x2f00, 0x2fd5}, // Kangxi Radicals
-	{0x2ff0, 0x2ffb}, // Ideographic Description Characters
-	{0x3000, 0x303e}, // CJK Symbols and Punctuation. Includes U+3000, the
-	//                   ideographic space: two columns of nothing, and the
-	//                   reason TrimSpace-then-measure can still come out short.
-	{0x3041, 0x3096}, // Hiragana
-	{0x3099, 0x30ff}, // combining kana marks (zeroed above) + Katakana
-	{0x3105, 0x312f}, // Bopomofo
-	{0x3131, 0x318e}, // Hangul Compatibility Jamo
-	{0x3190, 0x31e3}, // Kanbun, CJK strokes
-	{0x31f0, 0x321e}, // Katakana phonetic extensions, enclosed CJK
+	{0x2f00, 0x2fd5}, // 康熙部首
+	{0x2ff0, 0x2ffb}, // 表意符号描述字符
+	{0x3000, 0x303e}, // CJK 符号和标点。包括 U+3000，
+	//                   表意空格：占两列，却什么都没有，这也是为什么先 TrimSpace
+	//                   再测量，结果还是会偏短。
+	{0x3041, 0x3096}, // 平假名
+	{0x3099, 0x30ff}, // 结合假名标记 (在上面清零) + 片假名
+	{0x3105, 0x312f}, // 注音符号
+	{0x3131, 0x318e}, // 韩文兼容字母
+	{0x3190, 0x31e3}, // 汉文、CJK 笔画
+	{0x31f0, 0x321e}, // 片假名音标扩展、封闭 CJK
 	{0x3220, 0x3247},
-	{0x3250, 0x4dbf}, // enclosed CJK + CJK Unified Ideographs Extension A
-	{0x4e00, 0xa48c}, // CJK Unified Ideographs + Yi Syllables
-	{0xa490, 0xa4c6}, // Yi Radicals
-	{0xa960, 0xa97c}, // Hangul Jamo Extended-A
-	{0xac00, 0xd7a3}, // Hangul Syllables — 한글
-	{0xf900, 0xfaff}, // CJK Compatibility Ideographs
-	{0xfe10, 0xfe19}, // vertical forms
-	{0xfe30, 0xfe52}, // CJK Compatibility Forms
+	{0x3250, 0x4dbf}, // 封闭 CJK + CJK 统一表意文字扩展 A
+	{0x4e00, 0xa48c}, // CJK 统一表意文字 + Yi 音节
+	{0xa490, 0xa4c6}, // Yi 部首
+	{0xa960, 0xa97c}, // 韩文字母扩展-A
+	{0xac00, 0xd7a3}, // 韩文音节 —— 한글
+	{0xf900, 0xfaff}, // CJK 兼容表意文字
+	{0xfe10, 0xfe19}, // 垂直形式
+	{0xfe30, 0xfe52}, // CJK 兼容形式
 	{0xfe54, 0xfe66},
 	{0xfe68, 0xfe6b},
-	{0xff01, 0xff60}, // Fullwidth ASCII forms: Ａ is 3 bytes, 1 rune, 2 columns
-	{0xffe0, 0xffe6}, // fullwidth currency and signs
+	{0xff01, 0xff60}, // 全宽 ASCII 形式：Ａ 是 3 字节、1 rune、2 列
+	{0xffe0, 0xffe6}, // 全宽货币和符号
 	{0x16fe0, 0x16fe4},
-	{0x17000, 0x187f7}, // Tangut
-	{0x18800, 0x18cd5}, // Tangut components
-	{0x1b000, 0x1b152}, // Kana Supplement / Extended-A
+	{0x17000, 0x187f7}, // 唐古特
+	{0x18800, 0x18cd5}, // 唐古特部件
+	{0x1b000, 0x1b152}, // 假名补充 / 扩展-A
 	{0x1b164, 0x1b167},
-	{0x1b170, 0x1b2fb}, // Nushu
+	{0x1b170, 0x1b2fb}, // 女书
 	{0x1f004, 0x1f004}, // 🀄
 	{0x1f0cf, 0x1f0cf}, // 🃏
 	{0x1f18e, 0x1f18e},
 	{0x1f191, 0x1f19a},
-	// Regional indicators 🇦–🇿. Each is 2 here, matching Unicode's
-	// Emoji_Presentation property and the width a terminal gives an *unpaired*
-	// one. A flag is a pair rendered as a single 2-column glyph, so flags
-	// measure 4. Counting each as 1 would fix flags and break the lone
-	// indicator — which is exactly what you are left holding when something
-	// cuts a flag in half, i.e. the case truncCols exists to prevent.
+	// 区域指示符 🇦–🇿。这里每一个都算 2 列，这既符合 Unicode 的
+	// Emoji_Presentation 属性，也符合终端给一个**未配对**指示符所用的
+	// 宽度。一面旗是一对指示符，被渲染成单个 2 列宽的字形，所以旗量出来
+	// 是 4。把每一个都计为 1，虽然能修好旗，却会弄坏单独的指示符——而
+	// 这正是当有什么东西把一面旗从中间切断时，你会落到的下场，也正是
+	// truncCols 存在的意义：防止这种情况发生。
 	{0x1f1e6, 0x1f1ff},
-	{0x1f200, 0x1f320}, // enclosed ideographic supplement, then early emoji
-	// U+1F300–U+1F9FF is likewise broken into sub-ranges rather than widened
-	// wholesale: the gaps (U+1F321 🌡, U+1F336 🌶, U+1F397 …) are the
-	// text-presentation code points, which render as one narrow column unless
-	// the string carries a VS16 after them. We do not track VS16, so those stay
-	// at 1 — under-measuring a rare glyph beats over-measuring a common one.
+	{0x1f200, 0x1f320}, // 封闭表意符号补充，然后早期 emoji
+	// U+1F300–U+1F9FF 同样被拆成了一个个子范围，而不是笼统地整体加
+	// 宽：中间的空隙 (U+1F321 🌡、U+1F336 🌶、U+1F397 …) 都是文本呈现
+	// 代码点，除非字符串在它们后面携带 VS16，否则就渲染成一个窄列。我
+	// 们不追踪 VS16，所以这些字符就停留在 1——宁可少测量一个罕见的字
+	// 形，也不要多测量一个常见的字形。
 	{0x1f32d, 0x1f335},
 	{0x1f337, 0x1f37c},
 	{0x1f37e, 0x1f393},
@@ -275,100 +269,98 @@ var wideRanges = []wrange{
 	{0x1f6dc, 0x1f6df},
 	{0x1f6eb, 0x1f6ec},
 	{0x1f6f4, 0x1f6fc},
-	{0x1f7e0, 0x1f7eb}, // coloured circles and squares
+	{0x1f7e0, 0x1f7eb}, // 彩色圆形和方形
 	{0x1f7f0, 0x1f7f0},
 	{0x1f90c, 0x1f93a},
 	{0x1f93c, 0x1f945},
-	{0x1f947, 0x1f9ff}, // … out to the end of Supplemental Symbols
-	{0x1fa70, 0x1faff}, // the 2019-and-later additions
-	{0x20000, 0x2fffd}, // CJK Ext. B–F: rare Han, still two columns
-	{0x30000, 0x3fffd}, // CJK Ext. G and beyond
+	{0x1f947, 0x1f9ff}, // … 直到补充符号的结尾
+	{0x1fa70, 0x1faff}, // 2019 年及以后的补充
+	{0x20000, 0x2fffd}, // CJK 扩展 B–F：罕见汉字，仍然两列
+	{0x30000, 0x3fffd}, // CJK 扩展 G 及以后
 }
 
 // ---------------------------------------------------------------------------
-// ANSI escape scanning
+// ANSI 转义扫描
 // ---------------------------------------------------------------------------
 
-// ansiLen returns the byte length of the escape sequence starting at s[i], or 0
-// if there is no escape sequence there.
+// ansiLen 返回从 s[i] 开始的转义序列的字节长度；如果那个位置没有转
+// 义序列，就返回 0。
 //
-// This is the load-bearing primitive of the file: everything below is "walk the
-// string, skip what ansiLen claims, measure the rest". It has to be a real
-// scanner rather than a regexp or an "is it a letter yet" loop, because the two
-// forms that actually appear in terminal output terminate differently:
+// 这是这个文件的承重基石：下面的一切都是"沿着字符串走，跳过 ansiLen
+// 声称的那段长度，剩下的部分才拿去测量"。它必须是一个真正的扫描
+// 器，而不能是正则表达式，也不能是那种"这是不是字母了"的循环，因为
+// 终端输出里实际会出现的两种形式，结尾的方式并不一样：
 //
-//	CSI  ESC [  0x30-0x3f*  0x20-0x2f*  0x40-0x7e     ← colour, cursor moves
-//	OSC  ESC ]  ...         BEL | ESC \               ← window title, hyperlinks
+//	CSI  ESC [  0x30-0x3f*  0x20-0x2f*  0x40-0x7e     ← 颜色、光标移动
+//	OSC  ESC ]  ...         BEL | ESC \               ← 窗口标题、超链接
 //
-// OSC is the one that bites. An OSC-8 hyperlink embeds a URL, and a URL is full
-// of letters — a scanner that stops at the first letter eats four bytes of
-// "ESC ]8;;h" and then measures "ttps://example.com" as visible text, so every
-// hyperlinked cell in the table comes out eighteen columns too wide.
+// OSC 就是那个会咬人的。一个 OSC-8 超链接内嵌一个 URL，而 URL 里全
+// 是字母——一个在遇到第一个字母就停下的扫描器，会吃掉"ESC ]8;;h"这
+// 四个字节，然后把"ttps://example.com"当成可见文本去测量，结果表里
+// 每一个带超链接的单元格都会宽出十八列。
 //
-// A truncated or malformed sequence swallows the rest of the string. That is
-// deliberate: the alternative is emitting the tail as visible text, and half an
-// escape printed literally corrupts the terminal for every line after it.
+// 一个被截断或格式错误的序列，会吞掉字符串剩下的全部内容。这是故意
+// 的：另一种做法是把尾部原样当成可见文本输出，而把半截转义序列原样
+// 打印出来，会让终端在它之后的每一行都出问题。
 //
-// exec.go's sanitize() recognises the same grammar with a regexp, and that is
-// the right tool there: it strips every escape from a blob in one pass, because
-// tool output going to the model must not carry colour at all. Here we need the
-// opposite shape — the LENGTH of the sequence at a given offset — so the walk
-// can keep a running column count as it goes. A regexp cannot answer that
-// without re-scanning from the start for every rune.
+// exec.go 的 sanitize() 用一个正则表达式识别同样的语法，用在那里是
+// 对的：它会在一次遍历里，把一整块数据中的每一个转义序列都剥掉，因
+// 为发给模型的工具输出绝不能带颜色。而这里我们需要的是相反的东
+// 西——在给定偏移处，这段序列的**长度**——这样这次遍历才能一边走一
+// 边，维护一个持续累计的列数。正则表达式做不到这一点，除非对每一个
+// rune 都从头重新扫描一遍。
 func ansiLen(s string, i int) int {
 	if i >= len(s) || s[i] != esc {
 		return 0
 	}
 	if i+1 >= len(s) {
-		return 1 // a lone trailing ESC: no width, no payload
+		return 1 // 一个孤立的尾随 ESC：无宽度，无有效负载
 	}
 	switch s[i+1] {
 	case '[': // CSI
 		j := i + 2
 		for j < len(s) && s[j] >= 0x30 && s[j] <= 0x3f {
-			j++ // parameter bytes: digits, ';', and the private-use markers
+			j++ // 参数字节：数字、';' 和私有使用标记
 		}
 		for j < len(s) && s[j] >= 0x20 && s[j] <= 0x2f {
-			j++ // intermediate bytes
+			j++ // 中间字节
 		}
 		if j < len(s) && s[j] >= 0x40 && s[j] <= 0x7e {
-			return j + 1 - i // final byte: 'm' is SGR, 'H'/'J'/'K'/… are the rest
+			return j + 1 - i // 最后字节：'m' 是 SGR，'H'/'J'/'K'/… 是其余的
 		}
 		return len(s) - i
 	case ']': // OSC
 		for j := i + 2; j < len(s); j++ {
 			if s[j] == 0x07 {
-				return j + 1 - i // BEL terminator
+				return j + 1 - i // BEL 终止符
 			}
 			if s[j] == esc && j+1 < len(s) && s[j+1] == '\\' {
-				return j + 2 - i // ST terminator
+				return j + 2 - i // ST 终止符
 			}
 		}
 		return len(s) - i
 	default:
-		// Two-byte escapes: ESC M (reverse index), ESC 7 / ESC 8 (save and
-		// restore cursor), ESC ( B (charset selection — three bytes, and we get
-		// that one wrong by one). None carry width and none show up in strings a
-		// TUI measures, so two is the pragmatic answer rather than the correct
-		// one, and this comment is the receipt.
+		// 两字节转义：ESC M (反向索引)、ESC 7 / ESC 8 (保存和恢复光标)、
+		// ESC ( B (字符集选择——三字节，而这一个我们算错了，正好差一个字
+		// 节)。它们都不带宽度，也都不会出现在 TUI 会测量的字符串里，所以
+		// "按两个字节算"是一个实用的答案，而不是正确答案，这条注释就是收据。
 		return 2
 	}
 }
 
-// isSGR reports whether seq is a colour/attribute sequence, and whether it is a
-// reset.
+// isSGR 报告 seq 是否是一个颜色/属性序列，以及是否是一个重置。
 //
-// The distinction matters because only SGR carries state that outlives the
-// sequence. A cursor move is an event; a colour is a *mode*, and a mode still
-// open when you cut the string leaks onto everything printed afterwards —
-// including the shell prompt after your program exits, which is how a user ends
-// up with a permanently red terminal and no idea which program did it.
+// 这个区分很重要，因为只有 SGR 携带的状态，会在序列本身结束后继
+// 续存在。光标移动是一个事件；颜色则是一种**模式**——如果字符串被切
+// 断时这个模式还开着，它就会泄漏到之后打印的所有东西上，包括你的
+// 程序退出之后的 shell 提示符。这就是为什么会有用户的终端永远变成
+// 红色，而自己完全不知道是哪个程序干的。
 //
-// "Reset" means an SGR whose parameters are empty or all zero: \x1b[m, \x1b[0m,
-// \x1b[00m. Everything else counts as opening state, including \x1b[39m
-// (default foreground), which genuinely does clear the colour. That errs toward
-// closing too often, and a redundant \x1b[0m is invisible where a missing one
-// is not.
+// "重置"指的是一个参数为空或全为零的 SGR：\x1b[m、\x1b[0m、
+// \x1b[00m。其他一切都算作打开状态，包括 \x1b[39m (默认前景
+// 色)——尽管它确实会真正清除颜色。这样的判断宁可偏向"多关闭"，也
+// 不要少关闭：多余的一个 \x1b[0m 是看不出来的，少了一个却会看得出
+// 来。
 func isSGR(seq string) (sgr, reset bool) {
 	if len(seq) < 3 || seq[0] != esc || seq[1] != '[' || seq[len(seq)-1] != 'm' {
 		return false, false
@@ -385,13 +377,13 @@ func isSGR(seq string) (sgr, reset bool) {
 // dispWidth
 // ---------------------------------------------------------------------------
 
-// dispWidth returns the display width of s in terminal columns, skipping any
-// ANSI escape sequences it contains.
+// dispWidth 返回 s 以终端列数计的显示宽度，其中会跳过 s 包含的任何
+// ANSI 转义序列。
 //
-// Invalid UTF-8 decodes to U+FFFD one byte at a time and is counted as one
-// column per bad byte, which is what a terminal draws for it. That keeps a
-// corrupted byte from silently shrinking a column instead of making a visible
-// mess — a layout that quietly absorbs bad input is a layout that hides it.
+// 无效的 UTF-8 会一次一个字节地解码成 U+FFFD，每个坏字节算作一
+// 列——这也正是终端会把它画成的样子。这样才不会让一个损坏的字节悄
+// 悄地把一列吞掉，而是弄出一团看得见的乱子——一个会悄悄吞下错误输
+// 入的布局，就是一个把问题藏起来的布局。
 func dispWidth(s string) int {
 	w := 0
 	for i := 0; i < len(s); {
@@ -410,27 +402,26 @@ func dispWidth(s string) int {
 // truncCols
 // ---------------------------------------------------------------------------
 
-// truncCols returns a prefix of s occupying at most n columns. It never cuts
-// inside an ANSI escape sequence and never leaves the terminal in a coloured
-// state: if any SGR sequence was still open at the cut, it appends "\x1b[0m".
-// Escape sequences do not count toward n.
+// truncCols 返回 s 里最多占 n 列的那一段前缀。它从不在 ANSI 转义序
+// 列内部切割，也从不让终端停留在着色状态里：如果切割点上还有 SGR
+// 序列处于打开状态，它就会追加 "\x1b[0m"。转义序列本身不计入 n。
 //
-// Two failure modes this exists to prevent, both of which s[:n] produces:
+// 这个函数存在，就是为了防止两种失败模式，而这两种，s[:n] 都会产
+// 生：
 //
-//  1. A cut inside "\x1b[31m" leaves "\x1b[3" in the output. The terminal takes
-//     the next character you print as that sequence's final byte and eats it.
-//     One missing letter, several lines later, from a completely different part
-//     of the program.
+//  1. 在 "\x1b[31m" 内部切割，会在输出里留下 "\x1b[3"。终端会把你
+//     接下来打印的下一个字符，当成那个序列的最后一个字节，然后把它
+//     吃掉。一个字母就这样不见了——几行之后，在程序里完全不相干的
+//     另一个地方。
 //
-//  2. A cut inside a multi-byte rune emits half a CJK character — a replacement
-//     glyph whose width nothing agrees on, which desynchronises the column count
-//     for the rest of the line.
+//  2. 在一个多字节 rune 内部切割，会切出半个 CJK 字符——变成一个宽
+//     度没人说得准的替代字形，让这一行剩下部分的列计数全部错位。
 //
-// The wide-character boundary is the interesting case. If one column is left and
-// the next rune wants two, we stop before it and pad the orphan column with a
-// space. Returning n-1 columns would be as broken as returning n+1: a cell one
-// short shears the table exactly like a cell one long, and callers reasonably
-// read "at most n" from a truncator as "exactly n" whenever it truncated.
+// 宽字符的边界才是有意思的情况。如果只剩一列，而下一个 rune 需要两
+// 列，我们就在它前面停下，用一个空格把这个多出来的孤儿列填上。返
+// 回 n-1 列，跟返回 n+1 列一样糟糕：一个短了一格的单元格，会像长了
+// 一格的单元格一样，把整张表弄裂——而调用者也完全有理由认为，既然
+// 是截断器给出的"最多 n"，那只要发生了截断，就应该正好是 n。
 func truncCols(s string, n int) string {
 	if n <= 0 {
 		return ""
@@ -453,20 +444,21 @@ func truncCols(s string, n int) string {
 			cut = true
 			break
 		}
-		b.WriteString(s[i : i+size]) // copy the bytes; never re-encode the rune
+		b.WriteString(s[i : i+size]) // 复制字节；永不重新编码 rune
 		w += rw
 		i += size
 	}
-	// Close the colour before padding, not after. Padding under an open
-	// background colour paints a coloured block into the gap, which is precisely
-	// the artefact that makes a truncated cell look like a rendering bug.
+	// 在填充之前关闭颜色，而不是之后。如果背景色还开着的时候就去填充，
+	// 就会在这段间隙里画出一块颜色——而这恰恰就是那种视觉瑕疵，正是它
+	// 让一个被截断的单元格，看起来像是渲染出了 bug。
 	if open {
 		b.WriteString(sgrReset)
 	}
-	// Pad only when we actually stopped early. A short string is left alone —
-	// padding it is padCols' job, and conflating the two makes truncCols
-	// surprising. n-w is always exactly 1 here (the only way to break with
-	// w < n is rw == 2 and n-w == 1), but the general form makes that visible.
+	// 只有当我们真的提前停止时才填充。一个本来就短的字符串会被原样留
+	// 下——填充它是 padCols 的工作，把这两件事混在一起，会让 truncCols
+	// 的行为变得让人意外。这里 n-w 总是正好是 1 (唯一可能在 w < n 时跳
+	// 出的情况，是 rw == 2 且 n-w == 1)，但写成一般形式，能让这一点看
+	// 得更清楚。
 	if cut && w < n {
 		b.WriteString(strings.Repeat(" ", n-w))
 	}
@@ -477,15 +469,16 @@ func truncCols(s string, n int) string {
 // padCols
 // ---------------------------------------------------------------------------
 
-// padCols returns s padded with spaces to exactly n display columns, or
-// truncated (via truncCols) if it is wider.
+// padCols 返回用空格把 s 填充到正好 n 个显示列的结果；如果 s 本来
+// 就更宽，则通过 truncCols 截断。
 //
-// Note the asymmetry with truncCols: when s fits, padCols does NOT append a
-// reset even if s leaves an SGR open. Nothing was cut, so nothing was broken,
-// and a caller who opens a colour in one cell and closes it in the next is doing
-// something legitimate that a "helpful" reset would silently destroy. The price
-// is that padding a string with an open background colour paints coloured
-// spaces — that is the caller's colour, faithfully applied.
+// 注意它和 truncCols 的不对称之处：当 s 本身就能放得下时，padCols
+// **不会**追加重置，即使 s 让一个 SGR 处于打开状态。既然什么都没被
+// 切掉，就没有什么被破坏，如果一个调用者在一个单元格里打开一种颜
+// 色、在下一个单元格里才关闭它，这是完全合法的做法——而一个"贴心"
+// 的重置反而会不声不响地把这件事搞砸。代价是：如果背景色还开着，填
+// 充这个字符串时画出来的空格也会带着颜色——那是调用者的颜色，忠实
+// 地应用。
 func padCols(s string, n int) string {
 	w := dispWidth(s)
 	switch {
@@ -494,8 +487,8 @@ func padCols(s string, n int) string {
 	case w > n:
 		return truncCols(s, n)
 	case n <= 0:
-		// n negative with an empty s: fall through to truncCols rather than
-		// hand strings.Repeat a negative count and panic inside a redraw.
+		// 当 n 为负、且 s 为空时：直接落到 truncCols 里处理，而不是把一个
+		// 负数交给 strings.Repeat，害得整个重绘过程直接 panic。
 		return truncCols(s, n)
 	}
 	return s + strings.Repeat(" ", n-w)
@@ -505,41 +498,41 @@ func padCols(s string, n int) string {
 // wrapCols
 // ---------------------------------------------------------------------------
 
-// wrapCols hard-wraps s into lines of at most n columns each. ANSI-aware: it
-// never splits an escape sequence or a multi-byte rune, and it re-opens the
-// active SGR state at the start of each continuation line.
+// wrapCols 把 s 硬换行成一行行最多 n 列的文本。ANSI 感知：它从不在
+// 一个转义序列或多字节 rune 内部拆分，并且会在每个延续行开头，重新打
+// 开当前生效的 SGR 状态。
 //
-// Hard wrap, not word wrap, and that is the right default for what this is for:
-// command output and model text in a fixed pane, where one long unbreakable
-// token — a path, a base64 blob, a stack frame — must not be allowed to shove
-// the layout wider than the pane it lives in.
+// 硬换行，不是按单词换行，这也正是这里该有的默认行为：命令输出和模
+// 型文本显示在一个固定的窗格里，其中某一个又长又不可拆分的片
+// 段——一条路径、一段 base64、一个调用栈帧——绝不能把布局撑得比它
+// 所在的窗格更宽。
 //
-// Re-opening the colour on every line is not cosmetic. Terminals do not carry
-// SGR state across a line that something else may redraw: the moment another
-// pane, a scroll, or a repaint lands between two of these lines, an un-reopened
-// colour vanishes from line two onward. Emitting the state at each line start
-// makes every line independently correct, which is also what lets a caller
-// scroll, reorder, or reprint any single line on its own.
+// 在每一行都重新打开颜色，不只是为了好看。终端不会让 SGR 状态跨越
+// 一整行——如果这一行有可能被别的东西重绘的话：只要另一个窗格、一
+// 次滚动，或者一次重绘，落在这两行之间，一个没有被重新打开的颜色，
+// 就会从第二行开始消失。在每一行开头都重新写出状态，能让每一行都独
+// 立保持正确，这也正是调用者可以单独滚动、重新排序，或者单独重新打
+// 印任意一行的原因。
 //
-// An embedded "\n" forces a break, because a raw newline written into a fixed
-// pane escapes the pane. Colour state survives across it.
+// 一个嵌入的 "\n" 会强制断行，因为把一个原始换行符写进一个固定窗格
+// 里，就会让内容逃出这个窗格。颜色状态则会穿过它，继续保留下来。
 func wrapCols(s string, n int) []string {
 	if n <= 0 {
-		// A zero-width pane holds nothing. nil is the honest answer and, more to
-		// the point, the one that terminates — the loop below would otherwise
-		// emit an unbounded run of empty lines.
+		// 一个零宽度的窗格什么也装不下。nil 是诚实的答案，而且更关键的
+		// 是，它是能让循环真正停下来的那个答案——不然下面的循环就会没完没
+		// 了地吐出一串空行。
 		return nil
 	}
 	var (
 		lines []string
 		cur   strings.Builder
 		w     int
-		state []string // SGR sequences currently in effect, in the order seen
+		state []string // 当前有效的 SGR 序列，按看到的顺序
 	)
-	// We accumulate whole SGR sequences rather than parsing them into attribute
-	// slots. "\x1b[31m\x1b[32m" re-emits both and lets the terminal resolve it
-	// the way it did originally — last one wins. Modelling nine attributes
-	// separately would be more code and no more correct for anything a TUI emits.
+	// 我们积累的是完整的 SGR 序列，而不是把它们解析成一个个属性插槽。
+	// "\x1b[31m\x1b[32m" 会把两条都重新发出去，让终端按最初的方式去处
+	// 理——最后一个赢。把这九个属性分别建模，只会写出更多代码，也不
+	// 会让 TUI 发出的任何东西变得更正确。
 	start := func() {
 		cur.Reset()
 		w = 0
@@ -578,16 +571,15 @@ func wrapCols(s string, n int) []string {
 		rw := runeWidth(r)
 		if w+rw > n {
 			if w == 0 {
-				// The rune is wider than the whole pane: n == 1 and a CJK
-				// character. It can never fit, so "break the line and retry" is
-				// an infinite loop. We emit it alone and overflow by one column,
-				// because dropping the user's text is the worse of two bad
-				// options — an overflowing glyph is visible and diagnosable, a
-				// missing one is neither.
+				// rune 比整个窗格还宽的情况：n == 1，且这个 rune 是个 CJK 字符。它永
+				// 远不可能放得下，所以"换行重试"就会变成一个无限循环。我们就单独把
+				// 它发出去，让它超出一列，因为丢掉用户的文本是两个坏选项里更坏的那
+				// 个——一个溢出的字形是看得见、也能诊断的，一个消失的字形则两样都
+				// 不占。
 				//
-				// Setting w past n rather than flushing here is what keeps a
-				// spurious empty line off the end: the flush happens lazily, on
-				// the next rune, only if there is a next rune.
+				// 这里选择把 w 设置到超过 n，而不是当场就刷新，正是为了防止末尾多
+				// 出一个多余的空行：刷新是惰性发生的，要等到下一个 rune 出现时才会
+				// 做，前提是真的还有下一个 rune。
 				cur.WriteString(s[i : i+size])
 				w = rw
 				i += size
@@ -595,15 +587,14 @@ func wrapCols(s string, n int) []string {
 			}
 			lines = append(lines, end())
 			start()
-			continue // retry the same rune against a fresh line
+			continue // 对新行重试同一个 rune
 		}
 		cur.WriteString(s[i : i+size])
 		w += rw
 		i += size
 	}
-	// Always append the tail, even when it is empty: wrapCols("") is one blank
-	// line, not zero lines, so a caller drawing a box still gets a row. The loop
-	// only flushes when something did not fit, so this cannot bolt a spurious
-	// empty line onto input that ends exactly on a wrap point.
+	// 始终追加尾部，即使它为空：wrapCols("") 得到一个空行，而非零行，所以
+	// 调用者画框时仍然得到一行。循环只在某些东西放不下时才刷新，因此无法
+	// 在恰好达到包裹点的输入后面附加虚假空行。
 	return append(lines, end())
 }

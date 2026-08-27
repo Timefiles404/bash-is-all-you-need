@@ -1,106 +1,66 @@
 # bash is all you need
 
-**A coding agent with one tool and a glass cockpit.**
+**一个只有一个工具、配一套玻璃座舱的 coding agent。**
 
-Plenty of tutorials will teach you to write an agent loop. In 2026 that is an
-afternoon's work, and this repo does it in stage 00, in one file, with no
-dependencies. Then it spends the remaining stages on the part nobody teaches:
+许多教程会教你怎么写一个 Agent 主循环。在 2026 年，那是一个下午的工作，这个仓库在第 00 阶段用一个文件把它做完，没有任何依赖。然后它用剩下的阶段讲没人教的那部分：
 
-> **watching where every token, every millisecond and every cent actually goes.**
+> **看清楚每一个 token、每一毫秒、每一分钱实际去了哪里。**
 
-The gap between "I wrote an agent loop" and "I can run an agent in production"
-is not intelligence. It is that most people cannot explain their own bill, do
-not know why their cache hit rate collapsed, and cannot say what their model
-actually saw on turn 30. This repo is built to make all three visible.
+从"我写了个 Agent 主循环"到"我能在生产环境跑一个 Agent"之间的差距，不是智能。是因为大多数人解释不了自己的账单，不知道为什么缓存命中率突然崩了，也说不出他们的模型在第 30 个回合实际看到了什么。这个仓库就是为了把这三件事都搞清楚。
 
-The agent has exactly one tool — `bash` — so that the engine stays small enough
-to read in one sitting and the instrumentation gets to be the main character.
+这个 Agent 正好有一个工具 —— `bash` —— 这样引擎够小，一口气能读完，而且仪表才是主角。
 
 ---
 
-## Why one tool
+## 为什么只要一个工具
 
-Three properties, and the third is the one people miss:
+三个理由，第三个是人们经常忽略的：
 
-- **Composable.** You cannot enumerate every action a user will need, but pipes
-  compose the ones you have: `grep -rl foo src | xargs wc -l | sort -n | tail -5`
-  is four tool calls collapsed into one round trip, with the intermediate data
-  never touching the context window.
-- **Discoverable.** The model does not need you to describe the environment.
-  `ls`, `--help`, `which` are the discovery mechanism.
-- **It inherits an ecosystem.** `ffmpeg`, `jq`, `rg`, `git`, `psql`, `kubectl` —
-  forty years of CLI tooling, available immediately. You are not giving the agent
-  tools; you are plugging it into every tool that already exists.
+- **可组合。** 你没法列举用户会需要的每一个动作，但管道把现有的工具组合起来：`grep -rl foo src | xargs wc -l | sort -n | tail -5` 是四个工具调用压缩成一次往返，中间的数据从不进上下文窗口。
+- **可发现。** 模型不需要你描述环境。`ls`、`--help`、`which` 就是发现机制。
+- **它继承了整个生态。** `ffmpeg`、`jq`、`rg`、`git`、`psql`、`kubectl` —— 四十年的 CLI 工具，立即可用。你不是在给 Agent 赋予工具；你是把它接到已经存在的每一个工具上。
 
-The honest caveat, stated up front: **"bash is all you need" is a claim about
-sufficiency, not optimality.** Real products ship dedicated read/edit/grep tools
-because they buy token efficiency, structured errors, staleness checks, and
-permission granularity. Bash is what keeps the agent from being capped at
-whatever its author imagined. `docs/` argues both sides where it matters.
+诚实的警告，先说清楚：**"bash is all you need" 是一个关于充分性而非最优性的声明。** 真实的产品发布专用的读/编辑/搜索工具，因为它们买到了 token 效率、结构化的错误、新鲜度检查和权限细度。Bash 是阻止 Agent 被死死卡在作者能想到的东西上的办法。`docs/` 在重要的地方列举了双方的论证。
 
 ---
 
-## Stages
+## 阶段
 
-Each stage introduces exactly one idea and ships a complete, runnable snapshot
-under `stages/`. Duplication between snapshots is intentional — a readable diff
-beats DRY in a teaching repo.
+每个阶段引入恰好一个想法，并在 `stages/` 下发布一个完整的、可运行的快照。快照之间的重复是有意的 —— 在教学仓库里，可读的 diff 比 DRY 更重要。
 
 | Stage | Idea | Status |
 |---|---|---|
-| [00 The Loop](docs/00-loop.md) | request → tool call → execute → repeat. One file, no SDK. | ✅ built |
-| [01 Don't Die](docs/01-dont-die.md) | truncation, timeouts, process-tree kill, `finish_reason`, permission gate | ✅ built |
-| [02 See Everything](docs/02-see-everything.md) | event bus, streaming, full instrumentation, JSONL trace, replay | ✅ built |
-| [03 Babel](docs/03-babel.md) | one agent, many protocols: OpenAI + Anthropic behind a neutral core | ✅ built |
-| [04 The Cache](docs/04-the-cache.md) | prompt caching as *discipline*, and what it is worth in dollars | ✅ built |
-| [05 Live Forever](docs/05-live-forever.md) | compaction, context injection, memory — and what compaction really costs | ✅ built |
-| [06 The Composer](docs/06-the-composer.md) | a TUI in the standard library: God view vs Model view of the same session | ✅ built |
-| [07 Multiply](docs/07-multiply.md) | subagents by recursion, skills, and what PTC really is | ✅ built |
-| [08 Sandbox](docs/08-sandbox.md) *(optional)* | embedded shell interpreter, and why you cannot secure a shell by reading the command | ✅ built |
+| [00 The Loop](docs/00-loop.md) | request → tool call → execute → repeat。一个文件，没有 SDK。 | ✅ built |
+| [01 Don't Die](docs/01-dont-die.md) | 截断、超时、进程树杀死、`finish_reason`、权限闸 | ✅ built |
+| [02 See Everything](docs/02-see-everything.md) | 事件总线、流式、完整仪表、JSONL trace、重放 | ✅ built |
+| [03 Babel](docs/03-babel.md) | 一个 Agent，多个协议：OpenAI + Anthropic 背后是一个中立内核 | ✅ built |
+| [04 The Cache](docs/04-the-cache.md) | prompt 缓存作为**纪律**，以及它值多少钱 | ✅ built |
+| [05 Live Forever](docs/05-live-forever.md) | 上下文压缩、上下文注入、记忆 —— 还有上下文压缩真正的代价 | ✅ built |
+| [06 The Composer](docs/06-the-composer.md) | 标准库里的 TUI：上帝视角 vs 模型视角看同一个会话 | ✅ built |
+| [07 Multiply](docs/07-multiply.md) | 子 Agent（递归）、技能、什么叫真正的 PTC | ✅ built |
+| [08 Sandbox](docs/08-sandbox.md) *(optional)* | 嵌入式 shell 解释器，以及为什么你没法通过读命令来保护 shell | ✅ built |
 
-**Appendix: [Wire notes](docs/wire-notes.md)** — what one real gateway actually
-sends, probed byte by byte: how each protocol reports a truncated tool call
-(badly, and differently), where streaming usage lies, which error you get for an
-unknown model (401, not 404), and proof that prompt caching works. Every claim
-carries its raw evidence. The teaching material in `docs/` is built on this file
-rather than on protocol documentation, because the two do not agree.
+**附录：[Wire notes](docs/wire-notes.md)** —— 一个真实网关实际发出的东西，逐字节探测：每个协议怎样报告被截断的工具调用（不好，而且不一样）、流式使用数据在哪里说谎、无法识别的模型会得到什么错误码（401，不是 404）、prompt 缓存确实能工作的证明。每个声明都带上它的原始证据。`docs/` 里的教材是建立在这个文件基础上的，而不是协议文档，因为两者不一致。
 
-## What you get by the end
+## 到最后你会得到什么
 
-- Per-turn token accounting that distinguishes **full-price / cache-write /
-  cache-read**, with a running cost ledger in your own currency.
-- TTFT and tokens-per-second on every model call; wall-clock on every command.
-- A **request inspector** — one keystroke dumps the exact bytes about to be sent.
-- A JSONL trace of every session, and `replay` to step through one **without an
-  API key** (which is also how you can study a session you never paid for).
-- A conversation view that shows compaction as a first-class event: what was
-  summarized, why, and what it cost you in tokens *and* in cache invalidation —
-  measured at **+25% in full-price tokens on identical work**, which is why
-  stage 05 argues compaction is a survival mechanism and not an optimisation.
-- A three-view TUI over any trace — **what happened**, **what the model saw**,
-  and **the raw bytes** — written on the standard library, because the
-  interesting parts of a terminal UI (raw-mode restoration, the Escape
-  ambiguity, display width vs byte length) are exactly what a framework hides.
-- Long-term memory that is a file the agent appends to with `>>`, and a rule for
-  where injected context may live so that knowing the time does not cost you
-  your cache.
-- Subagents that are the same loop called again, running concurrently into a
-  single ordered trace — with the measurement that matters: **20% more tokens
-  for a parent context 9.6x smaller.** A subagent does not save tokens, it saves
-  context, and knowing which one you are short of is the whole decision.
-- Skills that are a directory and one paragraph, with the index cost printed so
-  you can see the tax you are paying on every request forever.
-- An embedded shell that sees every command *after* expansion, and a measured
-  table of the fourteen ways a regexp and a parser both lose.
-- No vendor lock: any OpenAI- or Anthropic-compatible endpoint, including local
-  models, configured by URL + key + protocol.
+- 按回合的 token 记账，能分清楚**全价 / 缓存写 / 缓存读**，还有一本用你自己货币记录的成本账目。
+- 每个模型调用的 TTFT 和每秒 token；每个命令的墙钟时间。
+- 一个**请求检查器** —— 按一个按键就能转储即将发送的确切字节。
+- 一个 JSONL trace 记录每个会话，还有 `replay` 来单步走一个会话，**不需要 API 密钥**（这也是你怎样研究一个你从没付过钱的会话的）。
+- 一个对话视图，把上下文压缩作为一流事件展示：什么被总结了、为什么、它在 token **和**缓存失效上实际花了你多少 —— 在**相同工作上的全价 token +25%** 下测量，这就是为什么第 05 阶段论证上下文压缩是一个生存机制而不是优化。
+- 一个三视角 TUI，覆盖任何 trace —— **发生了什么**、**模型看到了什么**、**原始字节** —— 用标准库写的，因为 TUI 有趣的部分（原始模式恢复、Escape 歧义、显示宽度 vs 字节长度）正是框架隐藏的那些。
+- 长期记忆，是 Agent 用 `>>` 追加写入的一个文件，还有一个规则来控制注入的上下文能在哪里活，这样知道时间就不会花掉你的缓存。
+- 子 Agent，是同样的主循环再调用一次，并发运行进一个单一有序的 trace —— 一个重要的测量：**父 Agent 上下文小 9.6 倍却多了 20% 的 token。** 子 Agent 不省 token，它省上下文，知道你缺的是哪一个就是全部决定。
+- 技能，是一个目录和一段话，索引成本就印在那儿，这样你能看到你在每个请求上永久地付的税。
+- 一个嵌入式 shell，能看到每个命令**展开以后**的样子，还有一个测量表，列出 regexp 和 parser 两个都会输的十四个方式。
+- 没有供应商锁定：任何 OpenAI 或 Anthropic 兼容的端点，包括本地模型，由 URL + 密钥 + 协议配置。
 
 ---
 
-## Quickstart
+## 快速开始
 
-Requires Go 1.24+ and a POSIX shell (on Windows: Git Bash, which ships with Git
-for Windows — the agent finds it automatically).
+需要 Go 1.24+ 和一个 POSIX shell（在 Windows 上：Git Bash，Git for Windows 附带的 —— Agent 会自动找到）。
 
 ```sh
 git clone <this repo> && cd bash-is-all-you-need
@@ -113,8 +73,7 @@ set -a && . ../.env && set +a
 > find the bug in this directory, fix it, and verify the fix
 ```
 
-Then look at what it did — no key required, and it works on somebody else's
-trace just as well as your own:
+然后看看它干了什么 —— 不需要密钥，用别人的 trace 也能工作得一样好：
 
 ```sh
 go build -o composer ./stages/06-the-composer
@@ -122,53 +81,35 @@ go build -o composer ./stages/06-the-composer
 ./composer --composer-dump session.jsonl --view model --call 12   # the same, greppable
 ```
 
-Any OpenAI-compatible endpoint works — OpenRouter, DeepSeek, Kimi, GLM, or a
-local Ollama / vLLM / LM Studio. Stage 03 adds the Anthropic protocol alongside
-it.
+任何 OpenAI 兼容的端点都能工作 —— OpenRouter、DeepSeek、Kimi、GLM、或本地的 Ollama / vLLM / LM Studio。第 03 阶段把 Anthropic 协议也加上。
 
 ---
 
-## Non-goals
+## 非目标
 
-Stated so the boundaries are visible, since knowing where a teaching project
-stops is part of the teaching:
+讲清楚边界，因为知道一个教学项目在哪儿停止本身就是教学的一部分：
 
-- **Not a Claude Code replacement.** Use Claude Code. This explains one.
-- **No MCP, no plan mode, no multi-model routing.** Each doc notes the layer
-  where you would add them.
-- **No agent framework, and no TUI framework.** No LangChain, no vector
-  database, no orchestration layer, no vendor SDK, no Bubble Tea. Stages 00-07
-  are the standard library plus `golang.org/x/sys` — for Windows Job Objects in
-  stage 01 and terminal control in stage 06 — and that is all. Stage 08 is the
-  single exception: it embeds `mvdan.cc/sh/v3`, and its chapter is largely an
-  argument about when a dependency earns its place, with a measured account of
-  what that one cost (it moved the Go floor twice before being pinned back).
-  Stage 06 is where the no-framework rule stops being an aesthetic: a TUI
-  framework hides raw-mode
-  restoration, the Escape-key ambiguity, and display width versus byte length,
-  which are the three things that chapter is about.
-- **Not a benchmark chaser.** If you want SWE-bench numbers from a minimal
-  agent, see `mini-swe-agent` below.
+- **不是 Claude Code 的替代品。** 用 Claude Code。这个仓库讲的是原理。
+- **没有 MCP、没有计划模式、没有多模型路由。** 每个文档都标注了你该在哪一层加上这些。
+- **没有 Agent 框架，没有 TUI 框架。** 没有 LangChain、没有向量数据库、没有编排层、没有供应商 SDK、没有 Bubble Tea。第 00-07 阶段只有标准库加 `golang.org/x/sys` —— 第 01 阶段的 Windows Job Objects 和第 06 阶段的终端控制 —— 就这样。第 08 阶段是唯一的例外：它嵌入了 `mvdan.cc/sh/v3`，它的章节基本上就是一篇关于一个依赖到什么时候才配得上自己位置的论证，用一个测量好的账单讲那一个花了什么（它在被钉死回去之前把 Go 的底线移动过两次）。第 06 阶段是"不用框架"这条规则不再只是审美偏好的地方：TUI 框架隐藏了原始模式恢复、Escape 键歧义、显示宽度 vs 字节长度，那三件事就是这一章讲的东西。
+- **不是基准追赶。** 如果你想要一个最小 Agent 的 SWE-bench 数字，看下面的 `mini-swe-agent`。
 
 ---
 
-## Related work
+## 相关工作
 
-This is a crowded field and the honest framing is that the *loop* has been
-taught well many times. What is missing elsewhere is the instrumentation.
+这是个竞争激烈的领域，诚实的框架是**主循环**教得很好已经许多次了。别处缺的是仪表。
 
 | Project | Shape | What it does not cover |
 |---|---|---|
-| [shareAI-lab/learn-claude-code](https://github.com/shareAI-lab/learn-claude-code) | Python, 17 progressive lessons, same slogan | single-provider; no token/cost/cache instrumentation; no TUI; no replay |
-| [SWE-agent/mini-swe-agent](https://github.com/SWE-agent/mini-swe-agent) | ~100 lines Python; the purest bash-only agent — it does not even use the tool-calling API, the model just replies with a command | providers via litellm as a black box; not a progressive course; no cost/cache instrumentation |
-| [ghuntley/how-to-build-a-coding-agent](https://ghuntley.com/agent/) | Go, 6-step workshop | multi-tool route; no instrumentation, TUI, or replay |
-| [decodingai course](https://github.com/decodingai-magazine/building-a-coding-agent-from-scratch-course) | Python, 8 articles + 4 videos, Modal sandbox | tracing outsourced to a SaaS rather than built |
-| [owenthereal/build-your-own-coding-agent](https://github.com/owenthereal/build-your-own-coding-agent) | Python, ~700 lines, no SDK — closest in spirit | no instrumentation, multi-protocol, or TUI |
+| [shareAI-lab/learn-claude-code](https://github.com/shareAI-lab/learn-claude-code) | Python，17 个渐进式课程，同样的标语 | 单供应商；没有 token/成本/缓存仪表；没有 TUI；没有重放 |
+| [SWE-agent/mini-swe-agent](https://github.com/SWE-agent/mini-swe-agent) | ~100 行 Python；最纯粹的仅 bash Agent —— 它连工具调用 API 都不用，模型直接回复一个命令 | 通过 litellm 的供应商作为黑箱；不是一个渐进式课程；没有成本/缓存仪表 |
+| [ghuntley/how-to-build-a-coding-agent](https://ghuntley.com/agent/) | Go，6 步讲座 | 多工具路线；没有仪表、TUI 或重放 |
+| [decodingai course](https://github.com/decodingai-magazine/building-a-coding-agent-from-scratch-course) | Python，8 篇文章 + 4 个视频，Modal 沙箱 | 跟踪外包给一个 SaaS 而不是内置 |
+| [owenthereal/build-your-own-coding-agent](https://github.com/owenthereal/build-your-own-coding-agent) | Python，~700 行，没有 SDK —— 精神上最接近 | 没有仪表、多协议或 TUI |
 
-Worth knowing about `mini-swe-agent` specifically: it demonstrates a form even
-more radical than one tool — *zero* tools, with commands parsed out of plain
-model output. If you think this repo is minimal, that one is the floor.
+特别值得知道 `mini-swe-agent` 的是：它展示了一个比一个工具还要根本的形态 —— **零**工具，命令从纯模型输出中解析出来。如果你觉得这个仓库够小了，那个才是底线。
 
-## License
+## 许可
 
 MIT.

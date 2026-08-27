@@ -1,11 +1,10 @@
-# Stage 01 — Don't Die
+# 阶段 01 — 活下来
 
-Stage 00 works right up until it doesn't. This chapter is four specific ways it
-dies, and what each one costs to fix.
+阶段 00 工作得很好，直到它不能工作为止。这一章讲四种具体的失败方式，
+以及每种的修复成本。
 
-**Do the reproductions first.** Every fix below is obvious once you've read it,
-and none of them are obvious before. Fifteen minutes breaking stage 00 buys you
-the intuition that makes stage 01 read as inevitable rather than arbitrary.
+**先做复现**。下面每个修复看完都很明显，但没看之前都不明显。
+花十五分钟破坏阶段 00 会给你直觉，使得阶段 01 读起来像必然而非武断。
 
 ```sh
 go build -o agent00 ./stages/00-loop
@@ -15,73 +14,68 @@ mkdir -p sandbox && cd sandbox
 
 ---
 
-## Death 1 — the command that never returns
+## 死法 1 — 永不返回的命令
 
-**Reproduce** (stage 00):
+**复现**（阶段 00）：
 
 ```
 > start a simple http server on port 8000 in the foreground
 ```
 
-The agent runs `python -m http.server 8000` and never comes back. No timeout, no
-Ctrl-C handling worth the name, no way out but killing the terminal.
+Agent 运行 `python -m http.server 8000` 再也回不来。没有超时、没有
+值得一提的 Ctrl-C 处理、除了杀死终端没有出路。
 
-**The obvious fix, and why it is not enough.** Add a timeout, kill `cmd.Process`
-when it fires. Now try:
+**显而易见的修复，以及为什么它不够**。加一个超时，当它触发时
+杀死 `cmd.Process`。现在试试：
 
 ```
 > run: (sleep 300 &) ; echo started
 ```
 
-The shell exits immediately. `echo started` printed. And the agent still hangs
-forever.
+Shell 立即退出。`echo started` 打印了。Agent 仍然永远挂起。
 
-This is the part that surprises people. `cmd.Wait()` does not wait for the
-process — it waits for the *stdout pipe to close*, and the pipe stays open as
-long as any process holds the write end. The backgrounded `sleep` inherited that
-handle. So killing only the shell doesn't merely leak an orphan: **it hangs the
-very timeout that was supposed to rescue you.**
+这是让人惊讶的部分。`cmd.Wait()` 不是在等进程——它在等*标准输出
+管道关闭*，只要任何进程持有写端，管道就会保持打开。后台的 `sleep`
+继承了那个句柄。所以只杀死 shell 不只是泄漏孤儿：**它挂起了本该救你
+的超时本身**。
 
-**The real fix** is to make the shell and everything it spawns killable as a
-unit:
+**真正的修复**是让 shell 和它生成的一切成为一个单元可杀死：
 
-- **Unix** — `SysProcAttr{Setpgid: true}` puts the shell in a new process group,
-  and `kill(-pgid)` signals the whole group.
-- **Windows** — a Job Object; every descendant is assigned to it, and
-  `TerminateJobObject` ends all of them at once.
+- **Unix** — `SysProcAttr{Setpgid: true}` 把 shell 放入新进程组，
+  `kill(-pgid)` 信号整个组。
+- **Windows** — 一个 Job Object；每个后代都分配给它，`TerminateJobObject`
+  一次结束所有的。
 
-That's `proc_unix.go` and `proc_windows.go`, behind one small interface so
-`runBash` never mentions a platform:
+那是 `proc_unix.go` 和 `proc_windows.go`，在一个小接口后面，所以
+`runBash` 从不提到平台：
 
 ```go
 g, _ := newProcGroup()
 defer g.Close()
-g.attach(cmd)          // before Start: process group / job creation flags
+g.attach(cmd)          // 在 Start 之前：进程组 / job 创建标记
 cmd.Start()
-g.adopt(cmd)           // after Start: assign to the job (Windows)
+g.adopt(cmd)           // 在 Start 之后：分配给 job（Windows）
 ...
-g.kill()               // takes the whole tree down
+g.kill()               // 整个树都下来
 ```
 
-**The lesson that generalises:** when a cleanup path depends on the thing you
-are cleaning up, it isn't a cleanup path. Check every "and then we kill it" for
-this shape.
+**通用化的教训**：当清理路径依赖你在清理的东西时，它不是一条
+清理路径。检查每个"然后我们杀死它"是否有这种形状。
 
-**And then apply it to the fix itself.** `g.kill()` is supposed to unblock
-`Wait()` — but "supposed to" is the same assumption we just watched fail. So the
-reap gets its own five-second deadline, and if that expires the agent reports
-`[TIMED OUT and could not be reaped]` and moves on.
+**然后把它应用到修复本身**。`g.kill()` 应该解除阻塞
+`Wait()`——但"应该"就是我们刚看到失败的同样假设。所以收割得到自己的
+五秒截止，如果那过期了 Agent 会报告 `[TIMED OUT and could not be reaped]`
+然后继续。
 
-Giving up there leaks the `Wait` goroutine, which holds the output buffers, so
-the code must also **refuse to read those buffers** — the copying goroutine may
-still be writing into them, and reading them anyway is a data race that will
-show up as garbled context weeks later. Leaking one goroutine is survivable;
-wedging the agent is not; racing on a buffer is the worst of the three because
-it fails quietly.
+在那里放弃会泄漏 `Wait` goroutine，它持有输出缓冲区，所以代码还必须
+**拒绝读这些缓冲区**——复制 goroutine 可能仍在写入它们，这时候硬要
+去读就是数据竞争，数周后会在上下文里冒出乱码。泄漏一个 goroutine
+是可以活下来的；卡住 Agent 不是；竞争缓冲区是三者中最糟的，因为
+它默默地失败。
 
-### From a real run
+### 从一个真实的运行
 
-The exact reproduction, through the finished agent, with a five-second timeout:
+准确的复现，通过完成的 Agent，带五秒超时：
 
 ```
 > run exactly this: (sleep 300 &) ; echo started ; sleep 300
@@ -91,99 +85,92 @@ The exact reproduction, through the finished agent, with a five-second timeout:
   | [TIMED OUT after 5.046s — the process tree was killed]
 ```
 
-Four things to notice, all of them design decisions paying off:
+四件事要注意，都是设计决策的回报：
 
-- **It came back.** Eighteen seconds wall-clock for the whole exchange, five of
-  them the timeout. Stage 00 would still be running.
-- **`started` survived.** Output produced before the kill is still captured and
-  still shown. A timeout is not a reason to throw away what you learned.
-- **The model was told, in words, what happened** — and its summary correctly
-  explained that the backgrounded sleep died with the tree. The status line is
-  written for a reader, because it has one.
-- **Zero orphans.** `ps -W | grep -c sleep` reads 0 before and 0 after. That is
-  the number the whole section exists to produce.
+- **它回来了**。整个交换的十八秒墙时钟，其中五个是超时。阶段 00
+  仍会运行。
+- **`started` 活了下来**。杀死前产生的输出仍然被捕获和显示。超时
+  不是扔掉你学到的东西的理由。
+- **模型被告知，用文字，发生了什么**——它的总结正确地解释了
+  后台 sleep 随树一起死亡。状态行是写给读者看的——因为它确实有
+  读者。
+- **零孤儿**。`ps -W | grep -c sleep` 前后都读 0。那个数字，就是
+  这一整节存在的全部目的。
 
-### Why Unix is airtight here and Windows is not
+### 为什么 Unix 这里密不透风，Windows 不是
 
-Worth internalising, because it explains the shape of the code:
+值得内化，因为它解释了代码的形状：
 
-- **Unix** sets the process group in the gap between `fork()` and `exec()` — the
-  child is in its own group **before its first instruction runs**. Nothing can
-  escape, because nothing has executed.
-- **Windows** cannot assign a Job Object to a process that does not exist yet.
-  So `adopt()` runs *after* `Start()`, and there is a microsecond window in
-  which a grandchild spawned by the shell's very first act would escape the job.
+- **Unix** 在 `fork()` 和 `exec()` 之间设置进程组——子进程在**它的
+  第一条指令运行前**就在自己的组中。什么都逃不掉，因为什么都没执行。
+- **Windows** 不能把 Job Object 分配给还不存在的进程。所以 `adopt()`
+  在 `Start()` *之后*运行，有一微秒窗口，shell 的第一个行为生成的
+  孙辈会逃出 job。
 
-The airtight Windows fix is `CREATE_SUSPENDED` + `ResumeThread`, which `os/exec`
-makes awkward on purpose (a suspended process Go's reaper never resumes would
-hang `Wait()`). This repo takes the window and **documents it in the code**
-rather than pretending it isn't there. If you are writing a sandbox rather than a
-teaching repo, drive `CreateProcess` directly, where the flag and the thread
-handle are both in `PROCESS_INFORMATION`.
+密不透风的 Windows 修复是 `CREATE_SUSPENDED` + `ResumeThread`，`os/exec`
+故意搞它复杂（一个 Go 的收割者永不恢复的暂停进程，会挂起 `Wait()`）。
+这个 repo 接受这个窗口，**在代码中记录它**，而不是假装它不存在。
+如果你在写沙箱而不是教学 repo，直接驱动 `CreateProcess`，旗标和线程
+句柄都在 `PROCESS_INFORMATION`。
 
-### Platform caveats you will actually hit
+### 你实际上会遇到的平台注意事项
 
-| Caveat | Why it matters |
+| 注意事项 | 为什么重要 |
 |---|---|
-| **`Close()` is asymmetric** | Windows `KILL_ON_JOB_CLOSE` means closing the handle *kills* the tree — a genuine crash-safety net. Unix has none: if the agent dies, its children live on under init. So `nohup npm start &` survives a tool call on Linux/macOS and does **not** on Windows. |
-| **Nested jobs need Win8+** | Some CI runners and container hosts already put every process in a locked-down job; `AssignProcessToJobObject` then fails with `ERROR_ACCESS_DENIED`. `runBash` degrades to a warning — the command still runs, containment is lost — instead of refusing to work. |
-| **Zombies look alive** | `kill(pid, 0)` succeeds for an unreaped zombie. Normally init reaps instantly; in a container whose PID 1 doesn't reap, they linger. Poll, don't check once. |
-| **PID recycling is *not* a risk here** | `os.Process` holds an open handle from `Start()` to `Wait()`, and Windows will not recycle a PID while a handle is open. |
+| **`Close()` 不对称** | Windows `KILL_ON_JOB_CLOSE` 意味着关闭句柄*杀死*树——一个真正的崩溃安全网。Unix 没有：如果 Agent 死了，它的子进程活在 init 之下。所以 `nohup npm start &` 在 Linux/macOS 上活下来，在 Windows 上**不是**。 |
+| **嵌套 job 需要 Win8+** | 一些 CI 运行程序和容器主机已经把每个进程放在锁定的 job 中；`AssignProcessToJobObject` 然后失败并带 `ERROR_ACCESS_DENIED`。`runBash` 降级为警告——命令仍运行，隔离失效——而不是拒绝工作。 |
+| **僵尸看起来活着** | `kill(pid, 0)` 对未收割的僵尸成功。通常 init 立即收割；在 PID 1 不收割的容器中，它们逗留。轮询，不检查一次。 |
+| **PID 回收这里不是风险** | `os.Process` 从 `Start()` 到 `Wait()` 持有一个开放的句柄，Windows 在句柄开放时不会回收 PID。 |
 
-### A trap that only exists on Windows: `$!` lies
+### 只在 Windows 上存在的陷阱：`$!` 撒谎
 
-Found while writing the test for this chapter, and worth a paragraph because it
-would have silently invalidated the whole thing.
+发现于写这章的测试中，值得一段因为它会默默地使整个事情无效。
 
-Git Bash is MSYS2, which maintains **its own POSIX PID namespace layered over
-Windows PIDs**. `echo $!` prints the MSYS pid, not the Windows one:
+Git Bash 是 MSYS2，它维护**自己的 POSIX PID 命名空间分层在 Windows PID 上**。
+`echo $!` 打印 MSYS pid，不是 Windows 的：
 
 ```
 msys_pid=48908                                <- what $! prints
 48908 48907 48905  56176 ... /usr/bin/sleep   <- ps -W: the real WINPID is 56176
 ```
 
-Hand 48908 to `OpenProcess` and it does not error — it cheerfully queries
-whatever unrelated Windows process happens to own that number. A *test* built on
-`$!` appears to pass while proving nothing. A *killer* built on it terminates a
-bystander.
+交 48908 给 `OpenProcess` 它不报错——它欢快地查询碰巧拥有那个数字的
+不相关的 Windows 进程。建立在 `$!` 之上的*测试*看起来通过了，其实
+什么也没证明；建立在它之上的*杀手*，杀的是旁观者。
 
-The translation is available at `/proc/<pid>/winpid`, so the fixture uses
-`cat /proc/$p/winpid 2>/dev/null || echo $p` — MSYS2 answers, real Unix has no
-such file and falls back to the pid that was already correct.
+翻译在 `/proc/<pid>/winpid`，所以夹具用 `cat /proc/$p/winpid 2>/dev/null || echo $p`
+——MSYS2 回答，真实 Unix 没有这样的文件并回到已经正确的 pid。
 
-The general lesson is bigger than Windows: **when your test and your
-implementation share an assumption, the test cannot detect that the assumption
-is wrong.** Which is why the test suite here also contains a deliberate
-demonstration of the failure mode (`TestProcGroupKillingOnlyTheShellLeavesOrphans`),
-and why the implementation was mutation-checked — `TerminateJobObject` replaced
-with a no-op — to confirm the test actually fails when the code is broken:
+更大的教训，不只关乎 Windows：**当你的测试和实现共享一个假设时，
+测试不能发现假设是错的**。这就是为什么这个测试套件里也特意放了
+一个演示这种失败模式的测试（`TestProcGroupKillingOnlyTheShellLeavesOrphans`），
+以及为什么这份实现经过了变异测试——`TerminateJobObject` 被替换成
+no-op——来确认测试在代码破损时实际失败：
 
 ```
 proc_test.go:209: orphans survived kill(): [18592 36592] — the process tree escaped
 --- FAIL: TestProcGroupKillsWholeTree (5.22s)
 ```
 
-A green test you have never seen fail is not evidence.
+一个你从不见它失败的绿色测试不是证据。
 
 ---
 
-## Death 2 — the command that prints 40MB
+## 死法 2 — 打印 40MB 的命令
 
-**Reproduce** (stage 00):
+**复现**（阶段 00）：
 
 ```
 > how many files are on this machine?
 ```
 
-The model tries `find / -type f | wc -l` — fine. Now watch it try
-`find / -type f` when it wants to see *names*. Stage 00 pushes every byte into
-the message array, and it stays there for the rest of the session, re-sent and
-re-billed on every subsequent turn.
+模型尝试 `find / -type f | wc -l`——没问题。现在看它想看*名称*时
+会尝试 `find / -type f`。阶段 00 把每个字节都推进消息数组，此后
+一直留在那里，在每个后续回合都重发一次、重新计费一次。
 
-**Fix: truncate, but not from the front.** Head-only truncation is the reflex
-and it is the wrong reflex — the useful part of a failing build is the *last*
-twenty lines. Keep both ends, drop the middle, and say how much you dropped:
+**修复：截断，但不是从前面**。只从头截断是本能，它是错误的本能
+——失败构建的有用部分是*最后*二十行。保留两端，丢掉中间，说你丢了
+多少：
 
 ```
 <first 2/3 of the budget>
@@ -194,24 +181,22 @@ twenty lines. Keep both ends, drop the middle, and say how much you dropped:
 [exit 0 · 3.2s] [output truncated — rerun with a filter such as grep/head/tail]
 ```
 
-Three details in `truncate()` that matter more than they look:
+`truncate()` 的三个细节比看起来更重要：
 
-- **Cut on rune boundaries.** Slicing a byte array mid-character produces
-  invalid UTF-8, which some APIs reject outright and others turn into mojibake
-  in the model's context.
-- **Say the byte count.** "Something was removed" is much less useful to the
-  model than "1.4MB was removed" — the latter tells it the command was simply
-  the wrong shape.
-- **Tell it what to do instead.** The suffix naming `grep`/`head` measurably
-  reduces the number of times the model retries the same dump.
+- **在 rune 边界切**。在字符中间切片字节数组产生无效的 UTF-8，
+  一些 API 完全拒绝它，其他把它变成模型上下文的乱码。
+- **说字节数**。"某东西被移除"对模型远没有"1.4MB 被移除"有用
+  ——后者告诉它命令根本是错误的形状。
+- **告诉它改怎么做**。后缀命名 `grep`/`head` 能测量地减少
+  模型重试同一转储的次数。
 
-**Budget split.** stdout gets ⅔ of the budget, stderr ⅓. A build that fails
-prints a little to stdout and a lot to stderr; a listing does the opposite.
-Splitting the budget means neither starves the other.
+**预算分割**。标准输出得 ⅔ 的预算，标准错误得 ⅓。一个失败的构建，
+标准输出只有一点，标准错误却是一大堆；换成列表命令，情况正好
+相反。分割预算意味着两者都不会挨饿。
 
-### From a real run
+### 从一个真实的运行
 
-A 275KB log whose *last line* is the only one that matters:
+一个 275KB 的日志，其*最后一行*是唯一重要的：
 
 ```
 > cat big.log and tell me what went wrong at the end
@@ -223,40 +208,35 @@ A 275KB log whose *last line* is the only one that matters:
   | [exit 0 · 161ms] [output truncated — rerun with a filter such as grep/head/tail]
 ```
 
-Read that carefully, because it is the whole argument for head+tail in one
-screen: the model asked for a hundred lines, got truncated anyway, **and the
-FATAL line survived** because it was at the tail. Head-only truncation would
-have delivered 5KB of routine INFO lines and dropped the single line the user
-asked about — and the model would have answered confidently from what it was
-given.
+仔细读读那段，因为它把"头+尾"这整个论证都摆在了一个屏幕里：模型
+要的是一百行，还是被截断了，**而 FATAL 行活了下来**，因为它在
+尾部。只从头截断的话，会交付 5KB 的例行 INFO 行，却把用户问的那
+一行丢了——模型还是会照着拿到的东西自信地回答。
 
-Note `NFO  worker-008` on the line above it: that is the tail resuming
-mid-line, which is ugly and completely harmless. Do not spend code on making
-truncation pretty.
+注意 `NFO  worker-008` 在上面的行：那是尾部从半行中间续上，
+有点丑但完全无害。不要花代码让截断漂亮。
 
-Two more things that run showed:
+这次运行还显示了两件事：
 
-- The system prompt's *"prefer commands that filter over commands that dump"*
-  did real work — the model reached for `tail -100`, never `cat`. Cheap
-  instructions beat expensive machinery.
-- After the truncation notice, it followed up with `tail -20` **and**
-  `grep -c 'error\|fatal'` **in a single assistant message** — two `tool_calls`
-  at once. Parallel tool calls are not hypothetical on this provider, which is
-  exactly why "every call gets a result, always" is a rule and not a
-  nicety.
+- 系统提示词的*"倾向于过滤命令而非转储命令"*做了真实的工作
+  ——模型用的是 `tail -100`，从不是 `cat`。便宜的指令击败昂贵的
+  机制。
+- 在截断通知后，它跟进了 `tail -20` **和** `grep -c 'error\|fatal'`
+  **在单个助手消息中**——一次两个 `tool_calls`。并行工具调用在这个
+  供应商上不是假设的，这正是"每个调用得一个结果，总是"是规则
+  而不是锦上添花的原因。
 
 ---
 
-## Death 3 — the model gets cut off
+## 死法 3 — 模型被截断
 
-Stage 00 asks one question about each response: *were there tool calls?* That
-one question hides an entire class of failure.
+阶段 00 问每个响应一个问题：*有工具调用吗？* 那一个问题就藏住了
+一整类失败。
 
-**Reproduce**: send a request with a tiny `max_tokens` and a task that needs a
-long command. Here is what actually came back, from two protocols on the same
-gateway.
+**复现**：发一个请求带一个微小的 `max_tokens` 和需要长命令的任务。
+这是实际回来的，来自同一网关的两个协议。
 
-**The OpenAI side is the honest failure.** `max_tokens: 24`:
+**OpenAI 这边是诚实的失败**。`max_tokens: 24`：
 
 ```json
 {"finish_reason": "length",
@@ -264,12 +244,11 @@ gateway.
              "reasoning_content": "The user wants to search for Go files containing the word \"deadline\" in the"}}
 ```
 
-Cut off during reasoning, so no tool call was ever emitted. Note the shape of
-the lie stage 00 would tell: it sees no tool calls, concludes "the turn is
-finished", prints an empty message and waits for you. Nothing crashed. Nothing
-was reported. The task simply stopped.
+在推理中被截断，所以从不发出工具调用。注意阶段 00 在这里会讲的谎
+是什么形状：它看不到工具调用，推断"回合完了"，打印空消息并等你。
+什么都没崩溃。什么都没报告。任务就停了。
 
-**The Anthropic side is the dangerous one.** `max_tokens: 10`:
+**Anthropic 这边是危险的**。`max_tokens: 10`：
 
 ```json
 {"stop_reason": "tool_use",
@@ -277,17 +256,17 @@ was reported. The task simply stopped.
  "content": [{"type": "tool_use", "name": "bash", "input": {"raw_arguments": ""}}]}
 ```
 
-Three separate things are wrong in five lines:
+短短五行里，错了三个地方：
 
-1. **`stop_reason` says `tool_use`.** Not `max_tokens`. The envelope claims this
-   is a normal, usable tool call.
-2. **`max_tokens` was not honoured.** Ten were requested; 136 were generated.
-   On this gateway a small `max_tokens` is not a cost cap, and you should not
-   plan a budget around it.
-3. **`input` is not the schema you published.** The required `command` key is
-   absent; a non-spec `raw_arguments` key holds an empty string instead.
+1. **`stop_reason` 说 `tool_use`**。不是 `max_tokens`。信封声称这
+   是一个常规的、可用的工具调用。
+2. **`max_tokens` 没被遵守**。十个被要求；136 个被生成。在这个
+   网关一个小的 `max_tokens` 不是成本上限，你不应该围绕它计划
+   预算。
+3. **`input` 不是你发布的模式**。必需的 `command` 键缺席；一个
+   非规格 `raw_arguments` 键持有空字符串。
 
-### The bug this produces in Go, which does not look like a bug
+### 这在 Go 里产生的 bug，看起来不像 bug
 
 ```go
 var args struct{ Command string `json:"command"` }
@@ -295,50 +274,48 @@ json.Unmarshal([]byte(`{"raw_arguments":""}`), &args)  // err == nil
 args.Command                                           // ""
 ```
 
-The unmarshal **succeeds**. Go fills absent keys with the zero value, so "the
-model omitted a required field" and "the model sent an empty string" are the
-same value, and the agent runs an empty command believing it was asked to.
+解组**成功**。Go 用零值填充缺席的键，所以"模型省了一个必需字段"
+和"模型发了空字符串"变成了同一个值，Agent 就运行了空命令，还
+以为自己真是被这样要求的。
 
-The fix is one character wide:
+修复是一个字符宽：
 
 ```go
-var args struct{ Command *string `json:"command"` }   // pointer, not value
+var args struct{ Command *string `json:"command"` }   // 指针，不是值
 ```
 
-`nil` now means absent, `""` means empty, and both get rejected. That is
-`parseBashArgs` in `main.go`, and `render_test.go` feeds it the six payloads
-this gateway was actually observed to produce.
+`nil` 现在意味着缺席，`""` 意味着空，两者都被拒绝。那是 `main.go`
+的 `parseBashArgs`，`render_test.go` 喂它这个网关实际被观察产生的
+六个有效负载。
 
-**Two rules to take away, both bigger than this bug:**
+**两条要记住的规则，都比这个 bug 更大：**
 
-- **Unmarshalling without an error is not validation.** Validate against the
-  schema you published, every time, on every protocol.
-- **The envelope is not evidence about its contents.** `stop_reason` is
-  generated by the same system that produced the malformed body. When the two
-  disagree, the body is the one that will run on your machine.
+- **解组不报错，不代表验证过**。对照你发布的模式去验证——每次都要，
+  每个协议都要。
+- **信封证明不了它装的内容**。`stop_reason` 由产生畸形体的同一个
+  系统生成。两者不一致时，会在你机器上运行的是那个体。
 
-**Half a shell command is not a safer shell command.** Stage 01 refuses to
-execute anything from a `length`-terminated response and tells the model why, in
-a tool result, so it can retry with something shorter:
+**半个 shell 命令不是更安全的 shell 命令**。阶段 01 拒绝执行
+任何来自 `length` 终止的响应的东西，并告诉模型为什么，在一个工具结果中，
+所以它可以用更短的东西重试：
 
-| `finish_reason` | Meaning | What stage 01 does |
+| `finish_reason` | 意思 | 阶段 01 做什么 |
 |---|---|---|
-| `tool_calls` / `tool_use` | Normal tool turn | Execute |
-| `stop` / `end_turn` | Model finished talking | End the turn — but if tool calls are present anyway, trust the calls, not the label |
-| `length` / `max_tokens` | Cut off mid-generation | Do **not** execute. Answer every pending call with an explanation and let it retry |
-| `content_filter` | Provider blocked it | Report and end the turn |
-| anything else | New or vendor-specific | Report the literal string and end the turn. Never silently treat an unknown state as success |
+| `tool_calls` / `tool_use` | 常规工具回合 | 执行 |
+| `stop` / `end_turn` | 模型完成讲话 | 结束回合——但如果工具调用无论如何存在，相信调用，不是标签 |
+| `length` / `max_tokens` | 中途生成被截断 | **不**执行。用解释回答每个待决调用然后让它重试 |
+| `content_filter` | 供应商阻止了 | 报告并结束回合 |
+| 其他任何 | 新的或厂商特定 | 报告字面字符串并结束回合。永不默默地把未知状态当作成功 |
 
-That last row is a habit worth keeping: a state machine that maps unknown inputs
-to "probably fine" will eventually map a refusal, a quota event, or a new safety
-stop to "probably fine".
+最后一行是值得保留的习惯：一个映射未知输入到"可能没问题"的
+状态机最终会映射拒绝、配额事件或新的安全停止到"可能没问题"。
 
 ---
 
-## Death 4 — the command you didn't want
+## 死法 4 — 你不想要的命令
 
-There is nothing in stage 00 between the model and `rm -rf`. The fix is a gate,
-and the interesting part is not the prompt — it's what a **denial** is.
+阶段 00 里，模型和 `rm -rf` 之间什么都没有。修复是一个闸，
+有趣的部分不是 prompt——而是**否定**是什么。
 
 ```go
 case deny:
@@ -347,18 +324,17 @@ case deny:
     continue
 ```
 
-A denial is **data, not an error**. It goes back as a tool result, the turn
-continues, and the model gets to propose something narrower. Treating refusal as
-a fatal error kills the agent at the exact moment a human was engaged enough to
-be watching — which is the worst possible moment to lose the thread.
+一个否定是**数据，不是错误**。它作为工具结果回去，回合继续，
+模型得提议更窄的东西。把拒绝当作致命错误，会在一个人正专注
+盯着看的那一刻杀死 Agent——这恰恰是失去线的最坏可能时刻。
 
-Modes: `y` once, `a` for the session, `n` deny-and-continue, `q` stop. `--yolo`
-skips the gate entirely. If stdin is a pipe there is nobody to ask, so the gate
-detects that up front and says so instead of silently denying everything.
+模式：`y` 一次，`a` 为会话，`n` 否定并继续，`q` 停止。`--yolo`
+完全跳过闸。如果标准输入是一个管道，就没人可问，所以闸提前
+检测出这一点并明说，而不是默默地否定一切。
 
-### From a real run
+### 从一个真实的运行
 
-Piping a task in with no `--yolo`, so every command is refused:
+不带 `--yolo`，把任务用管道传进去，于是每个命令都被拒绝：
 
 ```
 > list the files here
@@ -371,84 +347,79 @@ It looks like both `ls -la` and `ls` were denied. Could you let me know which
 command or approach you'd prefer me to use to list the files?
 ```
 
-That is the behaviour the design is buying. The agent got refused, **narrowed
-its proposal** (`ls -la` → `ls`), got refused again, and then asked a sensible
-question — all inside the same turn, because a denial was a tool result rather
-than a fatal error. Return `error` from that path instead and you get a stack
-trace and a dead session.
+这就是这套设计换来的行为。Agent 被拒绝，**缩小了它的提议**
+（`ls -la` → `ls`），又被拒绝了一次，然后问了一个明智的问题——
+一切在同样的回合中，因为一个否定是一个工具结果而不是致命错误。
+换成从那条路径返回 `error`，你得到的就是一份堆栈跟踪和一个死掉
+的会话。
 
-### The honest argument against "bash is all you need"
+### 对"bash 是所有你需要"的诚实论证
 
-Look at what the gate is able to show you: a command string. That's all it has.
+看闸能向你显示什么：一个命令字符串。那是它有的全部。
 
-A dedicated `write_file` tool could render a **diff**. A dedicated `send_email`
-tool could show you the **recipient**. A dedicated `edit` tool could refuse a
-write when the file changed since the model last read it — an invariant bash
-cannot express at all. And read-only tools like `grep` could be marked
-parallel-safe, while `bash -c "..."` has the same opaque shape whether it is
-`grep` or `git push`, so the harness must serialise everything.
+一个专用的 `write_file` 工具可能渲染一个**diff**。一个专用的
+`send_email` 工具可以把**收件人**显示给你看。一个专用的 `edit`
+工具，可能在文件自从模型上次读取以来发生过变化时拒绝写入——
+一个 bash 根本表达不了的不变量。并且像 `grep` 这样的只读工具
+可能被标记为并行安全，而 `bash -c "..."` 不管是 `grep` 还是
+`git push`，都是同样不透明的形状，所以宿主必须把一切都**串行化**。
 
-This is the real trade. One tool buys breadth and buys it cheaply. Dedicated
-tools buy the harness the ability to **gate, render, audit, and parallelise** —
-and you pay for that breadth every time you want to ask the user a good
-question. The rest of this repo stays on one tool because the instrumentation is
-the subject; a product would promote three or four actions and keep bash as the
-escape hatch.
+这是真实的权衡。一个工具廉价地买广度。专用工具给宿主能力
+**闸、渲染、审计和并行化**——你为那广度每次想问用户一个好问题
+都付费。repo 其余部分为一个工具停止因为仪器是主题；一个产品
+会提升三或四个行为并保留 bash 作为逃生舱口。
 
 ---
 
-## The sanitising trio
+## 清理三人组
 
-Command output is not text yet. Three separate problems that all present as
-"weird characters":
+命令输出还不是文本。三个分开的问题全部表现为"怪字符"：
 
-| Problem | Symptom | Fix |
+| 问题 | 症状 | 修复 |
 |---|---|---|
-| ANSI escapes | `[0;32m` litter in context; wasted tokens | strip with a regex |
-| CRLF | invisible `\r` on every Windows line | normalise to `\n` |
-| Invalid UTF-8 | a native program writing in the local code page (GBK on a Chinese Windows, Shift-JIS on a Japanese one) | replace invalid bytes with U+FFFD |
+| ANSI 转义 | `[0;32m` 在上下文中乱扔；浪费 token | 用正则表达式去掉 |
+| CRLF | 看不到的 `\r` 在每个 Windows 行上 | 正常化到 `\n` |
+| 无效 UTF-8 | 一个本地程序在本地代码页写（中文 Windows 上是 GBK，日文 Windows 上是 Shift-JIS） | 用 U+FFFD 替换无效字节 |
 
-The third one is worth dwelling on if you're on a non-English Windows: the bytes
-are not corrupt, they're *correct in a different encoding*. Replacing them makes
-the failure **visible** rather than silent — the model sees `����` and knows
-something went wrong, instead of confidently reasoning about mojibake. Real
-transcoding is `golang.org/x/text/encoding`, deliberately not a dependency here;
-the `chcp 65001` / `PYTHONIOENCODING=utf-8` route fixes it at the source.
-
----
-
-## What did it cost?
-
-The whole chapter is about four failures, and the code that fixes them is
-smaller than the code that explains them. That ratio is normal for harness work
-and it is why harness work is undervalued: none of this makes the agent smarter,
-and all of it is the difference between a demo and a tool.
-
-Still missing after this chapter, on purpose:
-
-- You still stare at a blank terminal for the whole model turn (**stage 02**).
-- You still can't see the token bill in any useful form (**stage 02**, then
-  **04**).
-- There's still no record of what happened (**stage 02**).
-- The history still grows forever (**stage 05**).
+第三个值得停留，如果你在非英文 Windows：字节不是损坏的，
+它们*在不同的编码中正确*。替换它们使失败**可见**而非无声
+——模型看 `����` 并知道出错了，而不是自信地推理乱码。
+真实转码是 `golang.org/x/text/encoding`，故意不是这里的依赖；
+`chcp 65001` / `PYTHONIOENCODING=utf-8` 路由在源处修复它。
 
 ---
 
-## Exercises
+## 它花了什么？
 
-1. **Reproduce the pipe hang.** Time out only `cmd.Process`, not the tree, then
-   run `(sleep 300 &) ; echo hi`. Watch `cmd.Wait()` block anyway. This is the
-   single most valuable ten minutes in the chapter.
-2. **Truncate from the head only** and give it a failing build. Notice that the
-   error message — the only part that mattered — is exactly what got dropped.
-3. **Delete the "do not retry it unchanged" sentence** from the denial text and
-   deny something. Watch how many times the model proposes the identical
-   command. Tool-result wording is prompt engineering.
-4. **Set `--timeout 1s`** and ask for something slow. Confirm the model reads the
-   `[TIMED OUT]` line and adapts rather than repeating itself.
-5. **Run it with stdin piped** and no `--yolo`. Confirm you get a clear message
-   rather than a silent wall of denials.
+整章是关于四个失败的，修复它们的代码小于解释它们的代码。
+那个比例对宿主工作来说很正常，这就是宿主工作被低估的原因：
+这些东西没有一样能让 Agent 更聪明，这一切都是一个演示和一个
+工具之间的区别。
 
-→ Next: Stage 02 — See Everything *(in progress)*
+这章之后故意仍失踪：
 
-→ Reference: [Wire notes](wire-notes.md) — the observed behaviour every claim in this chapter rests on
+- 你仍为整个模型回合盯着一个空白终端（**阶段 02**）。
+- 你仍不能以任何有用的形式看 token 账单（**阶段 02**，然后
+  **04**）。
+- 仍没有发生什么的记录（**阶段 02**）。
+- 历史仍永远增长（**阶段 05**）。
+
+---
+
+## 练习
+
+1. **复现管道挂**。只超时 `cmd.Process`，不是树，然后运行
+   `(sleep 300 &) ; echo hi`。看 `cmd.Wait()` 无论如何阻塞。这是
+   章中单个最有价值的十分钟。
+2. **只从头截断**并给它一个失败的构建。注意错误消息——唯一重要的
+   部分——正好是被丢掉的。
+3. **删除否定文本中"不要原样重试它"这句话**并否定什么。
+   看模型多少次提议相同命令。工具结果措辞是 prompt 工程。
+4. **设 `--timeout 1s`** 并问一些慢的。确认模型读 `[TIMED OUT]`
+   行并适应而不是重复自己。
+5. **把标准输入接上管道，不带 `--yolo` 运行它**。确认你得一个
+   清晰的消息而不是拒绝的默默墙。
+
+→ 下一步：阶段 02 — 看一切 *(in progress)*
+
+→ 参考：[线上笔记](wire-notes.md) — 这章的每个声明所基于的观察行为

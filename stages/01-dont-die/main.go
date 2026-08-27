@@ -1,19 +1,19 @@
-// Stage 01 — Don't Die.
+// 阶段 01 ——别死。
 //
-// Stage 00 was the idea. This is the same agent after meeting reality: a
-// command that never returns, a command that prints 40MB, a model that gets cut
-// off mid-sentence, and a command you really did not want run.
+// 阶段 00 是这个思想。这是同一个 Agent 在遇到现实后
+// 的样子：一条永不返回的命令，一条打印 40MB 的命令，
+// 一个说到一半被截断的 Agent，和一条你真的不想运行的命令。
 //
-// Everything added here exists because the stage-00 agent failed at it. The
-// docs (docs/01-dont-die.md) show you how to reproduce each failure first —
-// breaking it yourself is the point.
+// 这里加的每一样东西，都是因为阶段 00 的 Agent 在这上面
+// 栽过跟头。文档（docs/01-dont-die.md）展示了如何先重现
+// 每一种失败——自己动手破坏它，才是这里的重点。
 //
-// New in this stage:
-//   - output truncation (head + tail, never the middle)
-//   - command timeouts that kill the whole process tree, not just the shell
-//   - a finish_reason state machine, including the silent `length` truncation
-//   - a permission gate, where a denial is fed back to the model as data
-//   - output sanitising: ANSI escapes, CRLF, and invalid UTF-8
+// 这个阶段的新内容：
+//   - 输出截断（头 + 尾，永不中间）
+//   - 杀掉整个进程树而不只是 shell 的命令超时
+//   - 一个 finish_reason 状态机，包括无声的 `length` 截断
+//   - 一个权限闸，否决会以数据反馈给 Agent
+//   - 输出清理：ANSI 转义、CRLF 和无效 UTF-8
 package main
 
 import (
@@ -55,7 +55,7 @@ either find another way or ask.
 When the task is done, reply with a short plain-text summary and no tool call.`
 
 // ---------------------------------------------------------------------------
-// Configuration. All of it is a knob you should turn while reading the docs.
+// 配置。全部是你读文档时应该调整的旋钮。
 // ---------------------------------------------------------------------------
 
 type config struct {
@@ -70,8 +70,8 @@ type config struct {
 }
 
 // ---------------------------------------------------------------------------
-// Wire types — unchanged from stage 00 except for FinishReason, which we now
-// actually read. See stage 03 for the protocol-neutral rewrite.
+// 线上格式——除了 FinishReason 之外都和阶段 00 一样，
+// 这个字段我们现在真的会去读了。见阶段 03 的协议中立重写。
 // ---------------------------------------------------------------------------
 
 type message struct {
@@ -140,7 +140,7 @@ func bashTool() toolDef {
 }
 
 // ---------------------------------------------------------------------------
-// The API call.
+// API 调用。
 // ---------------------------------------------------------------------------
 
 type client struct {
@@ -194,7 +194,7 @@ func (c *client) callModel(msgs []message) (*chatResponse, error) {
 }
 
 // ---------------------------------------------------------------------------
-// Running a command without hanging forever.
+// 运行一个命令而不永远挂起。
 // ---------------------------------------------------------------------------
 
 type execResult struct {
@@ -202,26 +202,26 @@ type execResult struct {
 	Stderr   string
 	ExitCode int
 	TimedOut bool
-	Unreaped bool // killed, but the OS never released it: output is unsafe to read
+	Unreaped bool // 被杀了，但 OS 从未释放它：读输出不安全
 	Duration time.Duration
 }
 
-// runBash executes one command under a timeout, killing the entire process tree
-// if it expires.
+// runBash 在超时下执行一条命令，如果过期就杀掉
+// 整个进程树。
 //
-// Two subtleties worth the reading time:
+// 两个细微差别值得花时间读：
 //
-// Killing only cmd.Process is not enough. `npm start &` leaves a grandchild
-// holding the same stdout pipe, and cmd.Wait() blocks until every writer to
-// that pipe is gone — so a half-kill does not just leak a process, it hangs the
-// agent that was trying to escape the hang. procGroup (proc_unix.go /
-// proc_windows.go) is what makes the timeout actually work.
+// 只杀 cmd.Process 还不够。`npm start &` 会留下一个
+// 孙进程持有同一个 stdout 管道，cmd.Wait() 会阻塞直到
+// 该管道的每个写者都消失——所以半杀不只会泄漏一个进程，
+// 它会挂起试图逃离这个挂起的 Agent。procGroup（proc_unix.go
+// / proc_windows.go）是让超时真的起作用的东西。
 //
-// stdout and stderr are captured separately rather than combined. That loses
-// interleaving — you can no longer tell that a warning was printed *between*
-// two results — but it gains attribution, and a model reading "this went to
-// stderr" reasons about failure much better than one reading an undifferentiated
-// blob. Combining is the other defensible choice; know which one you picked.
+// stdout 和 stderr 被分别捕获而不是合并。这失去了交错——
+// 你不再能说一个警告打印在两个结果**之间**——但它得到了
+// 归属，一个读到"这条去了 stderr"的 Agent，推理失败原因
+// 的能力，比读到一团未加区分的内容要强得多。合并是另一个
+// 可辩护的选择；知道你选了哪一个。
 func runBash(cfg config, command string) execResult {
 	started := time.Now()
 
@@ -232,7 +232,7 @@ func runBash(cfg config, command string) execResult {
 	defer g.Close()
 
 	cmd := exec.Command(cfg.shell, "-c", command)
-	cmd.Stdin = nil // an interactive prompt must fail fast, not block
+	cmd.Stdin = nil // 交互式提示必须快速失败，不能阻塞
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -242,8 +242,8 @@ func runBash(cfg config, command string) execResult {
 		return execResult{Stderr: fmt.Sprintf("could not start command: %v", err), ExitCode: -1}
 	}
 	if err := g.adopt(cmd); err != nil {
-		// Not fatal: the command is already running and usually still killable.
-		// Say so rather than pretending the tree is contained.
+		// 不致命：命令已经在运行，通常仍可杀死。
+		// 说出来，而不是装作这棵树被包含了。
 		fmt.Fprintf(os.Stderr, "warning: process group adoption failed: %v\n", err)
 	}
 
@@ -258,11 +258,11 @@ func runBash(cfg config, command string) execResult {
 		timedOut = true
 		g.kill()
 
-		// The kill is what unblocks Wait — but this chapter's whole lesson is
-		// that escape hatches can hang too, so this one gets its own deadline.
-		// If we give up here the Wait goroutine leaks (it holds the output
-		// buffers until the OS finally releases the pipe). That is the right
-		// trade: leaking one goroutine is survivable, wedging the agent is not.
+		// 解开 Wait 的，正是这次 kill——但这一章的整个教训是，
+		// 逃生出口也可能会挂起，所以这一步也有自己的期限。
+		// 如果我们在这里放弃，Wait goroutine 就会泄漏（它会一直
+		// 持有输出缓冲，直到 OS 最终释放管道）。那是正确的权衡：
+		// 泄漏一个 goroutine 是能承受的，Agent 卡死不行。
 		select {
 		case waitErr = <-done:
 		case <-time.After(5 * time.Second):
@@ -276,9 +276,9 @@ func runBash(cfg config, command string) execResult {
 		Duration: time.Since(started),
 	}
 	if unreaped {
-		// Wait never returned, so the copying goroutines may still be writing
-		// into these buffers. Reading them now is a data race — take nothing
-		// and report the situation instead of gambling on it.
+		// Wait 没有返回，所以负责复制的 goroutine 可能仍在写入
+		// 这些缓冲区。现在去读它们是一次数据竞争——不读取任何
+		// 东西，只报告这个情况，而不是拿它赌一把。
 		res.ExitCode = -1
 		return res
 	}
@@ -294,11 +294,11 @@ func runBash(cfg config, command string) execResult {
 	return res
 }
 
-// render turns an execResult into the exact text the model will see.
+// render 把 execResult 变成 Agent 会看到的确切文本。
 //
-// The model has no other window onto the world, so this function is the world.
-// Everything it hides, the model cannot reason about; everything it garbles,
-// the model reasons about wrongly.
+// Agent 没有其他看向世界的窗口，所以这个函数**就是**
+// 世界。它隐藏的一切，Agent 无法推理；它搞乱的一切，
+// Agent 推理错了。
 func (r execResult) render(maxOutput int) string {
 	var b strings.Builder
 
@@ -318,8 +318,8 @@ func (r execResult) render(maxOutput int) string {
 		b.WriteString("[no output]")
 	}
 
-	// Status line last, so it survives any truncation the model does on its own
-	// side and is the closest thing to its next thought.
+	// 状态行最后，所以它活过 Agent 自己做的任何截断，
+	// 是离它下一个想法最近的东西。
 	status := fmt.Sprintf("\n[exit %d · %s]", r.ExitCode, r.Duration.Round(time.Millisecond))
 	if r.TimedOut {
 		status = fmt.Sprintf("\n[TIMED OUT after %s — the process tree was killed]", r.Duration.Round(time.Millisecond))
@@ -335,12 +335,11 @@ func (r execResult) render(maxOutput int) string {
 	return b.String()
 }
 
-// truncate keeps the head and the tail and drops the middle.
+// truncate 保留头和尾并丢弃中间。
 //
-// Head-only truncation is the common shortcut and it is the wrong one: the
-// interesting part of a failing build is the last twenty lines, and the
-// interesting part of a directory listing is the first twenty. Keeping both
-// ends costs nothing and saves a re-run.
+// 仅截断开头是常见的捷径，但它是错的：一次失败构建里，
+// 有趣的部分是最后二十行；一次目录列表里，有趣的部分是
+// 前二十行。两端都保留不花什么成本，还能省一次重跑。
 func truncate(s string, max int) (string, bool) {
 	if max < 256 {
 		max = 256
@@ -351,8 +350,8 @@ func truncate(s string, max int) (string, bool) {
 	head := max * 2 / 3
 	tail := max - head
 
-	// Cut on rune boundaries — a half-written multi-byte character becomes an
-	// invalid-UTF-8 byte in the JSON body, which some APIs reject outright.
+	// 在 rune 边界上切割——半写的多字节字符变成
+	// JSON 正文中无效的 UTF-8 字节，有些 API 直接拒绝。
 	for head > 0 && !utf8.RuneStart(s[head]) {
 		head--
 	}
@@ -367,20 +366,21 @@ func truncate(s string, max int) (string, bool) {
 
 var ansiRE = regexp.MustCompile(`\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\a\x1b]*(\a|\x1b\\)|\x1b[@-Z\\-_]`)
 
-// sanitize makes command output safe to put in a JSON request body.
+// sanitize 让命令输出安全到能放进 JSON 请求正文中。
 //
-// Three separate problems, all of which look like "weird characters" until you
-// know which one you have:
+// 三个分离的问题，全部看起来像"奇怪字符"直到你
+// 知道你有哪个：
 //
-//   - ANSI escapes: colour codes are pure noise to a model and cost tokens.
-//   - CRLF: on Windows, every line ends \r\n and the \r survives into the
-//     context window, where it is invisible and doubles nothing useful.
-//   - invalid UTF-8: a program that writes in the local code page (GBK on a
-//     Chinese Windows, Shift-JIS on a Japanese one) produces bytes that are not
-//     valid UTF-8 at all. Left alone they either corrupt the request or arrive
-//     as mojibake. We replace them so the failure is visible rather than silent;
-//     if you need real transcoding, that is golang.org/x/text/encoding, and it
-//     is deliberately not a dependency of this repo.
+//   - ANSI 转义：颜色码对 Agent 纯粹是噪音，花 token。
+//   - CRLF：在 Windows 上，每行以 \r\n 结尾，\r 会活着
+//     进入上下文窗口，在那里它不可见，徒增一份没用的重复。
+//   - 无效 UTF-8：写本地代码页的程序（中文 Windows 上
+//     的 GBK，日文上的 Shift-JIS）生成根本不是有效
+//     UTF-8 的字节。放着不管，它们要么污染请求，要么
+//     作为乱码到达。我们把它们替换掉，让失败可见，
+//     而不是无声无息；如果你需要真正转码，那是
+//     golang.org/x/text/encoding，故意不是这个仓库
+//     的依赖。
 func sanitize(s string) string {
 	s = ansiRE.ReplaceAllString(s, "")
 	s = strings.ReplaceAll(s, "\r\n", "\n")
@@ -391,14 +391,14 @@ func sanitize(s string) string {
 }
 
 // ---------------------------------------------------------------------------
-// The permission gate.
+// 权限闸。
 // ---------------------------------------------------------------------------
 
 type gate struct {
 	yolo      bool
 	always    bool
 	in        *bufio.Scanner
-	available bool // false when stdin is piped: there is nobody to ask
+	available bool // stdin 被管道连接时为假：没人可问
 }
 
 type verdict int
@@ -409,18 +409,19 @@ const (
 	abort
 )
 
-// ask shows the command and waits for a decision.
+// ask 展示命令并等待一个裁决。
 //
-// The design point is what happens on a denial: the model is told, in a tool
-// result, that the user refused. It is not an error and it does not end the
-// turn. That keeps the agent in a position to adapt — propose something
-// narrower, or ask why — instead of dying at the one moment a human was paying
-// attention.
+// 设计点是拒绝时发生什么：Agent 会在一个工具结果里
+// 被告知，用户拒绝了。它不是错误，它不结束回合。那让
+// Agent 留在一个还能随机应变的位置上——建议更窄的
+// 东西，或问为什么——而不是偏偏在一个人类正盯着看的
+// 那一刻死掉。
 //
-// This gate is also the honest argument against "bash is all you need": all it
-// can show a user is an opaque command string. A dedicated `write_file` tool
-// could show a diff; a dedicated `send_email` tool could show the recipient.
-// Breadth costs you the ability to ask a good question.
+// 这个闸也是反对"bash 就是你需要的全部"的诚实论证：
+// 它能展示给用户的全部是一个不透明的命令字符串。
+// 一个专用的 `write_file` 工具能展示一个 diff；
+// 一个专用的 `send_email` 工具能展示收件人。广度让你
+// 丧失了问出一个好问题的能力。
 func (g *gate) ask(command string) verdict {
 	if g.yolo || g.always {
 		return allow
@@ -447,7 +448,7 @@ func (g *gate) ask(command string) verdict {
 }
 
 // ---------------------------------------------------------------------------
-// Shell discovery.
+// Shell 发现。
 // ---------------------------------------------------------------------------
 
 func findBash() (string, error) {
@@ -472,7 +473,7 @@ func findBash() (string, error) {
 }
 
 // ---------------------------------------------------------------------------
-// The loop.
+// 主循环。
 // ---------------------------------------------------------------------------
 
 func main() {
@@ -502,8 +503,8 @@ func main() {
 	stdin := bufio.NewScanner(os.Stdin)
 	stdin.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 
-	// A piped stdin has no human behind it, so there is nobody to answer the
-	// gate. Detect that up front instead of silently denying every command.
+	// 一个管道 stdin 后面没有人类，所以没人回答这个闸。
+	// 事先检测那个而不是无声地否决每条命令。
 	interactive := false
 	if fi, err := os.Stdin.Stat(); err == nil {
 		interactive = fi.Mode()&os.ModeCharDevice != 0
@@ -540,7 +541,7 @@ func main() {
 	}
 }
 
-// runTurn drives one user message to completion and returns the grown history.
+// runTurn 把一个用户消息驱动到完成，返回增长的历史。
 func runTurn(c *client, g *gate, cfg config, msgs []message) []message {
 	for turn := 1; ; turn++ {
 		if turn > cfg.maxTurns {
@@ -563,21 +564,21 @@ func runTurn(c *client, g *gate, cfg config, msgs []message) []message {
 			fmt.Printf("\n%s\n", choice.Message.Content)
 		}
 
-		// The finish_reason state machine. Stage 00 branched only on "are there
-		// tool calls", which silently treats a cut-off answer as a finished one.
+		// finish_reason 状态机。阶段 00 仅在"是否有工具调用"上
+		// 分支，这无声地把一个被切断的回答当作完成的。
 		switch choice.FinishReason {
 		case "stop", "end_turn", "":
 			if len(choice.Message.ToolCalls) == 0 {
 				fmt.Println()
 				return msgs
 			}
-			// Some providers say "stop" while still emitting tool calls; trust
-			// the calls, not the label.
+			// 有些供应商说"stop"同时还在发出工具调用；相信
+			// 调用，不是标签。
 
 		case "length", "max_tokens":
-			// The model hit max_tokens mid-generation. If it was mid-tool-call,
-			// the arguments are a truncated JSON string and must not be run:
-			// half a shell command is not a safer shell command.
+			// Agent 在生成过程中途撞上了 max_tokens。如果那时正在
+			// 进行一次工具调用，参数就是一段被截断的 JSON 字符串，
+			// 绝不能运行：半条 shell 命令不会是一条更安全的 shell 命令。
 			fmt.Println("\n[the model was cut off at max_tokens]")
 			if len(choice.Message.ToolCalls) == 0 {
 				fmt.Println()
@@ -595,7 +596,7 @@ func runTurn(c *client, g *gate, cfg config, msgs []message) []message {
 			return msgs
 
 		case "tool_calls", "tool_use":
-			// The normal path; fall through.
+			// 正常路径，继续往下走。
 
 		default:
 			fmt.Printf("\n[unknown finish_reason %q — treating as a finished turn]\n\n", choice.FinishReason)
@@ -607,11 +608,11 @@ func runTurn(c *client, g *gate, cfg config, msgs []message) []message {
 			return msgs
 		}
 
-		// Every tool_call must come back with a result, including the ones we
-		// decide not to run. Breaking out of this loop early leaves an
-		// unanswered call in the history, and the *next* request — possibly
-		// several user messages later — is rejected as malformed. Bugs like
-		// that are why the rule is "answer all of them, always".
+		// 每个 tool_call 都必须带着一个结果回来，包括我们决定
+		// 不运行的那些。提前跳出这个循环，会在历史里留下
+		// 一个没有答案的调用，而**下一个**请求——可能是好几条
+		// 用户消息之后——就会被当成格式错误拒绝掉。像这样的
+		// bug，正是"全部回答，一次不落"这条规则存在的原因。
 		stop := false
 		for _, call := range choice.Message.ToolCalls {
 			if stop {
@@ -650,30 +651,27 @@ func runTurn(c *client, g *gate, cfg config, msgs []message) []message {
 	}
 }
 
-// parseBashArgs turns the model's tool arguments into a command, and refuses
-// everything that is not one.
+// parseBashArgs 把 Agent 的工具参数变成一条命令，并拒绝一切不是命令的东西。
 //
-// This function exists because of a real, observed failure. Ask this gateway for
-// a tool call with too small a max_tokens and it returns:
+// 这个函数的存在，是因为一次真实发生过的失败。问这个网关要一个
+// max_tokens 太小的 tool_call，它返回：
 //
-//	stop_reason: "tool_use"          <- claims the call is fine
-//	input:       {"raw_arguments":""} <- the schema's `command` key is absent
+//	stop_reason: "tool_use"          <- 声称调用没问题
+//	input:       {"raw_arguments":""} <- 模式的 `command` 键不见了
 //
-// Now watch what the obvious Go code does with that:
+// 现在看看，显而易见的 Go 代码会拿它怎么办：
 //
 //	var args struct{ Command string `json:"command"` }
-//	json.Unmarshal(data, &args)   // returns nil. no error. none at all.
+//	json.Unmarshal(data, &args)   // 返回 nil。没有错误。一点都没有。
 //	args.Command                  // ""
 //
-// The unmarshal SUCCEEDS. Go fills absent keys with the zero value, so a missing
-// required field and an empty one are indistinguishable — and the agent goes on
-// to run an empty command as if the model had asked for it.
+// Unmarshal **成功了**。Go 用零值填充缺失的键，所以缺失的必需字段和空字
+// 段分不出来——Agent 会接着运行一条空命令，就像模型真的这样要求过一样。
 //
-// **Unmarshalling without error is not validation.** A *string tells absent
-// (nil) apart from empty (""), and both are rejected here with a message the
-// model can act on. Whatever protocol you are on, validate the arguments
-// against the schema you published; the envelope's own stop_reason is not
-// evidence that what it wrapped is usable.
+// **Unmarshal 不报错，不等于验证通过。** 一个 *string 能分清缺失（nil）
+// 和空（""），两个都会在这里被拒绝，并附上一条 Agent 能据此行动的消息。
+// 不管你用的是哪种协议，都要对照你发布的模式去验证参数；信封自己的
+// stop_reason，并不能证明它包裹的东西是可用的。
 func parseBashArgs(raw string) (string, error) {
 	var args struct {
 		Command *string `json:"command"`

@@ -9,19 +9,18 @@ import (
 	"time"
 )
 
-// The chapter's evidence, generated rather than asserted from memory.
+// 这一章的证据是生成出来的，不是凭记忆断言的。
 //
-// One rule — "do not read .env" — and one question per command: does the bypass
-// actually work, and which of the three inspectors catches it?
+// 一个规则 —— "不要读 .env" —— 和每个命令一个问题：绕过真的有效吗，三个
+// 检查器中哪一个抓住它？
 //
-// Every case is *verified to be a real bypass first*, by running it with the
-// policy switched off and checking the file's contents actually came out. A
-// bypass table full of commands that never worked would prove nothing, and that
-// is the commonest way this kind of table is wrong.
+// 每个用例都要**先验证确实是一个真实的绕过**：把策略关掉后运行一遍，确
+// 认文件内容真的被读了出来。一张满是从未真正奏效过的命令的绕过表，什么
+// 都证明不了，而这正是这类表格最常出错的地方。
 
 const canary = "CANARY_dc41f0b7"
 
-// bypassCase is one attempt to read the protected file.
+// bypassCase 是一次读取受保护文件的尝试。
 type bypassCase struct {
 	name    string
 	command string
@@ -45,8 +44,8 @@ var bypassCases = []bypassCase{
 	{"nested shell", `sh -c 'cat .env'`, "a whole program smuggled in one argument"},
 }
 
-// runIn executes a command in a scratch directory holding the canary file, and
-// reports whether the secret escaped and whether the sandbox blocked anything.
+// runIn 在一个拿着金丝雀文件的临时目录中执行一个命令，报告秘密是否逃逸和
+// 沙箱是否阻挡了什么。
 func runIn(t *testing.T, dir, command string, enforce bool) (leaked, blocked bool, out string) {
 	t.Helper()
 	sb := newSandbox(dir, NewBus(), enforce)
@@ -64,12 +63,11 @@ func bypassDir(t *testing.T) string {
 	return dir
 }
 
-// TestTheBypassTable is the chapter. It prints the table it measures.
+// TestTheBypassTable 就是这一章。它打印它测到的表。
 func TestTheBypassTable(t *testing.T) {
 	dir := bypassDir(t)
 
-	// If the environment cannot run the baseline, none of the rest means
-	// anything. Skip loudly rather than reporting a table of zeroes.
+	// 如果环境不能运行基线，其他的都没有任何意义。大声跳过而不是报告一个零表。
 	if leaked, _, out := runIn(t, dir, "cat .env", false); !leaked {
 		t.Skipf("this machine cannot run `cat` through the interpreter, so the table cannot be measured: %s", out)
 	}
@@ -85,14 +83,14 @@ func TestTheBypassTable(t *testing.T) {
 		var r row
 		r.c = c
 
-		// 1. Does the bypass actually work with nothing in the way?
+		// 1. 绕过真的在什么都挡不住的情况下有效吗？
 		r.works, _, r.outputWhenNotEnforcing = runIn(t, dir, c.command, false)
 
-		// 2. The two static inspectors.
+		// 2. 两个静态检查器。
 		r.l1 = inspectString(c.command) != nil
 		r.l2 = inspectAST(c.command) != nil
 
-		// 3. The interpreter, enforcing.
+		// 3. 解释器，执行策略。
 		leaked, blocked, _ := runIn(t, dir, c.command, true)
 		r.l3 = blocked && !leaked
 
@@ -113,13 +111,12 @@ func TestTheBypassTable(t *testing.T) {
 	}
 	t.Log("")
 
-	// --- the assertions the table has to satisfy -------------------------
+	// --- 表必须满足的断言 -------------------------
 
 	var stringMissed, astMissed int
 	for _, r := range rows {
 		if !r.works {
-			// A case that does not read the file is not a bypass and should not
-			// be in the table pretending to be one.
+			// 一个不读文件的用例不是绕过，不应该在表中假装是一个。
 			t.Errorf("%q did not actually read the file, so it is not a bypass — fix or remove the case.\noutput: %s",
 				r.c.command, r.outputWhenNotEnforcing)
 			continue
@@ -137,19 +134,17 @@ func TestTheBypassTable(t *testing.T) {
 		}
 	}
 
-	// Both static checks must lose, and — the finding that is more interesting
-	// than the one this table was built to show — they must lose on DIFFERENT
-	// commands.
+	// 两个静态检查都必须失败——而且，比这张表本来要证明的东西更有趣的
+	// 是——它们必须在**不同的命令**上失败。
 	//
-	// The string check misses `cat ".e""nv"` because the text is split. The AST
-	// check catches that one and misses `eval "cat .env"`, where the text is
-	// right there but the word belongs to a program that does not exist yet.
-	// Neither set contains the other.
+	// 字符串检查错过 `cat ".e""nv"` 因为文本被分割了。AST 检查抓住那个，错过
+	// `eval "cat .env"`，文本就在那里但这个词属于一个还不存在的程序。两个集
+	// 合互不包含。
 	//
-	// Which kills the obvious response to this chapter — "run both checks" —
-	// because an attacker does not have to defeat a conjunction. Every command
-	// only has to defeat one property at a time, and shell syntax offers a
-	// choice of which. TestExpansionBeatsParsing is one line that defeats both.
+	// 这就堵死了看完这一章后最容易冒出来的想法 —— "那就两个检查都跑一遍" ——
+	// 因为攻击者不需要同时打败两个条件。每个命令一次只需要击败一个属性，挑
+	// 哪一个，shell 语法本身就留了空间。TestExpansionBeatsParsing 就是同时
+	// 击败两者的那一行代码。
 	if stringMissed == 0 {
 		t.Error("the regexp check caught every bypass, which would mean shell quoting does not exist; the table is wrong")
 	}
@@ -159,10 +154,10 @@ func TestTheBypassTable(t *testing.T) {
 	stringOnly, astOnly := 0, 0
 	for _, r := range rows {
 		if !r.l1 && r.l2 {
-			astOnly++ // parsing caught what pattern matching missed
+			astOnly++ // 解析抓住了模式匹配错过的
 		}
 		if r.l1 && !r.l2 {
-			stringOnly++ // pattern matching caught what parsing missed
+			stringOnly++ // 模式匹配抓住了解析错过的
 		}
 	}
 	t.Logf("string missed %d · ast missed %d · caught only by ast: %d · caught only by string: %d",
@@ -174,13 +169,13 @@ func TestTheBypassTable(t *testing.T) {
 	}
 }
 
-// The specific pair the chapter leans on hardest, asserted on its own so a
-// failure names the mechanism rather than a row number.
+// 这一章里最用力倚靠的这一对，被单独断言了一遍，这样一旦失败，报出
+// 来的是机制的名字，而不是表里的第几行。
 func TestExpansionBeatsParsing(t *testing.T) {
-	// The filename appears nowhere in the text (so the string check has nothing
-	// to match) and the word is `${X}v`, a parameter expansion glued to a
-	// literal (so the AST check correctly reports "I cannot know this yet").
-	// One line, both static checks defeated, and the file is read.
+	// 文件名在文本里压根没有出现（所以字符串检查无从匹配），而这个词是
+	// `${X}v`——一个粘在字面值上的参数展开（所以 AST 检查正确给出"我现在
+	// 还不知道这个"）。一行代码，两个静态检查全都被击败，文件照样被读了出
+	// 来。
 	const command = `X=.en; eval 'cat ${X}v'`
 	if inspectString(command) != nil {
 		t.Error("the string check matched a command in which the filename never appears; the case is not testing what it claims")
@@ -196,9 +191,9 @@ func TestExpansionBeatsParsing(t *testing.T) {
 	}
 }
 
-// The redirect case gets its own test because it is the one that defeats an
-// argv-only policy at EVERY level, including the sandbox — unless the sandbox
-// also handles file opens. `cat < .env` runs cat with no arguments at all.
+// 重定向这个用例专门有自己的测试，因为它是那个能在**每个级别**都击败
+// argv-only 策略的用例，包括沙箱 —— 除非沙箱也处理文件打开。`cat < .env`
+// 运行 cat 时完全不带参数。
 func TestRedirectIsNotVisibleInArgv(t *testing.T) {
 	sb := newSandbox(bypassDir(t), NewBus(), true)
 	_ = sb.run("cat < .env", 10*time.Second)
@@ -214,22 +209,21 @@ func TestRedirectIsNotVisibleInArgv(t *testing.T) {
 	}
 }
 
-// And the honest limit, asserted rather than merely admitted. This test PASSES
-// when the sandbox fails to stop the command, which is the point: an
-// interpreter sees every command and cannot see inside one.
+// 还有这条诚实的边界，是用断言证明的，不只是嘴上承认一下。这个测试会
+// 在沙箱未能拦住命令时**通过**，这正是重点所在：解释器看得到每一个命
+// 令，却看不进任何一个的内部。
 func TestTheSandboxCannotSeeInsideAProgram(t *testing.T) {
 	dir := bypassDir(t)
 
-	// Any interpreter that takes a program as an argument will do, and the
-	// filename is assembled INSIDE it so that it never appears in argv. The
-	// sandbox sees `awk -v a=.en <a program>` and has no opinion about the
-	// program's contents, because having one would mean implementing awk.
+	// 任何一个把程序当参数接收的解释器都行，文件名是在那个程序参数**内
+	// 部**拼出来的，所以它永远不会出现在 argv 里。沙箱看到的是 `awk -v
+	// a=.en <a program>`，它对程序里的内容没有意见——有意见就等于要重新实
+	// 现一遍 awk。
 	//
-	// Candidates in order of how likely they are to exist next to a Git Bash.
-	// The chosen one has to be verified to actually work — on Windows,
-	// exec.LookPath("python") happily finds an App Execution Alias stub that
-	// prints an advert for the Microsoft Store, and a test built on that would
-	// report a false negative.
+	// 候选者按照"在 Git Bash 旁边能找到"的可能性大小排好了顺序。选中的那
+	// 个必须验证真的能用 —— 在 Windows 上，exec.LookPath("python") 高兴地
+	// 就找到一个会打印微软商店广告的 App Execution Alias 存根，用它搭起来
+	// 的测试会报出一个假阴性。
 	candidates := []struct{ name, command string }{
 		{"awk", `awk -v a=.en 'BEGIN{f=a"v"; while((getline l < f)>0) print l}'`},
 		{"perl", `perl -e '$f=".en"."v"; open(F,"<",$f); print <F>;'`},

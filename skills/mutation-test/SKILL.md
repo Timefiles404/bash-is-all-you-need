@@ -1,53 +1,41 @@
 ---
 name: mutation-test
-description: Verify a Go test suite has teeth by breaking the code on purpose, one change at a time
+description: 通过故意破坏代码、一次一个改变来验证一个 Go 测试套件有没有牙齿
 ---
 
-# Mutation testing a suite in this repo
+# 这个仓库里一个套件的变异测试
 
-A test suite that cannot fail is worthless, and a green suite is not evidence
-that it can. This is the acceptance bar for every test file here.
+一个不能失败的测试套件是无用的，一个绿色的套件不是它能失败的证明。这是这里每个测试文件的接受标准。
 
-## The loop
+## 流程
 
-For each mutation:
+对每个变异：
 
-1. Copy the source file byte for byte to a scratch location outside the repo.
-2. Apply exactly one mutation.
-3. Run `go vet ./stages/<stage>/` **first**. A mutation that does not compile
-   proves nothing — it is not a caught mutation, it is an invalid one. Rewrite
-   it so it compiles (`if false && x` instead of deleting a block that leaves an
-   unused variable).
-4. Run `go test ./stages/<stage>/`. It must FAIL, and you must record which test
-   caught it.
-5. Restore from the byte copy and `cmp` to confirm the restore was exact.
+1. 把源文件逐字节复制到仓库外的一个临时位置。
+2. 应用恰好一个变异。
+3. 运行 `go vet ./stages/<stage>/` **首先**。一个不能编译的变异不能证明任何东西 —— 它不是一个被捕捉的变异，它是一个无效的。重写它让它编译（用 `if false && x` 而不是删除会留下未使用变量的块）。
+4. 运行 `go test ./stages/<stage>/`。它**必须失败**，而且你必须记录哪个测试捕捉了它。
+5. 从字节副本恢复然后 `cmp` 来确认恢复是准确的。
 
-A mutation that survives means a missing test. Write it.
+一个存活的变异意味着一个丢失的测试。写一个。
 
-## Mutations worth trying on anything
+## 值得在任何东西上尝试的变异
 
-- Invert a boundary: `<=` becomes `<`, `>=` becomes `>`.
-- Drop one clause of a compound condition.
-- Return the first element where the code returns the last, or vice versa.
-- Delete an error check and continue on the happy path.
-- Reverse an ordering, or remove a sort.
-- Replace a computed value with a plausible constant.
-- Skip an element in a loop that should visit all of them.
+- 反转一个边界：`<=` 变成 `<`，`>=` 变成 `>`。
+- 删除一个复合条件的一个子句。
+- 代码原本返回最后一个元素的地方，改成返回第一个，反之亦然。
+- 删除一个错误检查然后在快乐路径上继续。
+- 反转一个排序，或移除一个排序。
+- 用一个合理的常数替换一个计算值。
+- 在一个本应遍历所有元素的循环里，跳过其中一个。
 
-## Mutations specific to this codebase
+## 这个代码库特有的变异
 
-- **Accounting**: make `Usage.Input` equal `prompt_tokens` instead of
-  `prompt_tokens - cached_tokens`. This is invisible on a cold request, so a
-  suite that only tests cold calls will not catch it.
-- **Cut points**: drop one of the two checks in `canCutBefore`. Either alone
-  still passes on conversations whose cut lands somewhere safe by luck.
-- **Byte fidelity**: re-encode `Block.Args` through `map[string]any`. The value
-  is equal and the bytes move.
-- **Display width**: make a wide rune report 1 column.
+- **记账**：让 `Usage.Input` 等于 `prompt_tokens` 而不是 `prompt_tokens - cached_tokens`。这在一个冷请求上是隐形的，所以一个只测试冷调用的套件不会捕捉它。
+- **切点**：删除 `canCutBefore` 里两个检查中的一个。留下其中任意一个，在切点靠运气落在安全地方的对话上仍然会通过。
+- **字节保真**：通过 `map[string]any` 重新编码 `Block.Args`。值相等且字节移动。
+- **显示宽度**：让一个宽 rune 报告 1 列。
 
-## Reporting
+## 报告
 
-Give a table: mutation, whether it compiled, caught or survived, and which test
-caught it. Call out any mutation you had to rewrite to make it compile, and any
-that only one test catches — that test is now load-bearing and should say so in
-a comment.
+给一个表：变异、它是否编译、被捕捉或存活、哪个测试捕捉了它。写出任何你不得不重写让它编译的变异，还有任何只有一个测试捕捉的 —— 那个测试现在是承重的，得在注释里说清楚。

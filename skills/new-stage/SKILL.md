@@ -1,39 +1,29 @@
 ---
 name: new-stage
-description: Add a stage to this course — the snapshot rules, the chapter shape, and what a chapter has to measure
+description: 给这个课程增加一个阶段 —— 快照规则、章节形状、还有一个章节要测量什么
 ---
 
-# Adding a stage
+# 增加一个阶段
 
-Each `stages/NN-name/` is a **complete, standalone snapshot** of the agent at one
-point in the course. A reader should be able to `diff stages/NN stages/NN+1` and
-see exactly one idea arrive.
+每个 `stages/NN-name/` 是 Agent 在课程一个点的**完整、独立的快照**。读者应该能做 `diff stages/NN stages/NN+1` 然后看到恰好一个想法降临。
 
-## Rules that are not negotiable
+## 不可协商的规则
 
-- **Copy the previous stage, do not import it.** Duplication between snapshots is
-  the feature. Never factor shared code into a common package.
-- **No dependencies** beyond the standard library and `golang.org/x/sys`. Stage
-  08 is the single exception, and its chapter is largely about why that one
-  earns its place.
-- **One idea per stage.** If the diff introduces two, it is two stages.
+- **复制前一个阶段，不要导入它。** 快照之间的重复是这个特性。永远不要把共享代码重构进一个通用包。
+- **没有依赖**，标准库和 `golang.org/x/sys` 除外。第 08 阶段是唯一的例外，它的章节基本上是关于为什么那一个配得上自己位置的论证。
+- **每个阶段一个想法。** 如果 diff 引入两个，那就是两个阶段。
 
-## The chapter
+## 这一章
 
-`docs/NN-name.md`, and it needs all of these:
+`docs/NN-name.md`，它需要所有这些：
 
-- The idea in the first three paragraphs, including what it costs.
-- A **"From a real run"** section with output you actually captured. Invented
-  examples undercut the entire premise of the repo.
-- At least one **measurement**, with the arms stated and the confounds named. If
-  the measurement undercuts the chapter's thesis, say so — stage 04 found that
-  no cache markers beat markers on a short session, and stage 05 found that
-  compaction costs more than it saves. Both say so plainly.
-- At least one **failure found while writing it**. These are the most valuable
-  paragraphs in the repo. Look for them rather than writing a clean narrative.
-- Exercises that break something on purpose.
+- 前三段里的想法，包括它花什么。
+- 一个**"来自一个真实的运行"**部分，有你实际捕捉的输出。发明的例子破坏了整个仓库的前提。
+- 至少一个**测量**，说清楚比较的对象，并点出混淆因素。如果测量破坏了章节的论点，说这样 —— 第 04 阶段发现没有缓存标记比短会话上有标记更好，第 05 阶段发现上下文压缩花的比省的多。两个都直说了。
+- 至少一个**在写它时发现的失败**。这些是仓库里最有价值的段落。寻找它们而不是写一个干净的叙述。
+- 故意弄坏点什么的练习。
 
-## Verification before commit
+## 提交前验证
 
 ```sh
 gofmt -l stages/                        # empty
@@ -44,9 +34,8 @@ GOOS=darwin go build ./stages/...
 grep -rnE 'sk-[A-Za-z0-9]{20,}' --exclude-dir=.git .   # no keys, ever
 ```
 
-Run the agent only inside `sandbox/` — it executes what the model says.
+只在 `sandbox/` 里运行 Agent —— 它执行模型说的话。
 
-## Comments
+## 注释
 
-Match the density of `stages/04-the-cache/render.go`. Comments explain *why* and
-name the failure they prevent; they never restate the code.
+匹配 `stages/04-the-cache/render.go` 的密度。注释解释**为什么**并命名它们阻止的失败；它们从不重申代码。

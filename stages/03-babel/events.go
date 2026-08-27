@@ -1,22 +1,22 @@
-// Stage 02 — the event bus.
+// 阶段 02——事件总线。
 //
-// This file is the architectural claim of the whole repo:
+// 这个文件是整个仓库的架构声明：
 //
-//	The agent core prints NOTHING. It emits events. Everything you can see —
-//	the plain terminal output, the JSONL trace, the replay viewer, and later the
-//	TUI — is a subscriber.
+//	Agent 核心**什么都不**打印。它发出事件。你能看到的一切——
+//	纯终端输出、JSONL **trace**、重放查看器，以及稍后的 TUI——
+//	都是一个订阅者。
 //
-// That one constraint buys most of what the rest of the project needs. The
-// trace file is a subscriber, so history is recorded for free. Replay is the
-// trace read back through the same renderer, so a session can be studied with
-// no API key. `--plain` versus a TUI is a choice of subscriber, not a fork of
-// the code. Tests assert on an event sequence instead of scraping stdout.
+// 那一个约束为其余项目所需的大部分东西买单。**trace** 文件是
+// 一个订阅者，历史记录因此白白到手。重放是通过相同渲染器读回
+// 的 **trace**，所以不需要 API 密钥，就能研究一个会话。`--plain`
+// 还是 TUI，是订阅者的选择，不是代码的分支。测试针对事件序列
+// 进行断言，而不是抓取 stdout。
 //
-// The lesson worth taking away is not "use an event bus". It is that
-// observability is a shape you choose at the start, not logging you sprinkle on
-// at the end. Stage 00 and 01 wrote fmt.Printf into the loop, and every one of
-// those calls is a place where the only record of what happened was a character
-// on a terminal that scrolled away.
+// 值得带走的教训不是"使用事件总线"。而是：可观测性，是你在
+// 一开始就选定的一种形状，不是你在末尾才撒上去的日志。阶段
+// 00 和 01 把 fmt.Printf 写进了主循环，每一次调用，都是这样一个
+// 地方——发生过什么的唯一记录，只是终端上一个转瞬即逝、滚动
+// 消失的字符。
 package main
 
 import (
@@ -26,121 +26,120 @@ import (
 	"time"
 )
 
-// Kind identifies what happened. Keep these stable: they are written into trace
-// files, and a renamed kind silently breaks replay of every session recorded
-// before the rename.
+// Kind 识别发生了什么。保持这些稳定：它们被写入 **trace** 文件，
+// 对 kind 重命名会无声地破坏重放——改名之前记录的每一个会话
+// 都会受影响。
 type Kind string
 
 const (
-	// Conversation shape
-	KindUserMessage Kind = "user_message" // the human said something
-	KindTurnStart   Kind = "turn_start"   // one model round begins
-	KindTurnEnd     Kind = "turn_end"     // the model stopped asking for tools
+	// 对话形状
+	KindUserMessage Kind = "user_message" // 人类说了点什么
+	KindTurnStart   Kind = "turn_start"   // 一个模型回合开始
+	KindTurnEnd     Kind = "turn_end"     // 模型停止请求工具
 
-	// The model call
-	KindRequest        Kind = "request"         // the exact bytes about to be sent
-	KindFirstToken     Kind = "first_token"     // TTFT lands here
-	KindTextDelta      Kind = "text_delta"      // visible assistant text
-	KindReasoningDelta Kind = "reasoning_delta" // thinking, where the model streams it
-	KindUsage          Kind = "usage"           // token accounting for one call
-	KindResponseEnd    Kind = "response_end"    // finish_reason and timings
+	// 模型调用
+	KindRequest        Kind = "request"         // 即将发送的确切字节
+	KindFirstToken     Kind = "first_token"     // TTFT 在这里到达
+	KindTextDelta      Kind = "text_delta"      // 可见的助手文本
+	KindReasoningDelta Kind = "reasoning_delta" // 思考，模型流式传输的地方
+	KindUsage          Kind = "usage"           // 一次调用的 token 会计
+	KindResponseEnd    Kind = "response_end"    // finish_reason 和计时
 
-	// Tool use
-	KindToolCallStart Kind = "tool_call_start" // id + name arrive (once, early)
-	KindToolArgsDelta Kind = "tool_args_delta" // raw argument fragments
-	KindToolCallReady Kind = "tool_call_ready" // arguments complete and validated
-	KindGateVerdict   Kind = "gate_verdict"    // allowed / denied / aborted
+	// 工具使用
+	KindToolCallStart Kind = "tool_call_start" // id + name 到达（一次，早期）
+	KindToolArgsDelta Kind = "tool_args_delta" // 原始参数片段
+	KindToolCallReady Kind = "tool_call_ready" // 参数完成且已验证
+	KindGateVerdict   Kind = "gate_verdict"    // 允许 / 拒绝 / 中止
 	KindCommandStart  Kind = "command_start"
 	KindCommandEnd    Kind = "command_end"
-	KindToolResult    Kind = "tool_result" // exactly what the model will be told
+	KindToolResult    Kind = "tool_result" // 模型会被告知的确切内容
 
-	// Everything else
-	KindNotice Kind = "notice" // something the user should know, not an error
+	// 其他一切
+	KindNotice Kind = "notice" // 用户应该知道的东西，不是错误
 	KindError  Kind = "error"
 )
 
-// Usage is one call's token accounting, in the only shape that is not a lie.
+// Usage 是一次调用的 token 会计，采用的是唯一不撒谎的那种
+// 形态。
 //
-// The trap this struct exists to avoid: on an Anthropic-style protocol,
-// `input_tokens` is *only the uncached remainder* — an agent that ran for an
-// hour can report 18 input tokens while actually sending 18,000. The total is
-// Input + CacheWrite + CacheRead, and the renderer must show the split, because
-// the three cost wildly different amounts (roughly 1x, 1.25x and 0.1x).
+// 这个结构存在要避免的陷阱：在 Anthropic 风格的协议上，
+// `input_tokens` **只是未缓存剩下的那部分**——运行了一小时的
+// Agent，可以报告 18 个输入 token，而实际发送了 18,000 个。
+// 总计是 Input + CacheWrite + CacheRead，渲染器必须显示拆分，
+// 因为这三者的成本差异很大（大约 1x、1.25x 和 0.1x）。
 //
-// An OpenAI-style protocol accounts in the opposite direction: prompt_tokens is
-// the full figure and cached_tokens is nested *inside* it. Stage 03 is where
-// that conversion lives; this struct is already in the normalised form, which is
-// why it has no field called "prompt_tokens".
+// 换成 OpenAI 风格的协议，方向正好相反：prompt_tokens 是完整
+// 数字，cached_tokens 嵌套**在**其中。阶段 03 就是这个转换发生
+// 的地方；这个结构已经是标准化之后的形式，这也是为什么它没有
+// 一个叫"prompt_tokens"的字段。
 type Usage struct {
-	Input      int `json:"input"`                 // billed at full price
+	Input      int `json:"input"`                 // 按全价计费
 	CacheWrite int `json:"cache_write,omitempty"` // ~1.25x
 	CacheRead  int `json:"cache_read,omitempty"`  // ~0.1x
 	Output     int `json:"output"`
-	Reasoning  int `json:"reasoning,omitempty"` // subset of Output, where reported
+	Reasoning  int `json:"reasoning,omitempty"` // Output 的子集，报告时
 }
 
-// Prompt returns everything that was sent, which is the number people mean when
-// they ask "how big is my context now" — and the number you cannot get by
-// reading any single field the API returns.
+// Prompt 返回发送的所有东西，这是人们问"我的上下文现在有
+// 多大"时，心里想的那个数字——也是你没法只靠读取 API 返回的
+// 某一个字段，就拿到手的数字。
 func (u Usage) Prompt() int { return u.Input + u.CacheWrite + u.CacheRead }
 
-// Event is deliberately one flat struct rather than an interface hierarchy.
+// Event 有意是一个平面结构，而不是接口层次。
 //
-// A sum type would be more elegant in Go and much worse here: it needs custom
-// JSON unmarshalling to replay, and it hides the shape of the data behind a
-// type switch. Flat means a trace line is readable with your eyes, `jq` works
-// on it without a schema, and adding a field is one line. `omitempty` keeps the
-// lines short.
+// 求和类型在 Go 中会更优雅，在这里会差得多：它需要自定义 JSON
+// 解组来重放，还会把数据的形状藏到一个类型开关背后。平面
+// 意味着一行 **trace** 肉眼可读，`jq` 不用 schema 就能处理它，
+// 添加字段是一行。`omitempty` 使行保持简短。
 type Event struct {
-	Seq  int       `json:"seq"` // monotonic; the only ordering you should trust
+	Seq  int       `json:"seq"` // 单调递增；你唯一应该信任的顺序
 	T    time.Time `json:"t"`
 	Kind Kind      `json:"kind"`
 
-	Turn int `json:"turn,omitempty"` // which model round inside the current user message
+	Turn int `json:"turn,omitempty"` // 当前用户消息内的哪个模型回合
 
-	// Text carries whatever this kind is about: a delta fragment, a notice, an
-	// error message, the user's message.
+	// Text 携带的，是这个 kind 具体关于什么：可能是一个 delta
+	// 片段、一条通知、一条错误消息，或者用户的消息。
 	Text string `json:"text,omitempty"`
 
-	// Tool use
+	// 工具使用
 	ToolID   string `json:"tool_id,omitempty"`
 	ToolName string `json:"tool_name,omitempty"`
 	Command  string `json:"command,omitempty"`
 	Verdict  string `json:"verdict,omitempty"`
 
-	// Command outcome
+	// 命令结果
 	ExitCode  int  `json:"exit_code,omitempty"`
 	TimedOut  bool `json:"timed_out,omitempty"`
 	Truncated bool `json:"truncated,omitempty"`
 	Bytes     int  `json:"bytes,omitempty"`
 
-	// Model call outcome
+	// 模型调用结果
 	FinishReason string `json:"finish_reason,omitempty"`
 	Usage        *Usage `json:"usage,omitempty"`
 
-	// Millis is the duration this event reports: TTFT on first_token, wall
-	// clock on command_end and response_end.
+	// Millis 是这个事件报告的持续时间：first_token 上是 TTFT，
+	// command_end 和 response_end 上是挂钟时间。
 	Millis int64 `json:"ms,omitempty"`
 
-	// Request is the full JSON body about to be sent. It is what makes the
-	// request inspector possible, and it is the single most useful thing in a
-	// trace when you are trying to work out why a model did something: it is
-	// the only record of what the model actually saw.
+	// Request 是即将发送的完整 JSON 体。它使请求检查器成为可能，
+	// 当你试图弄清为什么模型做了某事时，它是 **trace** 中最有用的
+	// 一样东西：它是模型实际看到的唯一记录。
 	Request json.RawMessage `json:"request,omitempty"`
 }
 
-// Subscriber receives every event, in order.
+// Subscriber 按顺序接收每个事件。
 type Subscriber interface {
 	OnEvent(Event)
 }
 
-// Bus fans events out to subscribers.
+// Bus 把事件扇出给订阅者。
 //
-// Dispatch is synchronous and under a lock, which is a deliberate choice: it
-// makes ordering total and identical for every subscriber, so the trace file
-// and the terminal can never disagree about what happened first. An async bus
-// with per-subscriber queues would scale better and would make the trace stop
-// being evidence. A renderer that needs to be slow should buffer internally.
+// Dispatch 是同步的，且处于锁的保护下，这是有意的选择：它让
+// 事件的顺序成为一个**全序**，且对每一个订阅者都完全相同，所以
+// **trace** 文件和终端，永远不会在"什么先发生"这件事上产生
+// 分歧。一个带有逐订阅者队列的异步总线，会扩展得更好，但会让
+// **trace** 不再能充当证据。需要缓慢的渲染器应该在内部缓冲。
 type Bus struct {
 	mu   sync.Mutex
 	seq  int
@@ -155,9 +154,9 @@ func (b *Bus) Subscribe(s Subscriber) {
 	b.subs = append(b.subs, s)
 }
 
-// Emit stamps the event and delivers it. Seq and T are assigned here so no
-// caller can forge them, and so a replayed trace can be compared against a live
-// run event for event.
+// Emit 为事件加上时间戳并传递它。Seq 和 T 在这里分配，这样
+// 一来，既没有调用者能伪造它们，重放的 **trace** 也能和一次
+// 实时运行逐个事件地比较。
 func (b *Bus) Emit(e Event) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -171,8 +170,8 @@ func (b *Bus) Emit(e Event) {
 	}
 }
 
-// Helpers for the common shapes, so the agent core reads as prose rather than
-// as struct literals.
+// 常见形状的辅助函数，所以 Agent 核心读起来像散文而不像
+// 结构字面量。
 
 func (b *Bus) Notice(format string, args ...any) {
 	b.Emit(Event{Kind: KindNotice, Text: fmt.Sprintf(format, args...)})

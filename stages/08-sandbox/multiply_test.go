@@ -15,32 +15,32 @@ import (
 	"time"
 )
 
-// This file tests stage 07: the bus once it became a tree, the task tool's
-// argument parser, the depth fuse in agent.tools, skills.go, and dispatch's
-// promise that concurrent execution still produces a deterministic history.
+// 这个文件测试阶段 07：变成一棵树之后的总线、任务工具的参数解析器、
+// agent.tools 中的深度保险丝、skills.go，以及 dispatch 的承诺——并发
+// 执行仍然会产生一段确定性的历史。
 //
-// Nothing here calls a provider over the network. The one place a Provider is
-// needed — the concurrent path through dispatch — uses mulFakeProvider below,
-// which answers out of the request body through a fake RoundTripper. That is
-// twenty lines and it buys the only assertion in the file that can distinguish
-// "results are collected by index" from "results are collected as they land".
+// 这里没有任何代码会通过网络调用供应商。唯一需要用到 Provider 的
+// 地方——也就是 dispatch 里的并发路径——用的是下面的 mulFakeProvider，
+// 它借着一个假的 RoundTripper，直接从请求体里回答。这就是 20 行代码，
+// 换来了这个文件里唯一能区分"结果是按索引收集的"还是"结果是落地
+// 先后收集的"的那条断言。
 
 // ---------------------------------------------------------------------------
-// Fixtures
+// 夹具
 // ---------------------------------------------------------------------------
 
-// mulBOM is a UTF-8 byte order mark, spelled as a rune value rather than as the
-// character itself: a literal U+FEFF anywhere but byte zero of a Go source file
-// is a compile error, which is the same constraint parseFrontmatter's own cutset
-// is written around.
+// mulBOM 是一个 UTF-8 字节顺序标记，这里特意拼成 rune 值，而不是直接
+// 写字符本身：在一份 Go 源文件里，字面量 U+FEFF 只要不是出现在第
+// 0 字节，就是一个编译错误——parseFrontmatter 自己的 cutset，也正是
+// 绕着这同一条限制写的。
 var mulBOM = string(rune(0xFEFF))
 
-// mulRecorder collects every event a bus delivers.
+// mulRecorder 收集总线送出的每一个事件。
 //
-// It needs no lock of its own: Bus.Emit dispatches under the core mutex, so
-// OnEvent is serialised for free. That is not an accident of this test, it is
-// the property the concurrency test below exists to pin — and if it ever stops
-// being true, `go test -race` will say so here first.
+// 它不需要自己的锁：Bus.Emit 是在核心 mutex 下分发的，所以 OnEvent
+// 不用自己费劲，就已经是串行的了。这不是这个测试碰巧如此，而是下面
+// 那个并发测试存在的意义，就是为了把这一点钉死——要是这一点哪天不再
+// 成立，`go test -race` 会第一个在这里报出来。
 type mulRecorder struct{ events []Event }
 
 func (r *mulRecorder) OnEvent(e Event) { r.events = append(r.events, e) }
@@ -57,9 +57,9 @@ func (r *mulRecorder) kind(k Kind) []Event {
 
 func (r *mulRecorder) count(k Kind) int { return len(r.kind(k)) }
 
-// mulAgent builds an agent that can dispatch tool calls without a network: a
-// gate the caller chose, a real shell, a compactor with no window (so nothing
-// ever tries to compact), and a bus with a recorder on it.
+// mulAgent 建立一个不用联网也能分发工具调用的 Agent：调用者选定的
+// 门、一个真正的 shell、一个没有窗口的压缩器（所以什么都不会触发
+// 压缩），以及一个挂了记录器的总线。
 func mulAgent(g *gate, shell string) (*agent, *mulRecorder) {
 	rec := &mulRecorder{}
 	bus := NewBus(rec)
@@ -80,7 +80,7 @@ func mulAgent(g *gate, shell string) (*agent, *mulRecorder) {
 	}, rec
 }
 
-// mulShell returns a bash to run commands with, or skips.
+// mulShell 返回一个 bash 来运行命令，或跳过。
 func mulShell(t *testing.T) string {
 	t.Helper()
 	shell, err := findBash()
@@ -90,7 +90,7 @@ func mulShell(t *testing.T) string {
 	return shell
 }
 
-// mulBash builds a well-formed bash tool-call payload.
+// mulBash 建立一个格式良好的 bash 工具调用有效载荷。
 func mulBash(command string) string {
 	raw, err := json.Marshal(struct {
 		Command string `json:"command"`
@@ -101,18 +101,17 @@ func mulBash(command string) string {
 	return string(raw)
 }
 
-// mulFakeProvider answers a subagent's model call from a script instead of over
-// the wire. The prompt makes the round trip — BuildRequest writes it into the
-// body, the fake transport echoes the body back, ParseStream reads it — so one
-// provider can give two concurrent children two different answers, and can hold
-// one of them until the other has finished.
+// mulFakeProvider 从脚本而不是通过线上回答子 Agent 的模型调用。
+// prompt 做往返——BuildRequest 把它写进 body，假传输回显 body，
+// ParseStream 读它——所以一个供应商可以给两个并发的子 Agent 两个不同
+// 的答案，也可以握住其中之一，直到另一个完成。
 type mulFakeProvider struct {
 	mu        sync.Mutex
 	completed []string
 
 	reply  func(prompt string) string
-	before func(prompt string) // runs before this call is recorded as complete
-	after  func(prompt string) // runs after
+	before func(prompt string) // 在这个调用被记录为完成之前运行
+	after  func(prompt string) // 随后运行
 }
 
 var _ Provider = (*mulFakeProvider)(nil)
@@ -162,15 +161,16 @@ func (p *mulFakeProvider) ParseStream(r io.Reader, bus *Bus, turn int, started t
 	}, nil
 }
 
-// order is the sequence in which the children actually finished.
+// order 是子 Agent 实际完成的顺序。
 func (p *mulFakeProvider) order() []string {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return append([]string(nil), p.completed...)
 }
 
-// mulRoundTrip is an http.RoundTripper that hands the request body straight
-// back as a 200. No listener, no port, no timeout to flake on.
+// mulRoundTrip 是一个 http.RoundTripper，它把请求 body 直接原样交回，
+// 当作一个 200 返回。没有监听器、没有端口，也没有超时会让测试变得
+// 时好时坏。
 type mulRoundTrip struct{}
 
 func (mulRoundTrip) RoundTrip(r *http.Request) (*http.Response, error) {
@@ -196,18 +196,17 @@ func (mulRoundTrip) RoundTrip(r *http.Request) (*http.Response, error) {
 }
 
 // ---------------------------------------------------------------------------
-// The bus, now that it is a tree
+// 总线，现在它是一棵树
 // ---------------------------------------------------------------------------
 
-// Stage 07 is the first time two goroutines emit at once, and the claim the
-// whole trace design rests on is that Seq is still a total order over the tree:
-// every event numbered exactly once, delivered in numbered order, across every
-// agent. If Seq is stamped outside the lock, two children can be handed the
-// same number, or a lower number can be delivered after a higher one — and a
-// trace that says two things happened at the same moment is not evidence about
-// which of them caused the other.
+// 阶段 07 是两个 goroutine 第一次同时发出事件，而整个 trace 设计所
+// 依赖的论断，是 Seq 仍然是树上的全序：每个事件恰好编号一次，按编号
+// 顺序送达，跨越每一个 Agent。如果 Seq 是在锁外盖上的，两个子 Agent
+// 可能会拿到同一个数字，或者一个更小的数字会排在一个更大的数字后面
+// 才送到——一个说两件事同时发生的 trace，没法证明是哪一个导致了另
+// 一个。
 //
-// Run under -race this also catches the unsynchronised counter directly.
+// 在 -race 下运行，也能直接捕获这个不同步的计数器。
 func TestBusSeqIsATotalOrderAcrossConcurrentForks(t *testing.T) {
 	const (
 		emitters = 8
@@ -218,8 +217,8 @@ func TestBusSeqIsATotalOrderAcrossConcurrentForks(t *testing.T) {
 	rec := &mulRecorder{}
 	root := NewBus(rec)
 
-	// One root plus seven children, all forked before anything starts, so the
-	// goroutines contend on the same counter from the first event.
+	// 一个根加七个子 Agent，全部在任何东西开始之前就分叉完毕，所以从
+	// 第一个事件开始，goroutine 们就在争抢同一个计数器。
 	buses := []*Bus{root}
 	for i := 1; i < emitters; i++ {
 		buses = append(buses, root.Fork(fmt.Sprintf("child#%d", i)))
@@ -232,7 +231,7 @@ func TestBusSeqIsATotalOrderAcrossConcurrentForks(t *testing.T) {
 		done.Add(1)
 		go func(i int, b *Bus) {
 			defer done.Done()
-			start.Wait() // release them all at once, to maximise contention
+			start.Wait() // 一次释放全部，最大化竞争
 			for j := 0; j < perAgent; j++ {
 				b.Emit(Event{Kind: KindNotice, Text: fmt.Sprintf("agent %d event %d", i, j)})
 			}
@@ -246,8 +245,8 @@ func TestBusSeqIsATotalOrderAcrossConcurrentForks(t *testing.T) {
 			"so the trace file is not a record of the session", len(rec.events), total)
 	}
 
-	// One assertion covers all four properties at once: delivery order equals
-	// numbering order, the numbers run 1..N, none is missing, none repeats.
+	// 一个断言一次覆盖全部四个属性：传递顺序等于编号顺序，数字运行 1..N，
+	// 没有缺失，没有重复。
 	seen := map[int]int{}
 	for i, e := range rec.events {
 		seen[e.Seq]++
@@ -265,10 +264,9 @@ func TestBusSeqIsATotalOrderAcrossConcurrentForks(t *testing.T) {
 	}
 }
 
-// Fork stamps the tree coordinates, and the root is depth 0 with no name. If
-// Fork forgot to increment, every subagent's events would claim to be the
-// parent's, and the one question a subagent trace exists to answer — which
-// agent ran this command — is unanswerable.
+// Fork 会盖上树坐标，根节点的深度是 0，没有名字。如果 Fork 忘记递增，
+// 每个子 Agent 的事件就会都自称是父 Agent 的事件，而子 Agent trace
+// 存在的意义——回答"是哪个 Agent 运行了这条命令"——也就没法回答了。
 func TestForkStampsDepthAndAgentAndTheRootDoesNot(t *testing.T) {
 	rec := &mulRecorder{}
 	root := NewBus(rec)
@@ -308,10 +306,11 @@ func TestForkStampsDepthAndAgentAndTheRootDoesNot(t *testing.T) {
 	}
 }
 
-// The comment on Emit says Seq, Depth and Agent are assigned there "so no
-// caller can forge them". This makes that claim load-bearing: a field a caller
-// can set is a field a trace cannot be evidence about, and the caller most
-// likely to set one by accident is a replayed Event being re-emitted.
+// Emit 上的注释说，Seq、Depth 和 Agent 都是在这里赋值的，"这样任何
+// 调用者都伪造不了它们"。这就让那句话成了一句承重的断言：一个调用者
+// 自己就能设置的字段，正是 trace 没法拿来当证据的字段；而最可能在
+// 不经意间设置到这种字段的调用者，就是把一个重放出来的 Event 又重新
+// 发出去的那种情况。
 func TestEmitOverwritesAnyForgedSeqDepthOrAgent(t *testing.T) {
 	rec := &mulRecorder{}
 	child := NewBus(rec).Fork("real child#1")
@@ -340,15 +339,15 @@ func TestEmitOverwritesAnyForgedSeqDepthOrAgent(t *testing.T) {
 	}
 }
 
-// Parent and child are two views onto one core, so a subscriber added through
-// either sees everything. This is what lets main() attach the trace writer to
-// the root bus once and still capture every subagent — and what stops a
-// renderer attached mid-session from seeing only half the tree.
+// 父 Agent 和子 Agent，是对着同一个核心的两个视图，所以不管从哪一个
+// 挂上去的订阅者，都能看到全部事件。这就是为什么 main() 只需要把
+// trace writer 挂到根总线上一次，就依然能捕获每一个子 Agent——也是
+// 为什么一个在会话中途才挂上去的渲染器，不会只看到半棵树。
 func TestSubscribersAreSharedBetweenAParentBusAndItsChildren(t *testing.T) {
 	root := NewBus()
 	child := root.Fork("child#1")
 
-	// Added through the child, must see the parent's events.
+	// 通过子 Agent 添加的，必须看到父 Agent 的事件。
 	viaChild := &mulRecorder{}
 	child.Subscribe(viaChild)
 	root.Emit(Event{Kind: KindNotice, Text: "from the root"})
@@ -357,7 +356,7 @@ func TestSubscribersAreSharedBetweenAParentBusAndItsChildren(t *testing.T) {
 			"so the trace file attached to one of them holds half a session", viaChild.count(KindNotice))
 	}
 
-	// Added through the parent, must see the child's events.
+	// 通过父 Agent 添加的，必须看到子 Agent 的事件。
 	viaRoot := &mulRecorder{}
 	root.Subscribe(viaRoot)
 	child.Emit(Event{Kind: KindNotice, Text: "from the child"})
@@ -365,17 +364,17 @@ func TestSubscribersAreSharedBetweenAParentBusAndItsChildren(t *testing.T) {
 		t.Errorf("a subscriber added on the root bus saw %d of the child's events; every subagent's work would be "+
 			"missing from the trace the user actually opens", viaRoot.count(KindNotice))
 	}
-	// And the one added earlier saw it too, so subscribing did not replace the list.
+	// 而早前添加的那个，也照样看到了它，说明订阅并没有把列表替换掉。
 	if viaChild.count(KindNotice) != 2 {
 		t.Errorf("the earlier subscriber saw %d events after a second one was added; Subscribe is overwriting "+
 			"rather than appending", viaChild.count(KindNotice))
 	}
 }
 
-// Fork shares the subscriber list, it does not copy it. A copy is the obvious
-// implementation and it delivers every parent event twice once a child exists —
-// two lines per event in the trace, doubled token counts in every total the
-// composer computes from it.
+// Fork 共享的是订阅者列表本身，而不是复制一份。复制是最直接会想到的
+// 实现方式，但只要一有子 Agent 存在，它就会把每一个父 Agent 事件都
+// 发送两次——trace 里每个事件变成两行，composer 从中算出的每一项
+// 合计里，token 计数也都跟着翻了倍。
 func TestForkDoesNotDuplicateSubscribers(t *testing.T) {
 	rec := &mulRecorder{}
 	root := NewBus(rec)
@@ -396,16 +395,13 @@ func TestForkDoesNotDuplicateSubscribers(t *testing.T) {
 // parseTaskArgs
 // ---------------------------------------------------------------------------
 
-// parseTaskArgs is parseBashArgs for the task tool, and it has the same job:
-// reject a payload that unmarshalled cleanly but does not contain a task. The
-// pointer field is the whole mechanism — a value-typed string makes
-// json.Unmarshal succeed on `{}` and turns a truncated tool call into a
-// subagent launched with an empty prompt, which is stage 01's bug with a
-// network call attached.
+// parseTaskArgs 是任务工具的 parseBashArgs，它有相同工作：拒绝一个
+// 整齐解组但不包含任务的有效载荷。指针字段是整个机制——值类型字符串
+// 使 json.Unmarshal 在 `{}` 上成功，并把截断的工具调用变成用空
+// prompt 启动的子 Agent，这是阶段 01 的 bug 加网络调用。
 //
-// The error text is asserted because it is not for us: it is returned to the
-// model as the tool result, and it is the model's only clue about what to send
-// instead.
+// 错误文本被断言，因为它不是给我们：它作为工具结果返回给模型，它是
+// 模型关于改为发送什么的唯一线索。
 func TestParseTaskArgs(t *testing.T) {
 	cases := []struct {
 		name        string
@@ -452,9 +448,8 @@ func TestParseTaskArgs(t *testing.T) {
 			errMentions: "prompt",
 		},
 		{
-			// A missing label is cosmetic — it is what the user sees next to a
-			// spinner. Failing the call over it would throw away a perfectly
-			// good task because the model skipped an adjective.
+			// 缺失标签只是个外观问题——它是用户在加载动画旁看到的东西。只因为
+			// 模型漏写了一个形容词就让调用失败，会白白扔掉一个好端端的任务。
 			name:       "description missing defaults instead of failing",
 			raw:        `{"prompt":"Find every TODO in the repo."}`,
 			wantDesc:   "subtask",
@@ -479,8 +474,8 @@ func TestParseTaskArgs(t *testing.T) {
 			wantPrompt: "go",
 		},
 		{
-			// The prompt itself is passed through untrimmed: the subagent's
-			// task is whatever the model wrote, whitespace included.
+			// prompt 本身会原样传下去，不做任何修剪：子 Agent 的任务就是模型写下
+			// 的任何内容，空白字符也算在内。
 			name:       "a prompt with surrounding whitespace is kept verbatim",
 			raw:        `{"description":"d","prompt":"  go read main.go  "}`,
 			wantDesc:   "d",
@@ -499,8 +494,8 @@ func TestParseTaskArgs(t *testing.T) {
 			errMentions: "JSON",
 		},
 		{
-			// docs/wire-notes.md: the gateway really does send this when a tool
-			// call is cut short. It is valid JSON and it contains no task.
+			// docs/wire-notes.md：网关在工具调用被截断时，真的会发出这样的东西。
+			// 它是合法的 JSON，只是不包含任务。
 			name:        "the observed {\"raw_arguments\":\"\"} payload",
 			raw:         `{"raw_arguments":""}`,
 			wantErr:     true,
@@ -558,10 +553,10 @@ func TestParseTaskArgs(t *testing.T) {
 	}
 }
 
-// The schema the model is shown has to agree with what the parser enforces. If
-// `prompt` stopped being required in the schema, a well-behaved model would
-// start omitting it and every one of those calls would come back as the error
-// above — a round trip burnt on a disagreement inside our own binary.
+// 展示给模型看的 schema，必须和解析器实际执行的规则一致。如果 schema
+// 里不再要求 `prompt`，一个循规蹈矩的模型就会开始省略它，那些调用就会
+// 一个接一个地变成上面那种错误——白白烧掉一次往返，只因为我们自己的
+// 二进制内部出现了分歧。
 func TestTaskToolSchemaRequiresWhatTheParserRequires(t *testing.T) {
 	def := taskToolDef()
 	if def.Name != "task" {
@@ -583,17 +578,16 @@ func TestTaskToolSchemaRequiresWhatTheParserRequires(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// agent.tools — the depth fuse
+// agent.tools — 深度保险丝
 // ---------------------------------------------------------------------------
 
-// The fuse: at the depth limit `task` is REMOVED from the list, not refused at
-// call time. A refusal costs a round trip and the tokens of a tool definition
-// on every request that can never use it; worse, it is an arbitrary rule, and
-// models argue with arbitrary rules by rephrasing until one gets through.
+// 保险丝：到了深度限制，`task` 会被**移除**出工具列表，而不是在调用时
+// 才被拒绝。一次拒绝要付出的代价，是一次往返，外加那些永远用不上这个
+// 工具的请求里，白白耗费掉的工具定义 token；更糟的是，这是一条武断的
+// 规则，而模型对付武断规则的办法，就是不断换着说法，直到蒙混过关为止。
 //
-// So the assertion has to be on the returned slice. A test that only checked
-// "the call was rejected" would pass against exactly the implementation this
-// design rejects.
+// 所以断言必须落在返回的切片上。一个只检查"调用被拒绝"的测试，就算
+// 换成这个设计原本要否决的那种实现，也一样能通过。
 func TestToolsRemovesTaskAtTheDepthLimit(t *testing.T) {
 	names := func(ts []Tool) []string {
 		var out []string
@@ -637,10 +631,10 @@ func TestToolsRemovesTaskAtTheDepthLimit(t *testing.T) {
 	}
 }
 
-// Stage 04: the tool definitions are part of the cached prompt prefix, and the
-// prefix is compared byte for byte. A tools() that returned the same two tools
-// in a different order on the second call would invalidate the cache on every
-// request — a tenfold price increase that shows up as nothing but a bill.
+// 阶段 04：工具定义是缓存 prompt 前缀的一部分，前缀会被逐字节比较。
+// 如果 tools() 在第二次调用时返回了同样两个工具，却换了个顺序，就会
+// 让每一个请求的缓存都失效——一次十倍的价格上涨，除了账单上的数字，
+// 什么迹象都不会显现。
 func TestToolOrderIsStableAcrossCalls(t *testing.T) {
 	a := &agent{depth: 0, maxDepth: 4}
 	var first string
@@ -664,10 +658,10 @@ func TestToolOrderIsStableAcrossCalls(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// skills
+// 技能
 // ---------------------------------------------------------------------------
 
-// mulSkillDoc builds a SKILL.md with frontmatter and a body of about n bytes.
+// mulSkillDoc 建立一个带前言、正文大约 n 字节的 SKILL.md。
 func mulSkillDoc(name, description string, n int) string {
 	head := "---\nname: " + name + "\ndescription: " + description + "\n---\n\n"
 	const line = "Run the command, read the exit code, and stop if it is not zero.\n"
@@ -679,12 +673,11 @@ func mulSkillDoc(name, description string, n int) string {
 	return b.String()
 }
 
-// mulSkillsRoot writes a skills/ tree into a fresh t.TempDir and returns the
-// root to pass to loadSkills. A value of "" creates the directory with no
-// SKILL.md in it.
+// mulSkillsRoot 把一个 skills/ 树写进一个全新的 t.TempDir，返回这个
+// 根目录，用来传给 loadSkills。"" 的值会创建一个没有 SKILL.md 的目录。
 //
-// t.TempDir, never the repo's own skills/ — a test that reads the real one
-// passes or fails depending on what someone added to it last week.
+// 用 t.TempDir，绝不用 repo 自己的 skills/——一个去读真实目录的测试，
+// 能不能通过，就要看上周有人往里面加了什么。
 func mulSkillsRoot(t *testing.T, files map[string]string) string {
 	t.Helper()
 	root := t.TempDir()
@@ -703,10 +696,10 @@ func mulSkillsRoot(t *testing.T, files map[string]string) string {
 	return root
 }
 
-// A project with no skills/ is the normal case, and loadSkills is called on
-// every startup before anything has been configured. Returning nil quietly is
-// the only acceptable behaviour; a panic here kills the agent at launch for
-// every user who never asked for skills.
+// 没有 skills/ 的项目是常规情况，loadSkills 在每次启动、在任何东西被
+// 配置之前，都会被调用。安静地返回 nil 是唯一可接受的行为；在这里
+// panic，会在启动时就杀死 Agent，殃及每一个根本没要求过 skills 功能
+// 的用户。
 func TestLoadSkillsWithoutASkillsDirectory(t *testing.T) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -722,13 +715,13 @@ func TestLoadSkillsWithoutASkillsDirectory(t *testing.T) {
 	}
 }
 
-// Path is what the model types after `cat`. On Windows filepath.Join produces
-// backslashes, and `cat skills\deploy\SKILL.md` inside bash reads the escapes,
-// not the path — the skill silently cannot be opened, on the one platform where
-// nobody testing on a Mac will see it.
+// 路径是模型在 `cat` 后面输入的东西。在 Windows 上，filepath.Join
+// 产生的是反斜杠，`cat skills\deploy\SKILL.md` 在 bash 里读到的是
+// 转义，不是路径——技能会无声无息地打不开，而且恰恰是在那个所有用
+// Mac 做测试的人永远看不到的平台上。
 //
-// The sort is here for the same reason the tool order is: the index sits in the
-// cached prefix, and directory order is not a promise any filesystem makes.
+// 这里要排序，原因和工具顺序必须固定是同一个：索引坐在缓存前缀里，
+// 而目录顺序不是任何文件系统会做出的承诺。
 func TestLoadSkillsSortsAndPublishesSlashSeparatedPaths(t *testing.T) {
 	root := mulSkillsRoot(t, map[string]string{
 		"zebra":  mulSkillDoc("zebra", "the last one alphabetically", 300),
@@ -767,17 +760,16 @@ func TestLoadSkillsSortsAndPublishesSlashSeparatedPaths(t *testing.T) {
 	}
 }
 
-// A skill with no description is invisible: the index is the only thing the
-// model ever sees, so a nameless line in it is a line that will never be
-// chosen. Keeping it means paying prefix tokens forever for something that
-// cannot be used.
+// 没有描述的技能是隐形的：索引是模型唯一能看到的东西，所以其中缺了
+// 描述的那一行，就永远不会被选中。留着它，就等于要为一个永远用不上
+// 的东西，一直付出前缀 token 的代价。
 func TestLoadSkillsSkipsASkillWithNoDescription(t *testing.T) {
 	root := mulSkillsRoot(t, map[string]string{
 		"good":         mulSkillDoc("good", "this one can be chosen", 200),
 		"nodesc":       "---\nname: nodesc\n---\n\nA body nobody will ever ask for.\n",
 		"nofront":      "Just a Markdown file with no frontmatter at all.\n",
 		"emptydesc":    "---\nname: emptydesc\ndescription:   \n---\n\nbody\n",
-		"notaskilldir": "", // a directory with no SKILL.md in it
+		"notaskilldir": "", // 一个没有 SKILL.md 的目录
 	})
 
 	got := loadSkills(root)
@@ -794,9 +786,9 @@ func TestLoadSkillsSkipsASkillWithNoDescription(t *testing.T) {
 	}
 }
 
-// The directory name is the fallback, so a skill author can write two lines of
-// frontmatter instead of three. Dropping the skill instead would punish the
-// omission of a field the filesystem already answers.
+// 目录名充当后备，所以技能作者可以只写两行前言，而不是三行。换成
+// 直接丢弃这个技能，等于是在惩罚一个文件系统早就替你回答过的字段
+// 缺失。
 func TestLoadSkillsFallsBackToTheDirectoryNameWhenNameIsMissing(t *testing.T) {
 	root := mulSkillsRoot(t, map[string]string{
 		"release-notes": "---\ndescription: draft the release notes from the git log\n---\n\nSteps here.\n",
@@ -811,9 +803,9 @@ func TestLoadSkillsFallsBackToTheDirectoryNameWhenNameIsMissing(t *testing.T) {
 	}
 }
 
-// Files loose in skills/ are not skills — a README, a .gitkeep, an editor
-// backup. Treating one as a skill directory would make loadSkills fail on a
-// perfectly ordinary tree.
+// 散落在 skills/ 里的文件不算技能——比如 README、.gitkeep、编辑器
+// 备份文件。要是把其中一个当成技能目录来处理，就会让 loadSkills 在
+// 一棵再普通不过的目录树上失败。
 func TestLoadSkillsIgnoresLooseFilesInTheSkillsDirectory(t *testing.T) {
 	root := mulSkillsRoot(t, map[string]string{
 		"deploy": mulSkillDoc("deploy", "ship a build to staging", 200),
@@ -826,11 +818,10 @@ func TestLoadSkillsIgnoresLooseFilesInTheSkillsDirectory(t *testing.T) {
 	}
 }
 
-// parseFrontmatter is twenty lines instead of a YAML dependency, so the exact
-// edge of what it understands has to be written down. Everything it does not
-// understand yields "", which means the skill disappears from the index — a
-// silent failure whose only symptom is that the model never uses the skill you
-// wrote.
+// parseFrontmatter 用 20 行代码代替了一个 YAML 依赖，所以它到底能
+// 理解到什么程度，边界必须写清楚。所有它不理解的内容都会产生 ""，
+// 这意味着技能会从索引中消失——一次无声的失败，唯一的症状就是模型
+// 永远不会用到你写的这个技能。
 func TestParseFrontmatter(t *testing.T) {
 	cases := []struct {
 		name     string
@@ -849,8 +840,8 @@ func TestParseFrontmatter(t *testing.T) {
 			in:   "# deploy\n\nJust a Markdown file.\n",
 		},
 		{
-			// The author started the block and never closed it. Guessing where
-			// it ends would put the whole document in the description.
+			// 作者打开了这个块，却一直没有关闭它。去猜它在哪里结束，只会把整份
+			// 文档都塞进描述里。
 			name: "unterminated frontmatter",
 			in:   "---\nname: deploy\ndescription: ship a build to staging\n\nbody with no closing fence\n",
 		},
@@ -871,18 +862,17 @@ func TestParseFrontmatter(t *testing.T) {
 			wantDesc: "ship a build to staging",
 		},
 		{
-			// A colon in a description is not exotic; it is how anyone writes
-			// "do x: then y". Splitting on every colon truncates the sentence
-			// at the useful half.
+			// 描述里出现冒号不是什么稀罕事；就跟谁写"做 x：然后 y"时会用的冒号
+			// 一样平常。见冒号就切，会把句子恰好从最有用的那一半处截断。
 			name:     "a colon inside the value keeps the whole tail",
 			in:       "---\nname: deploy\ndescription: build the image: then push it and tag the release\n---\n",
 			wantName: "deploy",
 			wantDesc: "build the image: then push it and tag the release",
 		},
 		{
-			// A skill authored in Notepad. The BOM sits in front of the fence,
-			// HasPrefix("---") fails, and the skill vanishes with no error
-			// anywhere — on the platform this repo is developed on.
+			// 一个用记事本写成的技能。BOM 坐在栅栏前面，HasPrefix("---") 失败，
+			// 技能就这样消失了，哪里都不会报错——而且还是在这个 repo 自己开发
+			// 所用的那个平台上。
 			name:     "a leading UTF-8 BOM",
 			in:       mulBOM + "---\nname: deploy\ndescription: ship a build to staging\n---\n",
 			wantName: "deploy",
@@ -945,10 +935,10 @@ func TestParseFrontmatter(t *testing.T) {
 	}
 }
 
-// Zero skills must produce the empty string, not an empty block. An
-// `<skills>` header with nothing under it goes into the cached prefix of every
-// request for the life of every session in every project that has no skills
-// directory, and tells the model there is a list it should be consulting.
+// 零技能必须产生空字符串，而不是一个空块。一个下面什么都没有的
+// `<skills>` 头，会被塞进每一个请求的缓存前缀里——在每一个没有
+// skills 目录的项目中，整个会话期间都是如此——并且等于在告诉模型：
+// 这里有一份你应该去查阅的列表。
 func TestSkillsPromptIsExactlyEmptyForZeroSkills(t *testing.T) {
 	for _, in := range [][]skill{nil, {}} {
 		if got := skillsPrompt(in); got != "" {
@@ -962,10 +952,9 @@ func TestSkillsPromptIsExactlyEmptyForZeroSkills(t *testing.T) {
 	}
 }
 
-// The index is the entire interface between the model and the skills on disk:
-// a path it can cat and a sentence that says whether to bother. Both have to be
-// in there verbatim, and so do the three instructions, each of which exists
-// because of a specific way this goes wrong.
+// 索引是模型和磁盘上技能之间的整个接口：一条它可以拿去 cat 的路径，
+// 一句话说清楚值不值得为它费心。这两样必须逐字都在，那三条指令也
+// 一样必须都在——每一条的存在，都是因为某种具体的出错方式。
 func TestSkillsPromptCarriesEveryPathDescriptionAndInstruction(t *testing.T) {
 	skills := []skill{
 		{Name: "deploy", Description: "ship a build to staging and watch the rollout", Path: "skills/deploy/SKILL.md", BodyBytes: 3000},
@@ -985,8 +974,8 @@ func TestSkillsPromptCarriesEveryPathDescriptionAndInstruction(t *testing.T) {
 		}
 	}
 
-	// Compared against whitespace-collapsed text, so re-wrapping the prompt is
-	// allowed but deleting an instruction is not.
+	// 比对时用的是空白折叠后的文本，所以重新折行 prompt 是允许的，但
+	// 删掉一条指令不行。
 	flat := strings.Join(strings.Fields(got), " ")
 	for _, want := range []struct {
 		phrase string
@@ -1006,10 +995,11 @@ func TestSkillsPromptCarriesEveryPathDescriptionAndInstruction(t *testing.T) {
 	}
 }
 
-// The whole argument for progressive disclosure is an arithmetic one: names and
-// descriptions cost a little in every request forever, bodies cost a lot but
-// only when read. If skillsCost cannot show that gap on a realistic tree, the
-// number it prints is not evidence for the design it exists to justify.
+// 渐进披露的整个论证，说到底是一笔算术账：名称和描述这两项，每次
+// 请求都要花一点点，而且永远都要花；正文的开销大得多，但只有在被
+// 读取时才要花。如果 skillsCost 没法在一棵贴近现实的树上，把这个
+// 差距显示出来，那么它打印出的数字，就没法证明它存在的意义——也就
+// 是证明这个设计本身是合理的。
 func TestSkillsCostShowsBodiesDwarfingTheIndex(t *testing.T) {
 	root := mulSkillsRoot(t, map[string]string{
 		"deploy":        mulSkillDoc("deploy", "ship a build to staging and watch the rollout", 3000),
@@ -1045,17 +1035,17 @@ func TestSkillsCostShowsBodiesDwarfingTheIndex(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// dispatch — the ordering guarantee
+// dispatch — 排序保证
 // ---------------------------------------------------------------------------
 
-// dispatch's contract: one result block per call, in the order the model
-// emitted them, each carrying the id of the call it answers.
+// dispatch 的契约是：每次调用对应一个结果块，按模型发出调用的顺序
+// 排列，每个块都带着它所回答的那个调用 id。
 //
-// Every part of that is load-bearing on the NEXT request rather than this one.
-// A missing result is an unanswered tool_use_id and the request is rejected; a
-// misordered pair means the model reads the output of `git log` as the answer
-// to `ls`, silently. That is stage 05's bug, and the symptom always points at
-// the request builder rather than at whatever dropped the block.
+// 这里的每一处，分量都压在**下一个**请求上，而不是这一个。少一个
+// 结果，就是一个没有答复的 tool_use_id，请求会被拒绝；一对错了序的
+// 结果，就意味着模型会悄悄把 `git log` 的输出当成 `ls` 的答案来读。
+// 那是阶段 05 的 bug，而症状指向的，永远是请求构建的地方，而不是
+// 无论是什么弄丢了那个块。
 func TestDispatchAnswersEveryCallOnceInOrderAndByID(t *testing.T) {
 	a, rec := mulAgent(&gate{yolo: true}, mulShell(t))
 
@@ -1090,8 +1080,8 @@ func TestDispatchAnswersEveryCallOnceInOrderAndByID(t *testing.T) {
 		}
 	}
 
-	// Content, not just ids: a per-index shuffle that preserved the id mapping
-	// would still be wrong, and this is what catches it.
+	// 内容也要对，不能只对 id：一次按索引打乱、却保留了 id 映射的洗牌，
+	// 仍然是错的，而这正是这里要抓住的东西。
 	for i, want := range map[int]string{0: "mul-alpha", 2: "mul-beta", 4: "mul-gamma"} {
 		if !strings.Contains(results[i].Text, want) {
 			t.Errorf("result %d does not contain %q; it says %q instead", i, want, results[i].Text)
@@ -1107,9 +1097,9 @@ func TestDispatchAnswersEveryCallOnceInOrderAndByID(t *testing.T) {
 	}
 }
 
-// A tool name the model invented is recoverable — but only if the result says
-// which name was wrong. "Unknown tool" alone leaves a model that emitted three
-// calls with no way to tell which of them to stop using.
+// 模型自己编造的工具名是可以纠正的——但前提是结果得说清楚，错的是
+// 哪个名字。光是一句 "Unknown tool"，会让那个发出三次调用的模型没法
+// 知道该停用哪一个。
 func TestDispatchNamesTheToolItDoesNotHave(t *testing.T) {
 	a, _ := mulAgent(&gate{yolo: true}, "")
 
@@ -1133,9 +1123,9 @@ func TestDispatchNamesTheToolItDoesNotHave(t *testing.T) {
 	}
 }
 
-// A task call whose arguments do not parse must come back as a tool result, not
-// as a subagent launched with an empty prompt and not as a dropped block. The
-// gate must not be asked either: there is nothing to approve.
+// 一个参数解析不了的任务调用，必须以工具结果的形式返回——而不是被
+// 启动成一个 prompt 为空的子 Agent，也不是被悄悄丢掉的块。这道门也
+// 不该被问起：根本没有什么好批准的。
 func TestDispatchTurnsMalformedTaskArgsIntoAResultInsteadOfSpawning(t *testing.T) {
 	a, rec := mulAgent(&gate{yolo: true}, "")
 
@@ -1164,12 +1154,12 @@ func TestDispatchTurnsMalformedTaskArgsIntoAResultInsteadOfSpawning(t *testing.T
 	}
 }
 
-// A denied call still gets a result block. The temptation is to skip it — the
-// command did not run, so what is there to report — and the consequence is an
-// unanswered tool_use_id on the next request, which fails the whole
-// conversation rather than the one command the user declined.
+// 一个被拒绝的调用，仍然会得到一个结果块。诱惑是干脆跳过它——命令
+// 根本没运行，还有什么好报告的呢——但后果是下一个请求里出现一个
+// 没人答复的 tool_use_id，这会搞砸整个对话，而不只是用户拒绝的那
+// 一条命令。
 func TestDispatchAnswersDeniedCallsToo(t *testing.T) {
-	// available:false makes ask() deny without needing a terminal.
+	// available:false 让 ask() 不需要终端就能直接拒绝。
 	a, _ := mulAgent(&gate{available: false}, "")
 
 	calls := []Block{
@@ -1198,12 +1188,11 @@ func TestDispatchAnswersDeniedCallsToo(t *testing.T) {
 	}
 }
 
-// After an abort, the remaining calls are not executed — but they are still
-// answered. Counting the blocks rather than trusting the flag is the point: the
-// flag says the loop stopped, and only the count says the conversation is still
-// sendable afterwards.
+// 中止之后，剩下的调用不会再执行——但仍然会得到回答。重点在于清点
+// 这些块，而不是相信那个标志位：标志位只能说明循环已经停止，唯有
+// 清点数量才能说明，对话在那之后是否还能继续发送。
 func TestDispatchStillAnswersEveryCallAfterAnAbort(t *testing.T) {
-	// An input stream that is already at EOF makes ask() return abort.
+	// 一个已经 EOF 的输入流使 ask() 返回中止。
 	g := &gate{available: true, in: bufio.NewScanner(strings.NewReader("")), out: io.Discard}
 	a, rec := mulAgent(g, "")
 
@@ -1237,29 +1226,27 @@ func TestDispatchStillAnswersEveryCallAfterAnAbort(t *testing.T) {
 	if n := rec.count(KindSubagentStart); n != 0 {
 		t.Errorf("%d subagents were started after the user stopped the session", n)
 	}
-	// Exactly one question was asked: the abort must short-circuit the rest,
-	// not ask the user four times whether they meant it.
+	// 恰好只问了一个问题：中止必须让剩下的问题都短路掉，而不是把用户
+	// 问上四遍，来确认他们是不是真是这个意思。
 	if n := rec.count(KindGateVerdict); n != 1 {
 		t.Errorf("the gate produced %d verdicts after an abort on the first call, want 1", n)
 	}
 }
 
-// The ordering guarantee under real concurrency, which is the reason this
-// function exists at all: two subagents run at the same time, the second
-// finishes first, and the history must still read in the order the model asked.
+// 真并发下的排序保证，是这个函数存在的全部理由：两个子 Agent 同时
+// 运行，第二个先完成，历史却必须仍然按模型提问的顺序来读。
 //
-// If results were collected as they landed, the same session replayed twice
-// would produce two different message arrays, two different prompt prefixes,
-// and — per stage 04 — a cache that never hits. Concurrency is allowed to
-// change how long things take. It is not allowed to change what the
-// conversation says.
+// 如果结果是按落地的先后顺序收集的，同一个会话重放两次就会产生两个
+// 不同的 message 数组、两个不同的 prompt 前缀，以及——按阶段 04 的
+// 说法——一个永远不会命中的缓存。并发可以改变事情要花多久，但不能
+// 改变对话里说了什么。
 func TestDispatchKeepsSubagentResultsInTheModelsOrder(t *testing.T) {
 	betaDone := make(chan struct{})
 	p := &mulFakeProvider{
 		reply: func(prompt string) string { return "report for " + prompt },
 		before: func(prompt string) {
-			// Hold alpha until beta has finished, so completion order is the
-			// reverse of call order every run, with no sleeps to flake on.
+			// 按住 alpha，直到 beta 完成，这样一来，每次运行完成的顺序都会和
+			// 调用顺序相反，也没有 sleep 会让测试变得时好时坏。
 			if prompt == "alpha" {
 				select {
 				case <-betaDone:
@@ -1287,9 +1274,9 @@ func TestDispatchKeepsSubagentResultsInTheModelsOrder(t *testing.T) {
 		t.Fatal("dispatch reported the session stopped with a --yolo gate")
 	}
 
-	// The precondition. Without it this test would pass against a dispatch that
-	// ran the two children one after another in call order, which is the one
-	// implementation that cannot get the ordering wrong.
+	// 前提条件。如果没有这一条，就算换成一个按调用顺序把两个子 Agent
+	// 一前一后串行跑完的 dispatch，这个测试也照样能通过——而这偏偏是
+	// 唯一一种不可能把顺序搞错的实现。
 	if order := p.order(); len(order) != 2 || order[0] != "beta" || order[1] != "alpha" {
 		t.Fatalf("the subagents completed in the order %v, want [beta alpha]. Either they were not run "+
 			"concurrently — in which case this test proves nothing about the ordering guarantee — or the fixture "+
@@ -1314,9 +1301,9 @@ func TestDispatchKeepsSubagentResultsInTheModelsOrder(t *testing.T) {
 		}
 	}
 
-	// The child's events landed in the parent's stream, stamped with the tree
-	// coordinates. This is the end-to-end check that newChild forks the bus
-	// rather than making a new one.
+	// 子 Agent 的事件，落在了父 Agent 的流里，并且盖上了树坐标。这是
+	// 一个端到端检查，用来确认 newChild 分叉的是总线本身，而不是另起
+	// 一个新的。
 	if n := rec.count(KindSubagentStart); n != 2 {
 		t.Errorf("%d subagent_start events, want 2", n)
 	}
@@ -1334,19 +1321,19 @@ func TestDispatchKeepsSubagentResultsInTheModelsOrder(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// spawn and newChild
+// spawn 和 newChild
 // ---------------------------------------------------------------------------
 
-// newChild is the "what is shared and what is not" decision written out as
-// code, and each half fails differently: sharing the compactor calibrates the
-// child's estimator on the parent's traffic, and NOT sharing the gate means a
-// subagent runs commands nobody approved.
+// newChild 把"什么被共享、什么不被共享"这个决定写成了代码，两半
+// 各有各的出错方式：共享压缩器，能让子 Agent 的估算器用父 Agent 的
+// 流量来校准；**不**共享门，则意味着子 Agent 会跑起没人批准过的
+// 命令。
 func TestNewChildSharesTheGateAndForksEverythingElse(t *testing.T) {
 	parent, _ := mulAgent(&gate{yolo: true}, "")
 	parent.cfg.maxTurns = 40
 	parent.cfg.subTurns = 6
 	parent.comp = newCompactor(200_000, 0.8, 0.3)
-	parent.comp.est.observe(4000, 1000) // ratio 4.0
+	parent.comp.est.observe(4000, 1000) // 比例 4.0
 
 	child := parent.newChild("survey docs#1", func() string { return "child system" })
 
@@ -1385,16 +1372,16 @@ func TestNewChildSharesTheGateAndForksEverythingElse(t *testing.T) {
 	}
 }
 
-// A subagent that returns nothing must say so. The parent has no transcript to
-// inspect and no way to ask a follow-up, so an empty string is read as a
-// finding — "I looked and there was nothing" — and the parent proceeds
-// confidently on the strength of a child that hit its turn limit.
+// 什么都不返回的子 Agent，必须明说这一点。父 Agent 没有笔录可查，
+// 也没办法追问，于是空字符串会被当成一个结论来读——"我看过了，
+// 什么都没有"——父 Agent 就会带着这份信心继续往下走，而这份信心
+// 的全部根基，不过是一个撞上了回合上限的子 Agent。
 //
-// A subTurns budget of zero makes runTurn return before it ever calls a
-// provider, so this exercises the guard with no network anywhere near it.
+// 把 subTurns 预算设成零，会让 runTurn 在它还没调用供应商之前就
+// 返回，所以这就测到了这道防线，而且全程没有一丁点网络牵扯在里头。
 func TestSpawnReportsAnEmptyChildAsAFailureRatherThanAnEmptyResult(t *testing.T) {
 	a, rec := mulAgent(&gate{yolo: true}, "")
-	a.cfg.subTurns = 0 // the child stops before its first model call
+	a.cfg.subTurns = 0 // 子 Agent 在它第一次模型调用之前就停止
 
 	report, _, err := a.spawn("call_1", "probe", "look at everything")
 	if err != nil {
@@ -1427,7 +1414,7 @@ func TestSpawnReportsAnEmptyChildAsAFailureRatherThanAnEmptyResult(t *testing.T)
 			"delegation in the trace", ends[0].ToolID)
 	}
 
-	// The child's own events are in the parent's stream, one level down.
+	// 子 Agent 自己的事件，就在父 Agent 的流里，只是深了一层。
 	found := false
 	for _, e := range rec.events {
 		if e.Depth == 1 && e.Agent == "probe#1" {
@@ -1440,14 +1427,12 @@ func TestSpawnReportsAnEmptyChildAsAFailureRatherThanAnEmptyResult(t *testing.T)
 	}
 }
 
-// ---------------------------------------------------------------------------
-// lastAssistantText — the child's return value
-// ---------------------------------------------------------------------------
+// lastAssistantText — 子 Agent 的返回值
 
-// This function IS the subagent's return value, and every wrong answer is a
-// specific lie told to the parent: the first message instead of the last is a
-// stale answer, an empty string is "nothing to report", and a tool-call-only
-// message is silence where a conclusion belongs.
+// 这个函数**是**子 Agent 的返回值，每一个错误的答案，都是对父 Agent
+// 撒的一个具体的谎：取第一条 message 而不是最后一条，得到的是一个
+// 过时的答案；空字符串意味着"无事可报"；一条只有工具调用的 message，
+// 则是本该有结论的地方，却只剩一片沉默。
 func TestLastAssistantText(t *testing.T) {
 	callBlock := func(id, cmd string) Block {
 		return Block{Kind: BlockToolCall, ID: id, Name: "bash", Args: mulBash(cmd)}
@@ -1534,9 +1519,9 @@ func TestLastAssistantText(t *testing.T) {
 		if got != c.want {
 			t.Errorf("%s: lastAssistantText = %q, want %q", c.name, got, c.want)
 		}
-		// The empty cases are asserted deliberately rather than incidentally:
-		// spawn turns "" into an explicit failure string, and that branch stays
-		// reachable only while this function really does return "".
+		// 对空情况的断言是故意为之，不是顺带的：spawn 把 "" 转成一个明确的
+		// 失败字符串，而那个分支只有在这个函数真的会返回 "" 时，才够得到、
+		// 走得进去。
 		if c.want == "" && got != "" {
 			t.Errorf("%s: a conversation with no assistant text returned %q. spawn's guard only fires on the empty "+
 				"string, so this value is handed to the parent as the subagent's finding", c.name, got)
@@ -1544,10 +1529,9 @@ func TestLastAssistantText(t *testing.T) {
 	}
 }
 
-// firstLine is what the gate prompt and the trace show for a subagent's task:
-// the first line, with a marker saying there is more. Swallowing the marker
-// makes a truncated prompt look complete, which is the one thing a permission
-// prompt must never do.
+// firstLine 是门 prompt 和 trace 为子 Agent 的任务所显示的内容：第
+// 一行，外加一个说明还有更多的标记。吞掉这个标记，会让一个被截断的
+// prompt 看起来完整，而这恰恰是权限 prompt 绝不能做的一件事。
 func TestFirstLine(t *testing.T) {
 	cases := []struct {
 		in, want string
@@ -1556,10 +1540,9 @@ func TestFirstLine(t *testing.T) {
 		{"  list every TODO  ", "list every TODO"},
 		{"list every TODO\nand say which file it is in", "list every TODO …"},
 		{"  list every TODO  \nmore", "list every TODO …"},
-		// Leading whitespace is trimmed before the cut, so this is the only
-		// line there is and it gets no ellipsis. The previous behaviour
-		// returned " …" — an ellipsis with nothing in front of it, on the line
-		// a human is being asked to authorise.
+		// 裁切之前，会先修剪掉前导空格，所以这就是唯一存在的一行，它也就
+		// 得不到省略号。旧的行为会返回 " …"——省略号前面什么都没有，而
+		// 这一行，恰恰是人类被问要不要批准的那一行。
 		{"\nsecond line", "second line"},
 		{"\n\n  first real line\nand more", "first real line …"},
 		{"", ""},
@@ -1573,17 +1556,15 @@ func TestFirstLine(t *testing.T) {
 	}
 }
 
-// The permission prompt must name the command it is asking about.
+// 权限 prompt 必须点明自己问的是哪条命令。
 //
-// Until stage 07 it did not need to: under a strictly sequential
-// print-then-ask loop, "run?" can only refer to the line above it. Concurrent
-// subagents removed that guarantee — the command text reaches the terminal via
-// the renderer under the bus lock, and the question via the gate under its own
-// lock, with no ordering between them. A user shown two commands and then one
-// bare "run?" can authorise the wrong one.
+// 直到阶段 07 之前都不需要这样：在严格顺序的 print-then-ask 循环下，
+// "run?" 只能指它上面的那一行。并发子 Agent 移除了那个保证——命令
+// 文本经由渲染器、在总线锁下到达终端，问题则经由门、在它自己的锁下
+// 到达终端，两者之间没有任何排序。一个眼前先后出现了两条命令、随后
+// 只看到一句光秃秃的 "run?" 的用户，可能会批准错一条。
 //
-// This is the regression guard for that, and it is a security test rather than
-// a cosmetic one.
+// 这就是针对这一点的回归防线，它是一项安全测试，不是什么门面测试。
 func TestGateQuestionNamesItsCommand(t *testing.T) {
 	for _, command := range []string{
 		"rm -rf /tmp/build",
@@ -1610,7 +1591,7 @@ func TestGateQuestionNamesItsCommand(t *testing.T) {
 				t.Errorf("the prompt no longer offers %q:\n%s", want, got)
 			}
 		}
-		// `a` sets always on the SHARED gate, so the prompt has to say so.
+		// `a` 会在**共享**门上设置 `always`，所以 prompt 必须把这一点说清楚。
 		if !strings.Contains(got, "every agent") {
 			t.Errorf("the prompt does not say that `a` applies to every agent, but it does:\n%s\n"+
 				"One subagent's \"allow all\" disarms the gate for the parent and every sibling.", got)
@@ -1618,7 +1599,7 @@ func TestGateQuestionNamesItsCommand(t *testing.T) {
 	}
 }
 
-// yolo and an unavailable terminal must not print a question at all.
+// yolo 和无可用终端必须根本不打印问题。
 func TestGateDoesNotAskWhenItCannot(t *testing.T) {
 	var out bytes.Buffer
 	g := &gate{yolo: true, out: &out}

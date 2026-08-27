@@ -8,14 +8,15 @@ import (
 )
 
 // ---------------------------------------------------------------------------
-// Fixtures
+// 夹具
 // ---------------------------------------------------------------------------
 
-// padded returns a string of exactly n characters that begins with prefix.
+// padded 返回恰好 n 个字符的字符串，
+// 以 prefix 开始。
 //
-// The budget fixtures need exact message sizes: plan()'s arithmetic is only
-// worth asserting if the test can predict where the budget boundary lands
-// instead of guessing at it.
+// 预算夹具需要精确的消息大小：plan()
+// 的算术只有当测试能预测预算边界在哪
+// 而不是猜测时才值得断言。
 func padded(prefix string, n int) string {
 	if len(prefix) >= n {
 		return prefix[:n]
@@ -23,7 +24,8 @@ func padded(prefix string, n int) string {
 	return prefix + strings.Repeat("x", n-len(prefix))
 }
 
-// bashArgs builds a well-formed bash tool-call payload of exactly n characters.
+// bashArgs 构建恰好 n 个字符的格式良好
+// 的 bash 工具调用 payload。
 func bashArgs(n int) string {
 	const head, tail = `{"command":"`, `"}`
 	body := n - len(head) - len(tail)
@@ -33,11 +35,12 @@ func bashArgs(n int) string {
 	return head + strings.Repeat("e", body) + tail
 }
 
-// convFixture is the conversation every cut-point test runs against: three
-// human turns, an assistant message that both talks and issues two parallel
-// tool calls, a single user message carrying both results, and a plain reply.
+// convFixture 是每个切点测试运行的对话：
+// 三个人类回合，一条既说话又发出两个并行
+// 工具调用的 Assistant 消息，一条单一用户消息
+// 携带两个结果，和一个普通回复。
 //
-// The index map, because every test below reasons about it:
+// 索引映射，因为下面每个测试都用它来推理：
 //
 //	 0 user       "how big is this repo?"      ILLEGAL — a user turn
 //	 1 assistant   text + two parallel calls   legal
@@ -57,14 +60,16 @@ func convFixture() []Msg {
 	return []Msg{
 		// 0
 		TextMsg(RoleUser, "how big is this repo?"),
-		// 1 — text AND tool calls in one assistant message, which is the shape
-		// a naive "assistant messages are just text" cutter gets wrong.
+		// 1 — 一条 Assistant 消息中既有文本
+		// 又有工具调用，这是天真的"Assistant
+		// 消息只是文本"切割器会搞错的形状。
 		{Role: RoleAssistant, Blocks: []Block{
 			{Kind: BlockText, Text: "I'll count the files and the lines at the same time."},
 			{Kind: BlockToolCall, ID: "toolu_aa1", Name: "bash", Args: `{"command":"find . -name '*.go' | wc -l"}`},
 			{Kind: BlockToolCall, ID: "toolu_bb2", Name: "bash", Args: `{"command":"find . -name '*.go' | xargs wc -l | tail -1"}`},
 		}},
-		// 2 — one message answers both calls; that is the Anthropic shape.
+		// 2 — 一条消息回答两个调用；这是
+		// Anthropic 的形状。
 		{Role: RoleUser, Blocks: []Block{
 			ToolResultBlock("toolu_aa1", "21\n[exit 0 · 12ms]"),
 			ToolResultBlock("toolu_bb2", "  9184 total\n[exit 0 · 31ms]"),
@@ -80,7 +85,7 @@ func convFixture() []Msg {
 		TextMsg(RoleAssistant, "About a third of the repo is tests: 3120 of 9184 lines."),
 		// 6
 		TextMsg(RoleUser, "now count the tests themselves"),
-		// 7 — a tool call with no accompanying text.
+		// 7 — 没有伴随文本的工具调用。
 		{Role: RoleAssistant, Blocks: []Block{
 			{Kind: BlockToolCall, ID: "toolu_dd4", Name: "bash", Args: `{"command":"grep -c '^func Test' *_test.go"}`},
 		}},
@@ -102,13 +107,16 @@ func convFixture() []Msg {
 	}
 }
 
-// convFixtureToolIDs are every tool-call id in convFixture, for the test that
-// says none of them may reach the summariser.
+// convFixtureToolIDs 是 convFixture
+// 中每一个工具调用的 id，供那个
+// 断言——这些 id 都不能传到总结
+// 程序——的测试使用。
 var convFixtureToolIDs = []string{"toolu_aa1", "toolu_bb2", "toolu_cc3", "toolu_dd4", "toolu_ee5"}
 
-// toolTailFixture ends in tool results with nothing after them — the state a
-// conversation is in the instant its commands finish, which is exactly when the
-// wall check runs and compaction is considered.
+// toolTailFixture 以工具结果结束，
+// 之后没有任何东西——对话在其命令
+// 完成的一瞬间所处的状态，这正是
+// 墙壁检查运行和考虑压缩的时候。
 func toolTailFixture() []Msg {
 	return []Msg{
 		TextMsg(RoleUser, "run the suite and the vet pass"),
@@ -124,13 +132,16 @@ func toolTailFixture() []Msg {
 	}
 }
 
-// budgetFixture is a uniform conversation for plan()'s arithmetic: every
-// message is exactly 400 characters, which is exactly 100 tokens once the
-// estimator is pinned at 4.0 characters per token. That lets a test aim the
-// keep budget at a chosen index and know where it will land.
+// budgetFixture 是 plan() 算术的
+// 统一对话：每条消息恰好 400 个字符，
+// 一旦估算器固定在每 token 4.0 个字符，
+// 就恰好 100 个 token。这让测试可以
+// 把保留预算对准选定的索引，知道它
+// 会在哪落地。
 //
-// The repeating block is user / assistant-call / tool-result / assistant, so
-// indices where i%4 is 0 or 2 are illegal cut points and the odd ones are legal.
+// 重复块是 user / assistant-call / tool-result /
+// assistant，所以 i%4 为 0 或 2 的索引
+// 是非法切点，奇数是合法的。
 func budgetFixture(blocks int) []Msg {
 	var msgs []Msg
 	for i := range blocks {
@@ -147,17 +158,20 @@ func budgetFixture(blocks int) []Msg {
 	return msgs
 }
 
-// pinnedCompactor returns a compactor whose estimator has been calibrated to
-// exactly 4 characters per token, so the tests can do the budget arithmetic on
-// paper instead of chasing the 3.6 cold start.
+// pinnedCompactor 返回一个压缩器，
+// 其估算器已被校准为恰好每 token
+// 4 个字符，所以测试可以在纸上做
+// 预算算术，而不是追 3.6 冷启动。
 func pinnedCompactor(window int, threshold, keepRatio float64) *compactor {
 	c := newCompactor(window, threshold, keepRatio)
 	c.est.observe(4000, 1000)
 	return c
 }
 
-// requireUniform fails the test if budgetFixture has drifted away from the
-// 400-characters-per-message assumption the budget arithmetic rests on.
+// 如果 budgetFixture 偏离了预算
+// 算术所依赖的"每条消息 400 字符"
+// 这一假设，requireUniform 就会
+// 让测试失败。
 func requireUniform(t *testing.T, msgs []Msg) {
 	t.Helper()
 	for i, m := range msgs {
@@ -168,14 +182,18 @@ func requireUniform(t *testing.T, msgs []Msg) {
 }
 
 // ---------------------------------------------------------------------------
-// The cut-point invariant
+// 切点不变量
 // ---------------------------------------------------------------------------
 
-// The invariant the whole of compact.go exists to protect: if canCutBefore says
-// a cut is allowed, the conversation that cut produces must be one the API will
-// accept. Asserted at every index rather than a hand-picked one, because the
-// bug this guards against is a cut that is legal at index 5 and orphans a tool
-// result at index 9 — which a single-index test would never see.
+// 整个 compact.go 存在的意义，就是
+// 守护这一条不变量：如果 canCutBefore
+// 说允许切割，切割产生的对话就必须
+// 是 API 会接受的对话。之所以在每个
+// 索引上断言，而不是挑一个位置断言，
+// 是因为这个守卫防的 bug 恰恰是
+// "索引 5 处的切割合法，却在索引 9
+// 孤立了一个工具结果"——单索引测试
+// 永远看不到这种情况。
 func TestEveryLegalCutProducesASendableConversation(t *testing.T) {
 	msgs := convFixture()
 
@@ -198,22 +216,26 @@ func TestEveryLegalCutProducesASendableConversation(t *testing.T) {
 		}
 	}
 
-	// Without this the whole test passes vacuously against a canCutBefore that
-	// simply returns false everywhere — which would also make compaction
-	// impossible, silently.
+	// 没有这一条，面对一个到处都只
+	// 返回 false 的 canCutBefore，整个
+	// 测试也会虚假地"通过"——这同样
+	// 会让压缩变得不可能，而且是
+	// 悄无声息地不可能。
 	if legal < 4 {
 		t.Fatalf("only %d of %d indices are cuttable; the fixture no longer exercises the invariant", legal, len(msgs))
 	}
 }
 
-// The mirror of the test above: the two reasons a cut is refused, each present
-// in the fixture and each named. A canCutBefore that never refuses anything
-// would pass the invariant test only by never being asked.
+// 上面测试的镜像：拒绝切割的两个原因，
+// 每个在夹具中存在且被命名。一个从不
+// 拒绝任何东西的 canCutBefore 只有
+// 从不被询问时才会通过不变量测试。
 func TestCutPointsAreRejectedForTheRightReason(t *testing.T) {
 	msgs := convFixture()
 
-	// Index 2 answers the two parallel calls made in message 1. Cutting here
-	// deletes the calls and keeps the answers.
+	// 索引 2 回答消息 1 中发出的两个
+	// 并行调用。在这里切割删除调用
+	// 并保留答案。
 	const orphan = 2
 	hasResult := false
 	for _, b := range msgs[orphan].Blocks {
@@ -229,8 +251,9 @@ func TestCutPointsAreRejectedForTheRightReason(t *testing.T) {
 			"the results would be orphaned and the provider rejects an unmatched tool_use_id", orphan, orphan-1)
 	}
 
-	// Index 6 is the second human turn. The summary is injected as a user
-	// message, so cutting here puts two user messages back to back.
+	// 索引 6 是第二个人类回合。总结
+	// 作为用户消息注入，所以在这里
+	// 切割把两条用户消息放在一起。
 	const userTurnIdx = 6
 	if msgs[userTurnIdx].Role != RoleUser {
 		t.Fatalf("fixture drift: message %d was supposed to be a user turn", userTurnIdx)
@@ -241,18 +264,22 @@ func TestCutPointsAreRejectedForTheRightReason(t *testing.T) {
 	}
 }
 
-// canCutBefore checks for tool results *and* for the role, and the reason the
-// tool-result check is not redundant is this case: the neutral Msg type lets any
-// block sit in any role, so the day a new adapter puts a result in an assistant
-// message, a role-only check goes on returning true and ships an orphan.
+// canCutBefore 检查工具结果**和**
+// 角色，工具结果检查之所以不冗余，
+// 原因就在这种情况：中立的 Msg
+// 类型让任何块都能出现在任何角色
+// 里，所以某天新适配器把结果放进
+// Assistant 消息，一个只看角色的
+// 检查还是会返回 true，放出一个
+// 孤立结果。
 func TestCanCutBeforeRejectsAToolResultWhateverRoleCarriesIt(t *testing.T) {
 	msgs := []Msg{
 		TextMsg(RoleUser, "go"),
 		{Role: RoleAssistant, Blocks: []Block{
 			{Kind: BlockToolCall, ID: "t1", Name: "bash", Args: `{"command":"ls"}`},
 		}},
-		// An assistant message carrying the result. Unusual, and precisely the
-		// shape the role check cannot see.
+		// Assistant 消息携带结果。不常见，
+		// 且正是角色检查看不到的形状。
 		{Role: RoleAssistant, Blocks: []Block{
 			{Kind: BlockToolResult, ID: "t1", Text: "a\nb\n[exit 0]"},
 		}},
@@ -264,9 +291,10 @@ func TestCanCutBeforeRejectsAToolResultWhateverRoleCarriesIt(t *testing.T) {
 	}
 }
 
-// safeCut searches forward — toward dropping more — because compaction runs when
-// the window is nearly full. A backward search frees less than asked for and the
-// agent hits the wall again on the very next call.
+// safeCut 向前搜索——朝向删除更多——
+// 因为压缩在窗口几乎满时运行。向后
+// 搜索释放的比要求的少，Agent 在
+// 下一个调用时再次撞到墙。
 func TestSafeCutNeverSearchesBackward(t *testing.T) {
 	msgs := convFixture()
 	moved := 0
@@ -291,10 +319,14 @@ func TestSafeCutNeverSearchesBackward(t *testing.T) {
 	}
 }
 
-// The tail case: when everything from `want` onward is a tool result, there is
-// no legal cut and safeCut must say so rather than return the least-bad index.
-// Returning an illegal index here is worse than refusing to compact, because
-// refusing costs a slow turn and cutting wrong costs a malformed request.
+// 尾部情况：当从 `want` 起往后全都
+// 是工具结果时，就没有合法的切割
+// 点，safeCut 必须明说这一点，而
+// 不是勉强返回一个相对没那么糟的
+// 索引。在这里返回非法索引比拒绝
+// 压缩更糟，因为拒绝的代价是一次
+// 迟缓的回合，而切错的代价是一个
+// 格式错误的请求。
 func TestSafeCutReturnsMinusOneWhenTheTailIsAllToolResults(t *testing.T) {
 	msgs := toolTailFixture()
 	if why := validConversation(msgs); why != "" {
@@ -316,10 +348,12 @@ func TestValidConversationAcceptsAWellFormedConversation(t *testing.T) {
 	}
 }
 
-// The state a conversation is in while the tools are still running: the last
-// assistant message has issued a call and nothing has answered it yet. A naive
-// "every call must have a result" check flags this and makes the agent refuse to
-// compact exactly when it most needs to, at the top of a tool loop.
+// 工具仍在运行时对话所处的状态：
+// 最后一条 Assistant 消息发出了调用，
+// 没有任何东西回答过它。天真的"每个
+// 调用必须有结果"检查标记这个并让
+// Agent 拒绝压缩，恰好在它最需要压缩
+// 的时候，在工具循环顶部。
 func TestValidConversationAcceptsAnInFlightToolCall(t *testing.T) {
 	msgs := []Msg{
 		TextMsg(RoleUser, "list /srv"),
@@ -334,8 +368,9 @@ func TestValidConversationAcceptsAnInFlightToolCall(t *testing.T) {
 	}
 }
 
-// The orphan: a result whose call was cut away. This is the failure compaction
-// causes when it cuts in the wrong place, and it surfaces one request later.
+// 孤立：一个调用被切割走的结果。
+// 这是压缩在切割错误位置时引起的失败，
+// 并在下一个请求中出现。
 func TestValidConversationRejectsAnOrphanToolResult(t *testing.T) {
 	msgs := []Msg{
 		TextMsg(RoleUser, "carry on"),
@@ -352,9 +387,9 @@ func TestValidConversationRejectsAnOrphanToolResult(t *testing.T) {
 	}
 }
 
-// The mirror image of the orphan, and the more insidious one: the call survived
-// but its answer was dropped, so the model believes a command it issued produced
-// nothing at all.
+// 孤立的镜像，更阴险的那个：调用
+// 幸存但其答案被丢弃，所以模型相信
+// 它发出的命令没有产生任何东西。
 func TestValidConversationRejectsAnUnansweredToolCall(t *testing.T) {
 	msgs := []Msg{
 		TextMsg(RoleUser, "count them"),
@@ -388,9 +423,10 @@ func TestValidConversationRejectsConsecutiveSameRole(t *testing.T) {
 	}
 }
 
-// The empty message: a model that returns no text and no tool call. Appending
-// it produces a content array of length zero, which the Anthropic protocol
-// rejects on the NEXT request rather than this one.
+// 空消息：一个没有文本也没有工具
+// 调用的模型。附加它会产生长度
+// 为零的内容数组，Anthropic 协议
+// 在**下一个**请求而不是这个拒绝。
 func TestValidConversationRejectsAnEmptyMessage(t *testing.T) {
 	msgs := []Msg{
 		TextMsg(RoleUser, "hello"),
@@ -407,18 +443,20 @@ func TestValidConversationRejectsAnEmptyMessage(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// The estimator
+// 估算器
 // ---------------------------------------------------------------------------
 
-// The estimator has to settle on a session's real characters-per-token, because
-// every compaction decision is made against it. An estimator that never
-// converges compacts too early (burning cache for nothing) or too late (hitting
-// the wall).
+// 估算器必须确定会话的真实每 token
+// 字符数，因为每个压缩决定都依赖它。
+// 一个从不收敛的估算器压缩太早
+// （白白烧掉 cache）或太晚
+// （撞到墙）。
 func TestEstimatorConverges(t *testing.T) {
 	e := newEstimator()
 
-	// A true ratio of 3.0 with ±8% of turn-to-turn noise, which is roughly what
-	// a session moving between prose and JSON actually looks like.
+	// 真实比率 3.0 加上 ±8% 的回合间
+	// 噪声，这大约是会话在散文和 JSON
+	// 之间移动时看起来的样子。
 	for i := range 20 {
 		noise := 1.08
 		if i%2 == 1 {
@@ -438,12 +476,14 @@ func TestEstimatorConverges(t *testing.T) {
 	}
 }
 
-// The sanity range exists because usage events and character counts can be
-// mismatched — a usage event arriving for a call whose characters were never
-// measured. One such sample takes ten good calls to climb back from.
+// 理智范围存在是因为使用事件和字符
+// 计数可能不匹配——某个使用事件
+// 对应的调用，其字符从未被测量过。
+// 这样一个样本，需要十个好调用
+// 才能爬出来。
 func TestEstimatorRejectsImpossibleSamples(t *testing.T) {
 	e := newEstimator()
-	e.observe(3000, 1000) // a real sample: ratio 3.0
+	e.observe(3000, 1000) // 真实样本：比率 3.0
 	ratio, obs := e.ratio, e.obs
 
 	for _, bad := range []struct {
@@ -465,15 +505,18 @@ func TestEstimatorRejectsImpossibleSamples(t *testing.T) {
 	}
 }
 
-// 3.6 is a guess. The first real measurement is evidence. Averaging the two
-// keeps the guess alive for a dozen turns, which is most of a short session —
-// and it does it invisibly, because the ratio still looks plausible.
+// 3.6 是猜测。第一次真实测量是
+// 证据。把两者平均，会让这个猜测
+// 多活一打回合——这已经是一个
+// 短会话的大半——而且这一切
+// 悄无声息，因为比率看起来
+// 依然可信。
 func TestEstimatorFirstObservationReplacesTheColdStart(t *testing.T) {
 	e := newEstimator()
 	if e.ratio != 3.6 {
 		t.Fatalf("cold start is %.4f, not 3.6", e.ratio)
 	}
-	e.observe(2500, 1000) // a JSON-heavy session: 2.5 characters per token
+	e.observe(2500, 1000) // JSON 繁重会话：每 token 2.5 个字符
 	if e.ratio != 2.5 {
 		t.Errorf("after one real measurement of 2.5 the ratio is %.4f — the 3.6 cold-start guess was blended in "+
 			"rather than replaced, so the first turns of every session estimate against a number nobody measured", e.ratio)
@@ -483,26 +526,30 @@ func TestEstimatorFirstObservationReplacesTheColdStart(t *testing.T) {
 	}
 }
 
-// The claim the chapter makes, under test.
+// 章节做出的声明，在测试中。
 //
-// The estimate does not have to be *accurate*; it has to be *consistent*. The
-// provider below charges chars/2.9 plus a flat 700-token envelope that the
-// agent never sees itemised — a systematic bias of exactly the kind a vendored
-// tokenizer would get wrong. Because the estimator is calibrated against the
-// same quantity it is later asked to convert (convChars + baseChars), the bias
-// is absorbed into the ratio instead of accumulating as error.
+// 估计不必**准确；它必须一致**。
+// 下面的供应商按 chars/2.9 计费，
+// 外加一笔 Agent 从不看到明细的
+// 固定 700 token 信封费——这正是
+// 厂商化分词器会搞错的那种系统
+// 偏差。因为估算器校准所用的，
+// 正是它后来被要求换算的同一个量
+// （convChars + baseChars），偏差
+// 被吸收进了比率，而不会累积成
+// 误差。
 func TestEstimatorIsConsistentWithTheProviderItCalibratesAgainst(t *testing.T) {
-	// The "server": a tokenizer the agent has no access to.
+	// "服务器"：Agent 无法访问的分词器。
 	tokenize := func(chars int) int { return int(float64(chars)/2.9) + 700 }
 
 	c := newCompactor(200_000, 0.8, 0.3)
-	const baseChars = 12_000 // the system prompt and the tool schemas
+	const baseChars = 12_000 // 系统提示词和工具模式
 
 	var msgs []Msg
 	msgs = calibrationTurn(msgs, "t00", 4000)
 	msgs = calibrationTurn(msgs, "t01", 4000)
 
-	// Ten turns of the real loop: send, be billed, calibrate.
+	// 真实循环的十个回合：发送、计费、校准。
 	for i := range 10 {
 		if i > 0 {
 			msgs = calibrationTurn(msgs, fmt.Sprintf("t%02d", i+1), 4000)
@@ -511,8 +558,9 @@ func TestEstimatorIsConsistentWithTheProviderItCalibratesAgainst(t *testing.T) {
 		c.est.observe(sent, tokenize(sent))
 	}
 
-	// The next turn arrives. This is the prediction the wall check is made on,
-	// taken before the server is asked.
+	// 下一个回合到达。这是墙检查所
+	// 基于的预测，在询问服务器之前
+	// 取得。
 	msgs = calibrationTurn(msgs, "t99", 4000)
 	got := c.estimate(msgs, baseChars)
 	want := tokenize(convChars(msgs) + baseChars)
@@ -525,9 +573,11 @@ func TestEstimatorIsConsistentWithTheProviderItCalibratesAgainst(t *testing.T) {
 	}
 }
 
-// calibrationTurn appends one turn of history — a question, a tool call, its
-// result, and a reply — totalling exactly `chars` characters as msgChars counts
-// them, so the calibration arithmetic above is exact.
+// calibrationTurn 附加一个回合的历史——
+// 一个问题、一个工具调用、其结果和
+// 回复——总共恰好 `chars` 个字符，
+// 如 msgChars 计算它们，所以上面的
+// 校准算术是准确的。
 func calibrationTurn(msgs []Msg, id string, chars int) []Msg {
 	q := chars / 4
 	return append(msgs,
@@ -540,9 +590,10 @@ func calibrationTurn(msgs []Msg, id string, chars int) []Msg {
 	)
 }
 
-// due answers "are we near the wall", and it must answer from the estimate of
-// the prompt about to be sent rather than from the last usage report, which is
-// always one turn stale.
+// due 回答"我们靠近墙吗"，它必须
+// 依据即将发送的 prompt 的估计来
+// 回答，而不是依据最后一次使用
+// 报告——那份报告永远慢了一回合。
 func TestDueFiresOnTheThreshold(t *testing.T) {
 	c := newCompactor(100_000, 0.75, 0.3)
 	for _, tc := range []struct {
@@ -568,8 +619,8 @@ func TestDueFiresOnTheThreshold(t *testing.T) {
 // plan
 // ---------------------------------------------------------------------------
 
-// Compacting a conversation this short would replace real content with a
-// summary of nothing and cost a model call to do it.
+// 压缩这么短的对话会用什么都没有的总结
+// 替换真实内容，并花费一个模型调用去做。
 func TestPlanRefusesAShortConversation(t *testing.T) {
 	c := pinnedCompactor(10_000, 0.8, 0.3)
 	cut, why := c.plan(convFixture()[:3], 0)
@@ -584,15 +635,18 @@ func TestPlanRefusesAShortConversation(t *testing.T) {
 	}
 }
 
-// The floor. When the newest message alone is bigger than the whole keep
-// budget, cutting history frees nothing that matters — the problem is the size
-// of the output the user has to act on, not the length of the conversation.
-// Saying "compact harder" here sends the reader in the wrong direction.
+// 下限。当最新消息单独比整个保留
+// 预算都大时，切割历史也释放不出
+// 什么要紧的东西——问题是用户必须
+// 处理的输出大小，不是对话的长度。
+// 说"压缩得更狠"在这里会把读者
+// 引向错误的方向。
 func TestPlanRefusesWhenTheNewestMessageIsBiggerThanTheBudget(t *testing.T) {
 	msgs := budgetFixture(5)
 	requireUniform(t, msgs)
 
-	// 0.005 of a 10,000-token window is a 50-token budget; every message is 100.
+	// 10,000 token 窗口的 0.005 是
+	// 50 token 预算；每条消息 100。
 	c := pinnedCompactor(10_000, 0.8, 0.005)
 	cut, why := c.plan(msgs, 0)
 	if cut != -1 {
@@ -604,13 +658,16 @@ func TestPlanRefusesWhenTheNewestMessageIsBiggerThanTheBudget(t *testing.T) {
 	}
 }
 
-// The whole point of safeCut, observed from the outside: the budget boundary
-// lands wherever it lands, and plan must move it to a legal cut point before
-// returning it.
+// 从外部看，safeCut 的全部意义就是：
+// 预算边界落在哪里就是哪里，plan
+// 必须在返回之前，把它挪到一个
+// 合法切点。
 //
-// The arithmetic: 20 messages of 100 tokens each, a 400-token budget, so the
-// backward walk fits exactly the newest four and stops with the boundary at
-// index 16 — a user turn, and an illegal place to cut. The answer must be 17.
+// 算术：20 条消息各 100 token，
+// 400 token 预算，所以向后走
+// 恰好装下最新的四条，在索引 16
+// 停止——用户回合，非法切割位置。
+// 答案必须是 17。
 func TestPlanCutsAtALegalBoundaryInsideTheBudget(t *testing.T) {
 	msgs := budgetFixture(5)
 	requireUniform(t, msgs)
@@ -642,10 +699,13 @@ func TestPlanCutsAtALegalBoundaryInsideTheBudget(t *testing.T) {
 	}
 }
 
-// A sweep over every plausible keep budget. Any cut plan returns must be legal,
-// must leave a conversation with something in it, and must never leave fewer
-// than two messages — one message plus the summary is a conversation the model
-// answers as if the user had just typed the summary.
+// 遍历每个似乎可信的保留预算。
+// plan 返回的任何切割方案都必须
+// 合法，必须留下一个还有内容的
+// 对话，而且绝不能留下少于两条
+// 消息——一条消息加一份总结，
+// 会让模型回答起来，就像用户刚刚
+// 输入的正是这份总结。
 func TestPlanAlwaysLeavesASendableTail(t *testing.T) {
 	msgs := budgetFixture(6)
 	requireUniform(t, msgs)
@@ -682,9 +742,11 @@ func TestPlanAlwaysLeavesASendableTail(t *testing.T) {
 // clip
 // ---------------------------------------------------------------------------
 
-// Middle-out, not head-first. A build log puts the error at the end, a stack
-// trace puts the cause at the end, and a `clip` that keeps only the head passes
-// every naive length assertion while throwing away the answer.
+// 从中间往外切，不是从头开始切。
+// 构建日志把错误放在末尾，堆栈
+// 跟踪把原因放在末尾，一个只
+// 保留头部的 `clip` 能通过每一个
+// 天真的长度断言，却把答案扔掉了。
 func TestClipKeepsBothEnds(t *testing.T) {
 	s := "HEAD" + strings.Repeat("m", 992) + "TAIL"
 	if len(s) != 1000 {
@@ -720,8 +782,9 @@ func TestClipIsANoOpAndNeverPanics(t *testing.T) {
 		}
 	}
 
-	// Byte slicing across a multi-byte rune must not panic. The result may hold
-	// a replacement character; it may not take the process down mid-compaction.
+	// 跨越多字节 rune 的字节切割不能
+	// panic。结果里可以有替换字符；
+	// 但不能在压缩中途把进程拖垮。
 	s := strings.Repeat("日本語のログ出力", 300)
 	got := clip(s, 100)
 	if len(got) >= len(s) {
@@ -736,9 +799,11 @@ func TestClipIsANoOpAndNeverPanics(t *testing.T) {
 // flatten
 // ---------------------------------------------------------------------------
 
-// The summariser reads a transcript, not a conversation. A tool call has to
-// arrive as the command that ran, because `{"command":"ls -la /srv"}` spends
-// tokens on JSON punctuation and reads as a data structure rather than an action.
+// 总结程序读文字记录，不是对话。
+// 工具调用必须作为运行的命令到达，
+// 因为 `{"command":"ls -la /srv"}` 在
+// JSON 标点上花费 token，读起来像
+// 数据结构，而不是动作。
 func TestFlattenRendersTheCommandNotTheJSON(t *testing.T) {
 	msgs := []Msg{
 		TextMsg(RoleUser, "list /srv"),
@@ -761,9 +826,11 @@ func TestFlattenRendersTheCommandNotTheJSON(t *testing.T) {
 	}
 }
 
-// Small models emit broken tool calls — truncated JSON, a missing `command`
-// field. The transcript is the last record of what happened, so a call that
-// could not be parsed must still appear as something rather than vanish.
+// 小模型发出破损工具调用——截断的
+// JSON，缺失 `command` 字段。文字记录
+// 是发生了什么的最后记录，所以无法
+// 解析的调用必须仍然作为某物出现
+// 而不是消失。
 func TestFlattenFallsBackToRawArgsWhenTheJSONIsBroken(t *testing.T) {
 	for _, tc := range []struct {
 		name string
@@ -787,9 +854,12 @@ func TestFlattenFallsBackToRawArgsWhenTheJSONIsBroken(t *testing.T) {
 	}
 }
 
-// The transcript goes to a call that has no tools defined and no history. An id
-// that appears in it is an id the summary can quote, and the summary is a user
-// message in the surviving conversation — where that id refers to nothing.
+// 这份文字记录，会被送进一次没有
+// 定义工具、也没有历史的调用。
+// 在其中出现的 id 是总结可以引用
+// 的 id，而总结又是幸存对话里的
+// 一条用户消息——那个 id 在这里
+// 指代什么都没有。
 func TestFlattenLeaksNoToolCallIDs(t *testing.T) {
 	got := flatten(convFixture(), 4000)
 	for _, id := range convFixtureToolIDs {
@@ -798,8 +868,9 @@ func TestFlattenLeaksNoToolCallIDs(t *testing.T) {
 				"where the call no longer exists", id)
 		}
 	}
-	// Sanity: the transcript is not empty, so the loop above had something to
-	// find nothing in.
+	// 理智检查：文字记录不为空，所以
+	// 上面的循环是在一个确实有内容
+	// 的地方，什么也没找到。
 	if len(got) < 200 {
 		t.Fatalf("the flattened transcript is only %d characters; it cannot be a faithful rendering of a 14-message conversation", len(got))
 	}

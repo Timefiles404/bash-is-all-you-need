@@ -1,20 +1,24 @@
-// Stage 05 — Live Forever: the agent loop, with a context window it survives.
+// 阶段 05 — Live Forever：Agent 循环，具有
+// 它幸存的上下文窗口。
 //
-// Three horizons, and every agent needs all three:
+// 三个地平线，每个 Agent 都需要全部三个：
 //
-//	within a request  — the messages array. Stages 00–04.
-//	within a session  — compaction, when the array outgrows the window.
-//	across sessions   — a file. That is the whole mechanism.
+//	在请求内  — 消息数组。阶段 00–04。
+//	在会话内  — 压缩，当数组超过窗口。
+//	跨会话   — 一个文件。那是全部机制。
 //
-// The diff against stage 04 is small and lands in three places: the system
-// prompt now carries memory and stable environment (memory.go), each user turn
-// freezes a volatile snapshot alongside it, and the top of the tool loop checks
-// whether the conversation is about to hit the wall (compact.go).
+// 与阶段 04 相比，改动很小，落在三个地方：
+// 系统提示词现在带上了记忆和稳定环境
+// （memory.go），每个用户回合都会在它
+// 旁边冻结一份易变快照，工具循环的顶部
+// 则检查对话是否快要撞墙（compact.go）。
 //
-// One structural change worth noting: the long-lived pieces — provider, bus,
-// gate, config, compactor — moved onto an `agent` struct. Stage 04's runTurn
-// took eight parameters and stage 05 needs three more. A receiver is not an
-// abstraction here; it is the same values with a shorter name.
+// 一个值得注意的结构变化：长生命周期的
+// 部分——provider、bus、gate、config、
+// compactor——移到了`agent` struct 上。
+// 阶段 04 的 runTurn 取八个参数，阶段 05
+// 还需要三个。接收器不是抽象；它就是
+// 同样的值，只是名字更短。
 package main
 
 import (
@@ -49,13 +53,16 @@ either find another way or ask.
 
 When the task is done, reply with a short plain-text summary and no tool call.`
 
-// memoryPrompt is the entire long-term-memory feature.
+// memoryPrompt 是整个长期记忆特性。
 //
-// No tool, no store, no embedding, no retrieval step: a file, and a sentence
-// telling the model it may append to it with the tool it already has. The last
-// line is the part that decides whether the file is worth reading in six
-// months — "record what you learned, not what you did" is the difference
-// between a knowledge base and a diary.
+// 没有工具，没有存储，没有嵌入，
+// 没有检索步骤：一个文件，加一句
+// 话，告诉模型可以用它已有的工具，
+// 把内容追加进这个文件。最后一行
+// 是决定文件是否值得在六个月后读
+// 的部分——"记录你学到的，不是
+// 你做了什么"是知识库和日记之间
+// 的区别。
 const memoryPrompt = `
 
 Durable notes live in ` + memoryFileForWriting + ` in the working directory. If that file
@@ -97,8 +104,8 @@ type config struct {
 }
 
 // ---------------------------------------------------------------------------
-// The permission gate. Unchanged since stage 01 except that it reports through
-// the bus.
+// 权限闸。自阶段 01 以来未改，除了它通过
+// 总线报告。
 // ---------------------------------------------------------------------------
 
 type gate struct {
@@ -142,7 +149,8 @@ func (g *gate) ask(command string) (verdict, string) {
 
 // ---------------------------------------------------------------------------
 
-// agent holds everything that lives for the whole session.
+// agent 装着贯穿整个会话生命周期、
+// 始终存在的一切。
 type agent struct {
 	p     Provider
 	httpc *http.Client
@@ -151,10 +159,11 @@ type agent struct {
 	cfg   config
 	comp  *compactor
 
-	// system is a function, not a string, because of stage 04's --break-cache
-	// experiment: a value computed once at startup is a constant prefix, and
-	// only a value recomputed per request invalidates anything. Keeping the
-	// indirection makes that difference expressible.
+	// system 是函数，不是字符串，因为
+	// 阶段 04 的 --break-cache 实验：
+	// 启动时计算一次的值是常数前缀，
+	// 只有每个请求重计算的值使任何东西
+	// 无效。保持间接使那个区别可表达。
 	system func() string
 
 	memoryDir  string
@@ -175,7 +184,7 @@ func main() {
 		noCache    = flag.Bool("no-cache", false, "omit cache_control breakpoints (stage 04 control arm)")
 		breakCache = flag.Bool("break-cache", false, "put a fresh timestamp in the system prompt on every request (stage 04)")
 
-		// Stage 05.
+		// 阶段 05。
 		compactAt = flag.Float64("compact-at", 0.70, "compact when the estimated prompt passes this fraction of the window")
 		keepAt    = flag.Float64("keep", 0.30, "fraction of the window to leave in place after compacting")
 		noCompact = flag.Bool("no-compact", false, "never compact — ride the window until the API refuses (control arm)")
@@ -205,19 +214,20 @@ func main() {
 		return
 	}
 
-	// resolveErr is deliberately NOT fatal here.
+	// resolveErr 这里故意**不是**致命的。
 	//
-	// Replay needs no key, no shell, no network and no provider — that promise
-	// is stage 02's, it is in the README, and from stage 03 until this line was
-	// written it was false: resolve() moved above the replay branch and took
-	// its os.Exit(1) with it. On a machine with the env vars set (which is
-	// every machine the author tested on) nothing looked wrong. On a machine
-	// with a trace file and nothing else — which is exactly the machine the
-	// feature exists for — `--replay` printed "no provider configured".
+	// 重放不需要密钥、不需要 shell、不需要网络，也不需要
+	// 供应商——那个承诺是阶段 02 的，它在 README 中，
+	// 从阶段 03 直到这行被写它是假的：resolve() 移动到
+	// 重放分支上方，并把它的 os.Exit(1) 带走了。
+	// 在一台设置了 env vars 的机器上（这是作者测试过的
+	// 每台机器），什么看起来都没错。在一台只有 trace 文件、
+	// 别无他物——这正是该功能存在的机器上——
+	// `--replay` 打印"no provider configured"。
 	//
-	// So the error is carried rather than raised, and checked below, on the one
-	// path that actually needs a provider. A config error should be fatal to the
-	// code that depends on the config and to nothing else.
+	// 所以错误被携带而不是被抛出，并在下面检查，
+	// 在唯一实际需要供应商的路径上。配置错误应该只对
+	// 依赖配置的代码致命，对其余代码则完全没有影响。
 	pcfg, pname, resolveErr := pf.resolve(*providerName)
 	if *window > 0 {
 		pcfg.Window = *window
@@ -280,11 +290,13 @@ func main() {
 	fmt.Printf("stage 05 · provider=%s (%s) · model=%s\ncwd=%s\n",
 		pname, provider.Protocol(), provider.Model(), wd)
 
-	// ---- the system prompt, assembled once ------------------------------
+	// ---- 系统提示词，一次组装 -----------
 	//
-	// Everything here is stable for the whole session, which is what earns it a
-	// place before the cache breakpoint. Anything that moves goes into the
-	// message stream instead — see memory.go's placement rule.
+	// 这里的一切，在整个会话期间都
+	// 不会变——这就是它们能被排在
+	// 缓存断点之前的原因。会变的东西，
+	// 则进入消息流——参见 memory.go
+	// 的放置规则。
 	memory := ""
 	if !*noMemory {
 		memory, _ = loadMemory(wd, bus)
@@ -334,18 +346,22 @@ func main() {
 		}
 
 		bus.Emit(Event{Kind: KindUserMessage, Text: line})
-		// The volatile snapshot is taken HERE, once, and frozen into the
-		// message. It is never recomputed, which is the entire reason the cache
-		// survives a session that knows what time it is.
+		// 易变快照在**这里**被取出一次，
+		// 冻结进这条消息。它永远不会
+		// 重新计算，这正是缓存能在一个
+		// 知道时间的会话里活下来的
+		// 全部原因。
 		msgs = append(msgs, userTurn(line, volatileContext(shell, time.Now())))
 		msgs = a.runTurn(msgs)
 	}
 	view.SessionSummary(a.lastPrompt)
 }
 
-// command handles the slash commands. They exist for the experiments in
-// docs/05-live-forever.md: compaction that only fires when the window is nearly
-// full is hard to demonstrate and harder to test.
+// command 处理斜线命令。它们是
+// 为 docs/05-live-forever.md 中的
+// 实验而存在的：只有窗口快满时
+// 才触发的压缩，很难演示，
+// 更难测试。
 func (a *agent) command(line string, msgs []Msg) (bool, []Msg) {
 	switch {
 	case line == "/help":
@@ -393,17 +409,18 @@ func (a *agent) command(line string, msgs []Msg) (bool, []Msg) {
 	return false, msgs
 }
 
-// toolChars is the character cost of the tool definitions, which are part of
-// every prompt and are otherwise invisible to the estimator.
+// toolChars 是工具定义的字符成本，
+// 它们是每个 prompt 的一部分，
+// 否则对估算器不可见。
 func toolChars() int {
 	n := 0
 	for _, t := range []Tool{bashToolDef()} {
-		n += len(t.Name) + len(t.Description) + 200 // the schema, near enough
+		n += len(t.Name) + len(t.Description) + 200 // 模式，足够接近
 	}
 	return n
 }
 
-// call performs one model call.
+// call 执行一个模型调用。
 func (a *agent) call(turn int, msgs []Msg) (*CallResult, error) {
 	req, body, err := a.p.BuildRequest(a.system(), msgs, []Tool{bashToolDef()}, 4096)
 	if err != nil {
@@ -432,14 +449,17 @@ func (a *agent) runTurn(msgs []Msg) []Msg {
 			return msgs
 		}
 
-		// ---- the wall check -------------------------------------------
+		// ---- 墙检查 ---------------------------------
 		//
-		// It goes HERE, at the top of the tool loop, not at the top of the user
-		// loop. The thing that fills a context window is not the conversation,
-		// it is the tool output inside one turn: a single `find /` can add more
-		// than an hour of chat. Checking only between user messages means the
-		// wall is hit mid-turn, which is the one place there is no graceful
-		// recovery.
+		// 它在**这里**，在工具循环的顶部，
+		// 而不是用户循环的顶部。填满
+		// 上下文窗口的不是对话，而是
+		// 一个回合里的工具输出：单单
+		// 一个 `find /` 就能加上超过一
+		// 小时的聊天量。只在用户消息
+		// 之间检查，意味着撞墙会发生在
+		// 回合中途——那正是唯一没有
+		// 优雅恢复余地的地方。
 		base := len(a.system()) + toolChars()
 		if est := a.comp.estimate(msgs, base); a.comp.due(est) {
 			cut, why := a.comp.plan(msgs, base)
@@ -461,9 +481,11 @@ func (a *agent) runTurn(msgs []Msg) []Msg {
 			return msgs
 		}
 		a.lastPrompt = res.Usage.Prompt()
-		// Calibrate. This is the only reason the agent can decide when to
-		// compact without vendoring a tokenizer: the server just told us
-		// exactly how many tokens the characters we sent turned into.
+		// 校准。这是 Agent 能决定何时压缩
+		// 而不厂商化分词器的唯一原因：
+		// 服务器刚刚精确告诉了我们，我们
+		// 发送的那些字符变成了多少个
+		// token。
 		a.comp.est.observe(sentChars, res.Usage.Prompt())
 
 		am := Msg{Role: RoleAssistant}
@@ -472,10 +494,13 @@ func (a *agent) runTurn(msgs []Msg) []Msg {
 		}
 		am.Blocks = append(am.Blocks, res.Calls...)
 
-		// A model can return nothing at all — no text, no tool call — and
-		// appending that produces a message with an empty content array, which
-		// the Anthropic protocol rejects on the *next* request. Stage 04 had
-		// this latent; validConversation() in compact.go is what found it.
+		// 模型可以返回什么都没有——无文本，
+		// 无工具调用——附加它产生一条消息，
+		// 带空内容数组，Anthropic 协议在
+		// **下一个**请求拒绝。阶段 04 里
+		// 这个问题就已经埋下了；
+		// compact.go 中的 validConversation()
+		// 是发现它的。
 		if len(am.Blocks) == 0 {
 			a.bus.Notice("the model returned an empty response (wire: %q) — not adding it to the history", res.RawStop)
 			return msgs

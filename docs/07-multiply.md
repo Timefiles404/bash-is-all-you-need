@@ -1,6 +1,6 @@
-# Stage 07 — Multiply
+# 第 07 阶段——乘法
 
-Two features, and neither one is a subsystem.
+两个功能，都不是子系统。
 
 ```
 subagents   a fresh []Msg, a different system prompt, the same everything
@@ -8,20 +8,19 @@ subagents   a fresh []Msg, a different system prompt, the same everything
 skills      a directory of Markdown files, and one paragraph saying they exist.
 ```
 
-There is no scheduler, no message queue, no agent registry and no protocol
-between agents. A subagent is a function call whose return value is a paragraph.
+没有调度器、没有消息队列、没有 Agent 注册表，也没有 Agent 之间的协议。
+子 Agent 是一个函数调用，返回值是一段文字。
 
-And the headline, because it is the opposite of what everyone assumes:
+标题，因为它与人们通常的理解相反：
 
-> **A subagent does not save tokens. It saves context.**
+> **子 Agent 不省 token。它省的是上下文。**
 
-Measured below: the delegating run cost **20% more** and finished with a parent
-context **9.6× smaller**. Those two numbers move in opposite directions, and
-knowing which one you are short of is the whole of deciding when to delegate.
+下面有实测：委托运行花了**20% 更多**，父 Agent 的上下文最后**小 9.6 倍**。
+这两个数字方向相反，知道自己缺哪一个才是决定何时委托的全部内容。
 
 ---
 
-## A subagent is the same loop, called again
+## 子 Agent 就是再次调用的同一个主循环
 
 ```go
 func (a *agent) spawn(callID, description, prompt string) (string, Usage, error) {
@@ -31,9 +30,9 @@ func (a *agent) spawn(callID, description, prompt string) (string, Usage, error)
 }
 ```
 
-That is the feature. The parent already had a loop, a bus, a compactor and a
-gate; the child is the same loop with a different message array. What is shared
-and what is not turns out to be the only interesting design question:
+这就是这个功能。父 Agent 已经有了一个主循环、一个总线、一个压缩器和一个权限闸；
+子 Agent 是同一个主循环，用了不同的消息数组。什么被共享、什么不被共享，
+结果成了唯一有趣的设计问题：
 
 | shared | not shared |
 |---|---|
@@ -42,28 +41,24 @@ and what is not turns out to be the only interesting design question:
 | the shell config and working directory | the compactor |
 | the **bus core** — one ordered trace for the whole tree | the turn budget |
 
-The clause that makes it worth doing is `lastAssistantText`. Everything else the
-child did — every tool call, every 40kB of command output, every wrong turn it
-backed out of — lives in a message array that is discarded. The parent's context
-grows by the length of the report and by nothing else.
+使这值得做的条款是 `lastAssistantText`。子 Agent 做的其他所有事——每一个工具调用、
+每一个 40kB 的命令输出、每一个它退出的错误回合——都活在一个消息数组里，那个数组被丢弃了。
+父 Agent 的上下文只会增长报告的长度，其他什么都不增。
 
-The child is told this, in its system prompt, rather than left to infer it:
+子 Agent 在系统提示词中被明确告知这一点，而不是被留去自己推断：
 
-> Everything you do here is discarded when you finish EXCEPT your final message.
-> Your caller will never see your commands, your reasoning, or your tool output
-> — only the last thing you say.
+> 你在这里做的一切在你完成后都被丢弃了，**除了你最后的消息**。
+> 你的调用者永远看不到你的命令、你的推理或你的工具输出——只看最后你说的话。
 
-Without that paragraph a subagent writes a summary of its *process* — "I looked
-at several files and found some things" — because that is what a chat turn
-normally is. Told plainly that its final message is the only thing that
-survives, it writes a report.
+没有那一段，子 Agent 会写出它的**流程**总结——"我看了几个文件，找到了一些东西"——
+因为那是聊天回合通常的样子。被明确告知最后的消息是唯一幸存下来的，它写一份报告。
 
 ---
 
-## From a real run: what delegation actually costs
+## 来自真实运行：委托实际花了什么
 
-Three Markdown files totalling 63kB. One task: read each one in full and write a
-three-sentence summary. Two arms, same files, same model:
+三个 Markdown 文件总共 63kB。一个任务：完整阅读每一个并写一份三句话的总结。
+两个分支，同一批文件，同一个模型：
 
 ```sh
 agent --yolo --max-output 60000              # delegate: one subagent per file
@@ -82,45 +77,40 @@ agent --yolo --max-output 60000 --max-depth 0  # inline: the task tool does not 
   ╰─ 2 turns ·  4696 prompt +  380 output tokens · 13519ms →  950B returned
 ```
 
-| | delegate | inline |
+| | 委托 | 内联 |
 |---|---:|---:|
-| model calls | 9 (3 parent, 6 child) | 3 |
-| prompt tokens | 25,782 | 19,715 |
-| at 0.1x cache read | **22,038** | **18,390** |
-| output tokens | 1,635 | 571 |
-| wall clock | 39s | 18s |
-| **parent context at the end** | **1,893** | **18,160** |
+| 模型调用 | 9 (3 父 Agent，6 子 Agent) | 3 |
+| prompt token 数 | 25,782 | 19,715 |
+| 以 0.1x 缓存读 | **22,038** | **18,390** |
+| output token 数 | 1,635 | 571 |
+| 实际运行时间 | 39s | 18s |
+| **结束时的父 Agent 上下文** | **1,893** | **18,160** |
 
-Delegation cost 20% more in full-price-equivalent tokens, 2.9× the output
-tokens, and 2.2× the wall clock. It also ended with a parent whose entire
-context was 1,893 tokens — because the 63kB of Markdown was read three times, by
-three agents, none of whom were the one still holding the conversation.
+委托花了 20% 更多的全价当量 token、2.9 倍的 output token、
+2.2 倍的实际运行时间。它也结束于一个父 Agent，其整个上下文是 1,893 个 token——
+因为那 63kB 的 Markdown 被三个 Agent 各读了一遍，其中没有一个还在持有这段对话。
 
-Look at the three `╰─` lines again. **21,781 prompt tokens went in and 2,484
-bytes came back.** That ratio is the product. Everything else is overhead you
-are paying for it.
+再看那三行 `╰─`。**21,781 个 prompt token 进去了，2,484 字节出来了。**
+那个比例就是这个产品。其他一切都是为它付出的开销。
 
-So the decision rule is not "is this task big enough to delegate". It is:
+所以决策规则不是"这个任务是否足够大到委托"。而是：
 
-> Delegate work that **reads a lot and concludes a little**, when the reading is
-> not something you will need again. If you need the intermediate output, a
-> subagent is strictly worse than doing it inline — you pay for the tokens twice
-> and then throw the result away.
+> 委托**读很多东西、结论很少**的工作，当这个读不是你之后还会用到的东西时。
+> 如果你需要中间的输出，子 Agent 严格比内联做完更差——你为 token 付了两次钱，
+> 然后把结果丢了。
 
-That is also why the `task` tool's description is written about economics rather
-than mechanism. A description that says what a tool *does* tells the model
-nothing about when to reach for it.
+这也是为什么 `task` 工具的描述是用经济学而不是机制写的。
+说工具**做什么**的描述，模型完全不知道什么时候去用它。
 
 ---
 
-## Concurrency, and a bill that came due three chapters early
+## 并发，和一个提前三章到期的账单
 
-Three subagents ran at once. Notice the trace is still a single, totally ordered
-stream — every event has a `Seq` that orders it against every other event in the
-tree, across every agent.
+三个子 Agent 同时跑。注意 trace 仍然是一个、完全有序的流——
+每个事件都有一个 `Seq`，确定它相对于树里每个其他事件的顺序，跨越每个 Agent。
 
-That is not new work. Stage 02 chose a synchronous bus under one lock, for
-ordering, when there was exactly one producer and no obvious reason to care:
+这不是新工作。第 02 阶段选择了一个同步的总线，在一个锁下，
+为了排序，当时只有一个生产者，没有明显的理由在乎：
 
 ```go
 type busCore struct {
@@ -134,67 +124,56 @@ func (b *Bus) Fork(agent string) *Bus {
 }
 ```
 
-`Fork` copies nothing. One counter, one lock, N producers. An async
-per-subscriber bus — the design that "scales better" — would have given each
-subscriber a different story about a concurrent session, which is precisely the
-session you cannot reason about without one story.
+`Fork` 什么都不复制。一个计数器，一个锁，N 个生产者。一个异步的
+单订阅者总线——那个"扩展性更好"的设计——会给每个订阅者一个不同的并发会话故事，
+那正是你没有一个统一故事就无法推理的会话。
 
-A trace per agent is the other common choice, and it makes the single question
-you actually have — *what was the parent doing while the child ran?* —
-answerable only by merging files on timestamps, which is exactly what timestamps
-are bad at.
+每个 Agent 一份 trace 是另一个常见的选择，它让你真正有的唯一问题——
+**子 Agent 跑的时候父 Agent 在做什么？**——只有通过在时间戳上合并文件才能回答，
+那正好是时间戳擅长的反面。
 
-### The renderer degrades instead of lying
+### 渲染器退化而不是撒谎
 
-Three children streaming tokens into one terminal cursor produces a paragraph
-assembled from three different sentences. It is not merely ugly; it reads as one
-agent contradicting itself.
+三个子 Agent 把 token 流进一个终端光标会产生一段从三个不同句子组合起来的段落。
+它不仅只是丑陋；它读起来就像一个 Agent 在自相矛盾。
 
-So the plain renderer shows a subagent's *structure* — what it ran, what it
-cost, what it returned — and drops the prose. Nothing is lost, because every
-delta is in the trace, and stage 06's composer exists precisely because a linear
-terminal is the wrong shape for a tree.
+所以简朴的渲染器展示子 Agent 的**结构**——它跑了什么、花了什么、返回了什么——
+然后丢掉散文。什么都没有丢失,因为每个 delta 都在 trace 里，
+第 06 阶段的 composer 正是因为线性终端对树来说形状不对而存在。
 
-> **A renderer that cannot show something should say so by showing less, never
-> by showing it wrong.**
+> **无法显示某个东西的渲染器应该通过显示更少来表示，永远不是通过错误地显示它。**
 
-### Concurrent execution, deterministic history
+### 并发执行，确定性历史
 
-`dispatch` runs subagents concurrently and returns their results **in the order
-the model asked for them**. If results were appended as they completed, the same
-session replayed twice would produce two different message arrays, two different
-prompt prefixes, and — per stage 04 — a cache that never hits.
+`dispatch` 并发地跑子 Agent，**按照模型要求它们的顺序**返回结果。
+如果结果是当它们完成时追加的，同一个会话重放两次会产生两个不同的消息数组、
+两个不同的 prompt 前缀，以及——按第 04 阶段——一个从不命中的缓存。
 
-> Concurrency is allowed to change how long things take. It is not allowed to
-> change what the conversation says.
+> 并发可以改变事情花多长时间。它不被允许改变对话说什么。
 
-The permission gate gets a mutex for the same reason, and it is a sharper one
-than it looks. Two goroutines writing a prompt to one terminal produce a single
-interleaved line and then read one answer for both questions: **the user
-approves one command and a different one runs.** That is a security bug wearing
-a UI bug's clothes. `dispatch` asks every question on one goroutine before any
-concurrency starts, so the lock should never contend — and it is there because
-"should never" is not a property you want a permission gate to rest on.
+出于同一个原因，权限闸也用上了一个 mutex，而且它比看起来更尖锐。
+两个 goroutine 写一个 prompt 到一个终端会产生一行交错的文字，
+然后读一个答案给两个问题：**用户批准了一个命令，一个不同的命令运行了。**
+那是一个穿着 UI bug 衣服的安全 bug。`dispatch` 在任何并发开始前
+在一个 goroutine 上问每一个问题，所以锁应该永远不竞争——
+而它在那里是因为"应该永远"不是你想要一个权限闸依靠的属性。
 
 ---
 
-## The depth fuse, and why the tool disappears
+## 深度保险丝，和为什么工具消失了
 
-At the depth limit the `task` tool is **removed from the tool list**, not
-refused at call time.
+在深度限制处，`task` 工具**从工具列表中移除了**，不是在调用时被拒绝。
 
-A runtime refusal costs a full round trip — the model writes a call, the harness
-rejects it, the model reads the rejection and tries something else — and it
-costs the tokens of a tool definition on every request that can never use it.
-Worse, it is a rule the model can see is arbitrary, and models argue with
-arbitrary rules by rephrasing.
+一个运行时拒绝花一个完整的往返——模型写一个调用，宿主拒绝它，
+模型读拒绝并尝试别的——它花工具定义的 token 在每一个无法用它的请求上。
+更坏的是，它是一条模型看得出是武断的规则，而模型会用改措辞来和武断的规则争论。
 
-A tool that is not in the list is not a rule. There is nothing to argue with and
-nothing to work around, and the model plans within the tools it has.
+一个不在列表里的工具不是一个规则。没有什么可以争论，没有什么可以绕过，
+模型在它有的工具内计划。
 
 ---
 
-## Skills are a directory and a paragraph
+## 技能是一个目录和一段文字
 
 ```
 skills/
@@ -203,133 +182,118 @@ skills/
   wire-probe/SKILL.md
 ```
 
-The system prompt gets the names and one-line descriptions. The bodies stay on
-disk. The model reads one with `cat` when it decides it applies. There is no
-skill tool, no retrieval step and no runtime — which is stage 05's observation
-about memory, arriving from a different direction: once the agent has a shell,
-"load this document when relevant" is not a feature you build, it is a filename.
+系统提示词得到了名字和一行描述。体留在磁盘上。模型判断某个技能适用时，
+就用 `cat` 读它。没有技能工具，没有检索步骤，没有运行时——
+那是第 05 阶段关于记忆的观察，从另一个方向到达：
+一旦 Agent 有了一个 shell，"当相关时加载这个文档"不是你要构建的功能，
+它是一个文件名。
 
-What is load-bearing is the shape. **Progressive disclosure**: index always,
-body on demand.
+承重的是形状。**渐进式披露**：索引总是，体在需要时。
 
 ```
   ≡ skills: 3 skills · index 738B in every request · 6.1kB of bodies left on disk
 ```
 
-That number is printed on purpose, because the index is **not free** and the
-arithmetic is the whole design decision. 738 bytes sit in the prefix of every
-request for the life of the session — cached at a tenth of the price after stage
-04, but never zero. Forty skills is a couple of thousand tokens of permanent
-overhead. A skills directory that grows without anyone pruning it is a tax
-levied on every call the agent ever makes, and the only way anybody notices is
-if something prints the number.
+那个数字是有目的地打印的，因为索引**不是免费的**，算术是整个设计决策。
+在会话的整个生命周期里，738 字节都待在每个请求的前缀中——
+第 04 阶段之后，虽然能以十分之一的价格缓存，但永远不会是零。
+四十个技能就是几千个 token 的永久开销。
+如果没有人修剪，技能目录只会不断增长，这就是一种税，征收在 Agent 做的每一次调用上，
+唯一能让人注意到的办法，是有什么东西把这个数字打印出来。
 
-Three instructions in the index, each because of a way this goes wrong:
+索引中的三个指令，每一个因为这如何出现错误的方式：
 
-- **"read the body before acting"** — otherwise the model acts on the
-  description, which is one line long and was written to be *selectable*, not to
-  be sufficient.
-- **"at most one"** — a model given five plausible skills reads all five, which
-  converts a token saving into a token cost plus five round trips.
-- **"if none applies, ignore this list"** — without it, a skills list reads as a
-  menu the model is expected to order from, and it will find one that nearly
-  fits.
+- **"行动前先读体"**——否则模型根据描述行动，那是一行长且是为了**可选择性**写的，
+  而不是为了充分。
+- **"最多一个"**——一个模型给了五个看似都合适的技能，会读所有五个，
+  那会把一个 token 储蓄变成一个 token 花费加五个往返。
+- **"如果都不适用，忽略这个列表"**——没有它，一个技能列表读起来像
+  一个模型被期望订购的菜单，它会找到一个几乎合适的。
 
-The frontmatter parser is twenty lines rather than a YAML dependency. When you
-own both ends of an interface, the parser is allowed to be as small as the
-interface.
+frontmatter 解析器是二十行而不是 YAML 依赖。当你拥有接口的两端时，
+解析器可以做得跟接口一样小。
 
 ---
 
-## What PTC really is
+## PTC 真正是什么
 
-Programmatic Tool Calling is sold on one benefit: the model writes code that
-calls tools, the code runs somewhere else, and **intermediate results never
-enter the context**.
+程序化工具调用的卖点只有一个：模型写代码调用工具，代码在别处运行，
+**中间结果永远不进入上下文**。
 
-A shell pipeline already does that. Same task, three ways — *find the five
-largest Go files under `src/`* — over 21 files:
+一个 shell 管道已经做了那个。同一个任务，三种方式——**在 `src/` 下找出五个最大的 Go 文件**——
+在 21 个文件上：
 
-| | model calls | commands | prompt tokens | at 0.1x read | tool output into context | wall |
+| | 模型调用 | 命令 | prompt token | 以 0.1x 读 | 工具输出入上下文 | 实际 |
 |---|---:|---:|---:|---:|---:|---:|
-| one file per call | 25 | 23 | 51,937 | 8,161 | 1,255 B | 80s |
+| 每文件一个调用 | 25 | 23 | 51,937 | 8,161 | 1,255 B | 80s |
 | `wc -l src/*.go` | 2 | 1 | 2,097 | 1,175 | 509 B | 12s |
 | `find … \| sort -rn \| head -6` | 2 | 1 | **1,608** | **686** | **157 B** | **8s** |
 
-**Same answer. 32× the prompt tokens, 10× the wall clock.**
+**同一个答案。32 倍的 prompt token，10 倍的实际运行时间。**
 
-Read the "tool output into context" column, because that is the mechanism rather
-than the symptom. The pipeline's `sort | head` did its filtering *inside the
-shell*, so 157 bytes crossed into the context instead of 1,255. The intermediate
-data existed; it just never became tokens.
+读"工具输出入上下文"列，因为那是机制而不是症状。
+管道的 `sort | head` **在 shell 内**做了它的过滤，
+所以进入上下文的是 157 字节，不是 1,255。中间数据存在；它只是永远没有变成 token。
 
-Two things worth taking from the table.
+两件事值得从表中拿走。
 
-**The middle row is an accident that makes the point.** That arm was supposed to
-be the slow one — the instruction said no pipes, no chaining, no `xargs`, no
-`find`. The model answered with `wc -l src/*.go`, complying exactly and doing
-the entire job in one call, because **a glob is already a batch operation** and
-no operator I forbade was involved. Getting fan-out for free, without asking for
-it, is the property this repo has been claiming for the shell since its opening
-section, and it took a failed experiment to make it visible.
+**中间这一行是个意外，却恰好证明了这一点。**那个分支被认为是慢的——
+指令说没有管道、没有链接、没有 `xargs`、没有 `find`。模型用 `wc -l src/*.go` 回答了，
+完全遵守且在一个调用中做了整个工作，因为**一个 glob 已经是一种批操作**，
+而这里面没有用到任何一个我禁止的运算符。免费得到扇出、不用开口要，是这个仓库
+从它的开头部分就一直在声称的 shell 的属性，而这一点全靠一次失败的实验才让它可见。
 
-**So what does PTC add over a pipeline?** Not the headline benefit — that one
-is a `|`. What it adds is a real programming language where the shell has only
-composition: typed tool APIs instead of text streams, conditionals and loops
-over structured results, error handling that is not `$?`, and tools that are not
-programs on a PATH. If your tools are CLI programs and your control flow is
-"filter, sort, take", a pipeline is PTC and you have had it since 1973. If your
-tools are HTTP APIs with schemas and your control flow has branches, it is not,
-and the difference is worth a runtime.
+**那么 PTC 在管道上加了什么？**不是标题好处——那一个是一个 `|`。
+它加的是一个真实的编程语言而 shell 只有组合：
+有类型的工具 API 而不是文本流，对结构化结果进行条件判断和循环，
+错误处理不是 `$?`，工具不是一个 PATH 上的程序。
+如果你的工具是 CLI 程序，而你的控制流是"过滤、排序、取"，
+那么管道就是 PTC，你从 1973 年起就已经有它了。
+如果你的工具是带 schema 的 HTTP API，而你的控制流有分支，那就不是了——
+这个差异，值得专门用一个运行时。
 
 ---
 
-## The version with no `task` tool at all
+## 完全没有 `task` 工具的版本
 
-An agent that can run bash can run *the agent*:
+一个能跑 bash 的 Agent 可以跑**Agent**：
 
 ```sh
 agent --subagent "survey every provider adapter and report the disagreements"
 ```
 
-One prompt in, one report out, no REPL. This is a complete subagent mechanism
-using nothing but the tool the agent already has, and it is worth seeing how
-little there is to it — recursion needs no orchestration layer, it needs a
-process.
+一个 prompt 进，一个报告出，没有 REPL。
+这是一个完整的子 Agent 机制，用的只是 Agent 已经有的工具，
+值得看看这背后其实没有多少东西——递归不需要编排层，它需要的是一个进程。
 
-What it costs is everything on the instrument panel. A separate process has its
-own bus, so its events are not in your trace; its tokens are not in your ledger;
-its permission prompts fight yours for the terminal; and its failure is an exit
-code rather than a stop reason. You would rebuild all of it, over a pipe, in a
-format you would then have to version.
+它付出的代价，是仪表板上的一切。一个单独的进程有它自己的总线，
+所以它的事件不在你的 trace 中；它的 token 不在你的账本中；
+它的权限 prompt 会跟你的抢终端；
+它的失败是一个退出码而不是停止原因。
+这一切你都得重新造一遍——架在一个管道上，用一种你自己还得再做版本管理的格式。
 
-Which is the honest summary of the whole in-process/out-of-process choice:
-**the shell is a perfectly good orchestrator right up until you want to know
-what it cost.**
+那是整个进程内/进程外选择的诚实总结：
+**shell 一直是个相当好的编排器，直到你想知道它到底花了什么为止。**
 
 ---
 
-## Exercises
+## 练习
 
-1. **Reproduce the two arms** and compare the last `context` number in each. The
-   ratio is what you are buying.
-2. **Delegate something whose intermediate output you need** — "find the bug and
-   show me the diff" — and watch the report be useless. The failure mode of a
-   subagent is not that it is wrong, it is that it is *lossy in a direction you
-   did not choose*.
-3. **Remove the "everything is discarded" paragraph** from `subagentSystem` and
-   read three reports. Count how many describe process instead of findings.
-4. **Make `dispatch` append results as they complete** instead of by index. Run
-   the same session twice and diff the two traces' request bodies.
-5. **Set `--max-depth 3`** and give the agent a task big enough to recurse. Then
-   work out what your worst case bill is, and whether any fuse in the code would
-   have stopped it.
-6. **Add a fourth skill and measure the index again.** Extrapolate to forty.
-   Decide what your pruning policy is *before* you need one.
-7. **Run the PTC table yourself** on a directory big enough to matter, and find
-   the point where the one-command version stops fitting in `--max-output`. That
-   number is where a shell stops being enough and a real sandbox starts being
-   the answer — which is stage 08.
+1. **再现两个分支**并比较每个中的最后 `context` 数字。比例就是你在买什么。
+2. **委托一件你需要中间输出的事**——"找到 bug 并给我显示 diff"——
+   并看报告是无用的。子 Agent 的失败模式不是它错了，
+   而是**它在一个你没有选择的方向上是有损的**。
+3. **从 `subagentSystem` 中删除"一切都被丢弃"那段话**，然后读三份报告。
+   数一数有多少份描述的是过程而不是发现。
+4. **让 `dispatch` 当它们完成时追加结果**而不是按索引。跑同一个会话两次并 diff
+   两个 trace 的请求体。
+5. **设置 `--max-depth 3`**并给 Agent 一个足够大的任务来递归。
+   然后算出你最坏情况下的账单是多少，以及代码里是否有任何保险丝能拦住它。
+6. **加第四个技能并再次测量索引。**外推到四十。决定你的修剪策略
+   **在你需要它之前**。
+7. **在一个大到能看出差别的目录上自己跑一遍 PTC 表格**，找到单命令版本的输出
+   撑不下 `--max-output` 的那个点。那个数字，就是 shell 不再够用、
+   而一个真实沙箱开始成为答案的地方——那就是第 08 阶段。
 
 → Next: Stage 08 — Sandbox
 

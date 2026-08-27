@@ -1,57 +1,55 @@
-# Wire notes: opencode.ai/zen/go empirical API reconnaissance
+# 线上记录：opencode.ai/zen/go 实证 API 侦察
 
-Observed behaviour only. Every claim below is backed by raw bytes captured from
-live requests against `https://opencode.ai/zen/go/v1/...` on 2026-08-27.
-Nothing here is taken from vendor documentation.
+仅记录观察行为。下面的每一项都有从 2026-08-27 对
+`https://opencode.ai/zen/go/v1/...` 线上端点的真实请求中抓到的原始字节作为依据。
+这里没有取材于供应商文档的内容。
 
-Endpoints under test:
+测试中的端点：
 
-- OpenAI protocol:    `POST https://opencode.ai/zen/go/v1/chat/completions`, model `mimo-v2.5`
-- Anthropic protocol: `POST https://opencode.ai/zen/go/v1/messages`, model `qwen3.7-plus`
+- OpenAI 协议：    `POST https://opencode.ai/zen/go/v1/chat/completions`，模型 `mimo-v2.5`
+- Anthropic 协议：`POST https://opencode.ai/zen/go/v1/messages`，模型 `qwen3.7-plus`
 
-Given from earlier probes (not re-verified here):
+从更早的探测中已知（此处未重新验证）：
 
-- OpenAI: `finish_reason:"tool_calls"`, `message.content: null`, a `reasoning_content` field,
-  `usage.prompt_tokens_details.cached_tokens`, and multiple `tool_calls` in one assistant message.
-- Anthropic: `stop_reason:"tool_use"`, a `thinking` block with an empty `signature`,
-  `cache_creation_input_tokens` / `cache_read_input_tokens`.
-- Both: a non-standard top-level `"cost"` field.
+- OpenAI：`finish_reason:"tool_calls"`、`message.content: null`、一个 `reasoning_content` 字段、
+  `usage.prompt_tokens_details.cached_tokens`，以及单个 Assistant 消息中的多个 `tool_calls`。
+- Anthropic：`stop_reason:"tool_use"`、一个 `signature` 为空的 `thinking` 块、
+  `cache_creation_input_tokens` / `cache_read_input_tokens`。
+- 两者：一个非标准的顶层 `"cost"` 字段。
 
 ---
-## Where this endpoint deviates from the protocol specs
+## 该端点偏离协议规范的地方
 
-Index of the surprises, each proven in the section named. Everything else behaved as a
-spec-reading would predict.
+惊喜索引，每一项都在同名的小节中证明。其他一切的表现都符合规范阅读的预期。
 
-| # | Deviation | Section |
+| # | 偏差 | 小节 |
 |---|---|---|
-| 1 | Truncated OpenAI tool call returns `tool_calls: []` and dumps raw `<tool_call><function=…>` harness markup into `message.content` — `arguments` is never partial | A2 |
-| 2 | Truncated Anthropic `tool_use` replaces `input` with a non-spec `{"raw_arguments": "<invalid JSON>"}` — and `stop_reason` still says `"tool_use"` | A3c |
-| 3 | Anthropic `max_tokens` bounds only visible text; thinking is generated and billed outside it (`max_tokens:10` returned `output_tokens:4403`) | A3a |
-| 4 | The gateway leaks a bare `</think>` closing tag as a user-visible `text` content block | A3b, B6 |
-| 5 | The OpenAI SSE stream emits a frame **after** `data: [DONE]` — the `cost` frame, which every conforming client discards | B4 |
-| 6 | OpenAI streaming `usage` is present by default; `stream_options.include_usage` is accepted and is a complete no-op | B5 |
-| 7 | Anthropic `ping` events arrive before `message_start` and after `message_stop`, bracketing the stream | B6 |
-| 8 | `message_start.usage.input_tokens` disagrees with `message_delta.usage.input_tokens` (56 vs 291) — only `message_delta` is correct | B6 |
-| 9 | `cost` is smuggled onto the trailing Anthropic `ping` event as an extra key | B6 |
-| 10 | `signature` on thinking blocks is always the empty string, including `signature_delta` | B7, A3b |
-| 11 | Top-level `cost` is a JSON **string**, never a number; always `"0"` here | C10 |
-| 12 | An unknown model id returns **401 Unauthorized**, not 404/400 | D11 |
-| 13 | Both protocols return the Anthropic error envelope; the OpenAI surface has no `code`/`param`, and `error.type` is PascalCase (`ModelError`, `AuthError`) | D11 |
-| 14 | Error bodies are JSON but served as `Content-Type: text/plain;charset=UTF-8` | D11 |
-| 15 | Malformed request JSON returns **500**, not 400 — a client bug disguised as a retryable server fault | D11 |
-| 16 | A 400 for a missing required field returns no error envelope at all, just `{"model":"qwen3.7-plus"}` | D11 |
-| 17 | `anthropic-version` is not required; the call succeeds without it | D11 |
-| 18 | `parallel_tool_calls:false` is accepted and ignored; so is any invented parameter. Nothing is validated | D12 |
+| 1 | 被截断的 OpenAI 工具调用返回 `tool_calls: []` 并将原始 `<tool_call><function=…>` 宿主标记倒入 `message.content` —— `arguments` 从不部分返回 | A2 |
+| 2 | 被截断的 Anthropic `tool_use` 将 `input` 替换为非规范的 `{"raw_arguments": "<invalid JSON>"}` —— 并且 `stop_reason` 仍然说 `"tool_use"` | A3c |
+| 3 | Anthropic `max_tokens` 仅限制可见文本；thinking 在其外生成并计费（`max_tokens:10` 返回 `output_tokens:4403`） | A3a |
+| 4 | 网关泄露了一个裸 `</think>` 闭合标签，作为用户可见的 `text` 内容块 | A3b, B6 |
+| 5 | OpenAI SSE 流在 `data: [DONE]` **之后**发出一帧 —— `cost` 帧，每个符合规范的客户端都会丢弃 | B4 |
+| 6 | OpenAI 流式 `usage` 默认存在；`stream_options.include_usage` 被接受并完全是空操作 | B5 |
+| 7 | Anthropic `ping` 事件在 `message_start` 之前和 `message_stop` 之后到达，将流括在中间 | B6 |
+| 8 | `message_start.usage.input_tokens` 与 `message_delta.usage.input_tokens` 不一致（56 vs 291） —— 只有 `message_delta` 是正确的 | B6 |
+| 9 | `cost` 被走私到尾随的 Anthropic `ping` 事件上作为额外的键 | B6 |
+| 10 | thinking 块上的 `signature` 总是空字符串，包括 `signature_delta` | B7, A3b |
+| 11 | 顶层 `cost` 是 JSON **字符串**，从不是数字；这里总是 `"0"` | C10 |
+| 12 | 未知的模型 id 返回 **401 Unauthorized**，不是 404/400 | D11 |
+| 13 | 两个协议都返回 Anthropic 错误信封；OpenAI 表面没有 `code`/`param`，而且 `error.type` 是 PascalCase（`ModelError`、`AuthError`） | D11 |
+| 14 | 错误体是 JSON 但以 `Content-Type: text/plain;charset=UTF-8` 提供 | D11 |
+| 15 | 格式错误的请求 JSON 返回 **500**，不是 400 —— 一个客户端 bug 伪装成可重试的服务器故障 | D11 |
+| 16 | 缺少必需字段的 400 根本不返回错误信封，只是 `{"model":"qwen3.7-plus"}` | D11 |
+| 17 | `anthropic-version` 不是必需的；调用在没有它的情况下成功 | D11 |
+| 18 | `parallel_tool_calls:false` 被接受并忽略；任何虚构的参数也一样。没有任何东西被验证 | D12 |
 
-Confirmed working as documented: `finish_reason:"length"` / `stop_reason:"max_tokens"` on text
-truncation (A1, A3a), Anthropic explicit prompt caching (C8), OpenAI implicit prompt caching
-(C9), `input_json_delta` accumulation (B6), and reasoning streaming on both sides (B7).
+已确认按文档正常工作：文本截断时的 `finish_reason:"length"` / `stop_reason:"max_tokens"`（A1、A3a）、Anthropic 显式 prompt 缓存（C8）、OpenAI 隐式 prompt 缓存
+（C9）、`input_json_delta` 累积（B6），以及两边的推理流式传输（B7）。
 
 ---
-## A1. OpenAI: `max_tokens: 10` on a prompt forcing a long answer
+## A1. OpenAI：在强制长答案的 prompt 上使用 `max_tokens: 10`
 
-Request:
+请求：
 
 ```json
 {
@@ -63,28 +61,25 @@ Request:
 }
 ```
 
-Raw response (HTTP 200, verbatim, whole body):
+原始响应（HTTP 200，逐字，整个响应体）：
 
 ```json
 {"id":"c275372c-035e-4c22-aa6f-c82cb9b0a1b6_b283ee14d9b7400f8f8618963089641a","object":"chat.completion","created":1787768399,"model":"mimo-v2.5","choices":[{"index":0,"finish_reason":"length","message":{"role":"assistant","content":null,"reasoning_content":"The user wants a detailed 500","tool_calls":null}}],"usage":{"prompt_tokens":269,"completion_tokens":10,"total_tokens":279,"prompt_tokens_details":{"cached_tokens":192},"completion_tokens_details":{"reasoning_tokens":0}},"cost":"0"}
 ```
 
-**Exact `finish_reason` string: `"length"`.**
+**精确的 `finish_reason` 字符串：`"length"`。**
 
-Takeaway: truncation yields `finish_reason:"length"`, and on a reasoning model the
-budget is consumed by `reasoning_content` first — so a truncated turn can arrive with
-`content: null` and *no* user-visible text at all. Note three further oddities visible
-here: `cost` is the **string** `"0"` (not a number), `completion_tokens_details.reasoning_tokens`
-is `0` while `reasoning_content` is plainly non-empty, and `prompt_tokens` is 269 for a
-~20-token user message (the gateway prepends something of its own).
+要点：截断得到 `finish_reason:"length"`，在推理模型上预算首先被 `reasoning_content` 消耗 —— 所以截断的回合送到时，`content` 可能是 `null`，
+而且*根本没有*用户可见的文本。这里还能看到三个更进一步的怪现象：`cost` 是**字符串** `"0"`（不是数字）、`completion_tokens_details.reasoning_tokens`
+是 `0` 而 `reasoning_content` 明显非空，以及 `prompt_tokens` 对于大约 20-token 的用户消息竟是 269（说明网关自己在前面塞了点什么）。
 
 ---
-## A2. OpenAI: truncation IN THE MIDDLE OF A TOOL CALL
+## A2. OpenAI：**在工具调用的中间**截断
 
-Tool given: `bash`, object schema, required string property `command`. `tool_choice:"required"`.
-Prompt asks for a long single shell command. Swept `max_tokens`.
+工具给定：`bash`、对象 schema、必需的字符串属性 `command`。`tool_choice:"required"`。
+Prompt 要求一条长的单个 shell 命令。扫过 `max_tokens`。
 
-### Baseline: the untruncated call (max_tokens 800)
+### 基线：未截断的调用（max_tokens 800）
 
 ```json
 "finish_reason":"tool_calls",
@@ -93,11 +88,11 @@ Prompt asks for a long single shell command. Swept `max_tokens`.
    "arguments":"{\"command\": \"find /srv/app -type f -name '*.go' -mtime -14 -not -path '*/vendor/*' -not -path '*/testdata/*' -exec grep -Hn 'TODO(security)' {} + | sort > /tmp/audit.txt\"}"}}]}
 ```
 
-`arguments` is a JSON **string** containing JSON — the standard OpenAI double encoding.
+`arguments` 是一个包含 JSON 的 JSON **字符串** —— 标准 OpenAI 双编码。
 
-### Truncated: the sweep (`reasoning_effort:"none"` to spend the budget on the tool call)
+### 被截断的：扫过（`reasoning_effort:"none"` 以便在工具调用上花费预算）
 
-Exact `message` objects, verbatim:
+精确的 `message` 对象，逐字：
 
 ```
 max_tokens=5   "content":"<tool_call>\n<function=b",                       "tool_calls":[]
@@ -109,11 +104,11 @@ max_tokens=60  "content":"<tool_call>\n<function=bash>\n<parameter=command>find 
 max_tokens=70  "content":"<tool_call>\n<function=bash>\n<parameter=command>find /srv/app -type f -name '*.go' -not -path '*/vendor/*' -not -path '*/testdata/*' -mtime -14 -exec grep -Hn 'TODO(security)' {} + 2>/dev/null | sort > /tmp", "tool_calls":[]
 ```
 
-Every one of these carried `"finish_reason":"length"`, `"reasoning_content":null`, `"tool_calls":[]`.
+这些都携带了 `"finish_reason":"length"`、`"reasoning_content":null`、`"tool_calls":[]`。
 
-### The same effect with reasoning left at its default
+### 推理留在默认值时效果相同
 
-Not an artifact of `reasoning_effort:"none"`. With reasoning on, a different prompt, one full body:
+不是 `reasoning_effort:"none"` 的假象。启用推理，不同的 prompt，一个完整的响应体：
 
 ```json
 {"choices":[{"index":0,"finish_reason":"length","message":{"role":"assistant",
@@ -123,38 +118,27 @@ Not an artifact of `reasoning_effort:"none"`. With reasoning on, a different pro
 "usage":{"prompt_tokens":550,"completion_tokens":100,"total_tokens":650,...},"cost":"0"}
 ```
 
-### ANSWER TO THE KEY QUESTION
+### **关键问题的答案**
 
-**No. `tool_calls[].function.arguments` is never returned truncated, because on a truncated
-tool call `tool_calls` is not populated at all.** It comes back as the empty array `[]`.
+**不。`tool_calls[].function.arguments` 从不被截断返回，因为在截断的工具调用上 `tool_calls` 根本没被填充。**它以空数组 `[]` 的形式返回。
 
-What actually happens: the model does not emit JSON on the wire. It emits an XML-ish harness
-syntax — `<tool_call>\n<function=NAME>\n<parameter=NAME>VALUE` — and the gateway parses that
-server-side into OpenAI-shaped `tool_calls`. When the generation stops mid-syntax the parse
-fails, and the gateway **falls back to handing you the raw un-parsed harness markup in
-`message.content`**. Truncation can bisect the markup anywhere: mid function name
-(`<function=b` at 5 tokens), at the parameter keyword (`<parameter=` at 10), or anywhere
-inside the argument value.
+实际发生的事情：模型在线上不发出 JSON。它发出一个 XML 式的宿主语法 —— `<tool_call>\n<function=NAME>\n<parameter=NAME>VALUE` —— 网关在服务器端解析为 OpenAI 形状的 `tool_calls`。当生成在语法中间停止时，解析失败，网关**回退到在
+`message.content` 中把原始未解析的宿主标记交给你**。截断可以在这段标记的任意位置将其切开：在函数名中间
+（5 tokens 时的 `<function=b`）、在参数关键字（10 tokens 时的 `<parameter=`），或在参数值内的任何地方。
 
-Also note `tool_calls` is `[]` (empty array) when tools were supplied and `null` when they
-were not — two different empty values for the same idea.
+另外注意 `tool_calls` 在提供了工具时是 `[]`（空数组），未提供时则是 `null` —— 同一个概念的两个不同空值。
 
-Takeaway: on this endpoint you will never have to repair half-written argument JSON — but you
-must handle a far nastier case. `finish_reason:"length"` with `tool_calls` empty and
-`content` holding internal `<tool_call>` markup means an agent that renders `content` to the
-user will print gateway internals, and an agent that only checks `tool_calls` will silently
-see a turn that did nothing. Branch on `finish_reason == "length"` **before** you look at
-either field.
+要点：在这个端点上你永远不必修复半写的参数 JSON —— 但你必须处理一个远为棘手的情况。`finish_reason:"length"` 配合 `tool_calls` 为空和
+`content` 持有内部 `<tool_call>` 标记意味着将 `content` 渲染给用户的 Agent 会打印网关内部，而只检查 `tool_calls` 的 Agent 会悄无声息地看到一个什么都没做的回合。在查看任一字段**之前**，在 `finish_reason == "length"` 上分支。
 
 ---
-## A3. Anthropic: the same two truncation experiments
+## A3. Anthropic：同样的两个截断实验
 
-### A3a. Text truncation — `max_tokens: 10`
+### A3a. 文本截断 —— `max_tokens: 10`
 
-Request: model `qwen3.7-plus`, `max_tokens: 10`, same 500-word-essay prompt.
+请求：模型 `qwen3.7-plus`、`max_tokens: 10`、相同的 500 字文章 prompt。
 
-Response HTTP 200. Trimmed (the `thinking` string is ~4000 tokens of planning prose, elided
-here as `[...]`; it was returned in full on the wire):
+响应 HTTP 200。修剪（`thinking` 字符串是约 4000 tokens 的规划散文，此处省略为 `[...]`；它在线上被完整返回）：
 
 ```json
 {"id":"msg_7b7253e9-8836-45da-9aa8-1fb5d1080acb","type":"message","role":"assistant",
@@ -166,18 +150,15 @@ here as `[...]`; it was returned in full on the wire):
  "cost":"0"}
 ```
 
-**Exact `stop_reason` string: `"max_tokens"`.** The visible `text` block is cut mid-word
-(`the tul`).
+**精确的 `stop_reason` 字符串：`"max_tokens"`。** 可见的 `text` 块被切割在单词中间
+（`the tul`）。
 
-**`max_tokens: 10` was not honoured: `output_tokens` came back as 4403.** The limit was applied
-only to the visible text block; the entire `thinking` block was generated and billed outside
-the budget. This is a real cost trap — a caller who sets `max_tokens: 10` as a cheap probe
-gets charged for ~4400 output tokens.
+**`max_tokens: 10` 没有被遵守：`output_tokens` 返回为 4403。** 限制仅应用于可见文本块；整个 `thinking` 块在预算之外生成并计费。这是一个真实的成本陷阱 —— 调用者如果把 `max_tokens: 10` 当作廉价探针来设置，就会被收费大约 4400 个输出 tokens。
 
-Also absent from the response envelope: `stop_sequence` (standard Anthropic always includes it,
-`null` when unused). `usage` has no `service_tier` either.
+响应信封中也没有：`stop_sequence`（标准 Anthropic 总是包括它，
+未使用时为 `null`）。`usage` 也没有 `service_tier`。
 
-### A3b. Tool-call baseline (untruncated, `max_tokens: 700`, `tool_choice:{"type":"any"}`)
+### A3b. 工具调用基线（未截断，`max_tokens: 700`、`tool_choice:{"type":"any"}`）
 
 ```json
 {"id":"msg_f5739b8c-9584-4727-81b7-e19585c1b30d","type":"message","role":"assistant",
@@ -191,21 +172,19 @@ Also absent from the response envelope: `stop_sequence` (standard Anthropic alwa
  "cost":"0"}
 ```
 
-Two things worth pinning up in the chapter. First, **the gateway leaks a raw `</think>` closing
-tag as a `text` block** — an empty `thinking` block, then `{"type":"text","text":"\n</think>\n\n"}`.
-The thinking extraction failed and the close tag fell through into user-visible content.
-Second, **parallel `tool_use` blocks appear on the Anthropic side too**, and here the model
-emitted two near-duplicate `bash` calls writing to the same file.
+有两件事值得为这一章记一笔。首先，**网关泄露了一个原始 `</think>` 闭合标签作为 `text` 块** —— 一个空的 `thinking` 块，然后 `{"type":"text","text":"\n</think>\n\n"}`。
+thinking 提取失败，闭合标签掉进了用户可见的内容中。
+其次，**并行 `tool_use` 块也在 Anthropic 端出现**，这里模型
+发出了两个几乎相同的 `bash` 调用写入同一文件。
 
-Takeaway: `stop_reason:"max_tokens"`, and `max_tokens` bounds only the visible text — thinking
-is generated and billed regardless. Never treat a small `max_tokens` as a cost cap here. And
-never render a `text` block to a user without checking it is not gateway harness residue.
+要点：`stop_reason:"max_tokens"`，`max_tokens` 仅限制可见文本 —— thinking
+无论如何都生成并计费。永远不要将小 `max_tokens` 视为成本上限。并且永远不要将 `text` 块渲染给用户而不检查它是否不是网关宿主残留。
 
-### A3c. Anthropic: what a TRUNCATED `tool_use` block's `input` looks like
+### A3c. Anthropic：**被截断的** `tool_use` 块的 `input` 看起来像什么
 
-Same tool/prompt as A3b, sweeping `max_tokens`. Verbatim `content` arrays:
+与 A3b 相同的工具/prompt，扫过 `max_tokens`。逐字 `content` 数组：
 
-`max_tokens=15` — the harness markup landed in `thinking`, and the tool call is cut:
+`max_tokens=15` —— 宿主标记登陆在 `thinking` 中，工具调用被切：
 
 ```json
 "stop_reason":"tool_use",
@@ -215,7 +194,7 @@ Same tool/prompt as A3b, sweeping `max_tokens`. Verbatim `content` arrays:
 "usage":{"input_tokens":343,"output_tokens":100,...}
 ```
 
-`max_tokens=30` — first call complete, second one cut:
+`max_tokens=30` —— 第一次调用完成，第二次被切：
 
 ```json
 "stop_reason":"tool_use",
@@ -226,36 +205,27 @@ Same tool/prompt as A3b, sweeping `max_tokens`. Verbatim `content` arrays:
  {"type":"tool_use","id":"toolu_c22da64de987480f802f8618","name":"bash","input":{"raw_arguments":"{\"command\": \"find /srv/app -name '*.go' -not -path '*/vendor"}}]
 ```
 
-`max_tokens=60` — same shape, cut later in the string:
+`max_tokens=60` —— 相同的形状，切割得更晚：
 
 ```json
  {"type":"tool_use","id":"toolu_bd8b76810dd64528af4daa9a","name":"bash","input":{"raw_arguments":"{\"command\": \"find /srv/app -type f -name '*.go' -not -path '*/vendor/*' -not -path '*/testdata/*' -mtime -14 -exec grep -Hn 'TODO(security)'"}}
 ```
 
-**ANSWER: on a truncated `tool_use`, `input` is replaced by a synthetic single-key object
-`{"raw_arguments": "<the truncated JSON text>"}`.** The `raw_arguments` key is not part of the
-Anthropic Messages spec. The declared schema property `command` is simply absent, even though
-the schema marks it required. The truncated JSON text inside is genuinely invalid — it ends
-mid-string with an unterminated quote (`{"command": "find`).
+**答案：在被截断的 `tool_use` 上，`input` 被替换为一个合成的单键对象
+`{"raw_arguments": "<the truncated JSON text>"}`。** `raw_arguments` 键不是 Anthropic Messages 规范的一部分。声明的 schema 属性 `command` 根本不存在，尽管 schema 将其标记为必需。截断的 JSON 文本内部是真正无效的 —— 它以未终止的引号结束（`{"command": "find`）。
 
-**And `stop_reason` is still `"tool_use"`, not `"max_tokens"`.** There is no envelope-level
-signal that anything was cut. The only detectable evidence is the shape of `input` itself.
+**并且 `stop_reason` 仍然是 `"tool_use"`，不是 `"max_tokens"`。** 没有信封级别的信号表明任何东西被切。唯一可检测的证据是 `input` 本身的形状。
 
-`max_tokens` is again not a hard bound. Observed `max_tokens` → `output_tokens`:
-`5 → 86` (and a *complete* tool call), `15 → 100`, `30 → 113`, `60 → 140`, `100 → 157`.
-Output consistently overruns the requested limit by roughly 57–95 tokens.
+`max_tokens` 再次不是硬限制。观察到的 `max_tokens` → `output_tokens`：
+`5 → 86`（以及一个*完整的*工具调用）、`15 → 100`、`30 → 113`、`60 → 140`、`100 → 157`。
+输出持续超出请求的限制大约 57–95 tokens。
 
-Takeaway (the important one for the stop-reason chapter): on the Anthropic side a truncated
-tool call is **not** signalled by `stop_reason`. You must validate every `tool_use.input`
-against your own schema before dispatch — specifically, check for the `raw_arguments` key and
-for missing required properties, and treat either as a truncated turn to retry, not as a tool
-call to execute. Executing `input["command"]` blindly here would run an empty or half-written
-shell command.
+要点（stop-reason 章节的重要一条）：在 Anthropic 端，截断的工具调用**不会**通过 `stop_reason` 发出信号。你必须在分派前根据自己的 schema 验证每个 `tool_use.input` —— 特别是，检查 `raw_arguments` 键和缺少的必需属性，并将任一种情况都视为需要重试的截断回合，而不是可执行的工具调用。此处盲目执行 `input["command"]` 会运行一条空或半写的 shell 命令。
 
 ---
-## B4. OpenAI `"stream": true` — raw SSE framing and tool-call splitting
+## B4. OpenAI `"stream": true` —— 原始 SSE 成帧和工具调用分割
 
-Response headers:
+响应头：
 
 ```
 HTTP/1.1 200 OK
@@ -265,8 +235,8 @@ Cache-Control: no-cache
 Server: cloudflare
 ```
 
-Frame structure, shown with `cat -A` so line ends are visible (`$` = LF). Every frame is a
-`data:` line followed by one blank line — standard SSE:
+帧结构，用 `cat -A` 显示以便行尾可见（`$` = LF）。每个帧都是一个
+`data:` 行后跟一个空行 —— 标准 SSE：
 
 ```
 data: {...}$
@@ -275,28 +245,27 @@ data: {...}$
 $
 ```
 
-**There are no `event:` lines. Only `data:`.** (Confirmed by `grep -c '^event:'` = 0 across the
-whole stream.) **There is a `[DONE]` sentinel.**
+**没有 `event:` 行。仅 `data:`。**（由 `grep -c '^event:'` = 0 在整个流中确认。）**有一个 `[DONE]` 哨兵。**
 
-### The full stream for one tool call, in order
+### 一个工具调用的完整流，按顺序
 
-Request: `bash` tool, `tool_choice:"required"`, `reasoning_effort:"none"`,
-prompt "Call the bash tool once with command set to: ls -la /srv/app".
+请求：`bash` 工具、`tool_choice:"required"`、`reasoning_effort:"none"`、
+prompt"用以下命令调用 bash 工具一次：ls -la /srv/app"。
 
-1. Role opener — note `content` is `""`, not null:
+1. 角色开启 —— 注意 `content` 是 `""`，不是 null：
 
 ```json
 {"choices":[{"index":0,"finish_reason":null,"delta":{"role":"assistant","content":"","reasoning_content":null,"tool_calls":null}}]}
 ```
 
-2. Tool-call opener — this is the **only** chunk carrying `id` and `function.name`:
+2. 工具调用开启 —— 这是**唯一**携带 `id` 和 `function.name` 的块：
 
 ```json
 "delta":{"role":null,"content":null,"reasoning_content":null,"tool_calls":[{"index":0,"id":"call_8d4f0377bc594026a4765cfc","type":"function","function":{"name":"bash","arguments":""}}]}
 ```
 
-3.–9. Argument fragments. `id` and `function.name` are now `null`, `index` stays `0`, and
-`type` stays `"function"` (it is *not* nulled). The `arguments` fragments in order:
+3.–9. 参数片段。`id` 和 `function.name` 现在是 `null`，`index` 保持 `0`，以及
+`type` 保持 `"function"`（它*不是*null）。`arguments` 片段按顺序：
 
 ```
 "{\"command\": "
@@ -308,16 +277,16 @@ prompt "Call the bash tool once with command set to: ls -la /srv/app".
 "}"
 ```
 
-Concatenated: `{"command": "ls -la /srv/app"}`. Fragments split mid-token and mid-path
-(`/srv` + `/app`) — they are not JSON-aligned and must be accumulated as a raw byte string.
+串联：`{"command": "ls -la /srv/app"}`。片段在 token 中间和路径中间分割
+（`/srv` + `/app`）—— 它们不是 JSON 对齐的，必须作为原始字节字符串累积。
 
-10. Finish chunk — empty delta, `finish_reason` set:
+10. 完成块 —— 空 delta，`finish_reason` 设置：
 
 ```json
 {"choices":[{"index":0,"finish_reason":"tool_calls","delta":{"role":null,"content":null,"reasoning_content":null,"tool_calls":null}}]}
 ```
 
-11. Usage chunk — `choices` is an empty array:
+11. 使用块 —— `choices` 是一个空数组：
 
 ```json
 {"id":"...","object":"chat.completion.chunk","created":1787768844,"model":"mimo-v2.5","choices":[],"usage":{"prompt_tokens":506,"completion_tokens":26,"total_tokens":532,"prompt_tokens_details":{"cached_tokens":192},"completion_tokens_details":{"reasoning_tokens":0}}}
@@ -325,54 +294,45 @@ Concatenated: `{"command": "ls -la /srv/app"}`. Fragments split mid-token and mi
 
 12. `data: [DONE]`
 
-13. **A frame AFTER `[DONE]`:**
+13. **`[DONE]` 之后的帧：**
 
 ```
 data: {"choices":[],"cost":"0"}
 ```
 
-Takeaways: accumulate `arguments` by `index`, and latch `id`/`name` from the first tool-call
-chunk only — they arrive exactly once and are `null` thereafter. Every field is emitted
-explicitly as `null` rather than omitted, so "key present" tells you nothing; test the value.
-And **the stream does not end at `[DONE]`** — a trailing `cost` frame follows it, which every
-spec-conforming client (which stops reading at the sentinel) will discard.
+要点：按 `index` 累积 `arguments`，并仅从第一个工具调用块锁定 `id`/`name` —— 它们精确出现一次，之后是 `null`。每个字段都显式给出为 `null`，而不是被直接省略，所以"键存在"这件事什么都说明不了；要检查值。并且**流不在 `[DONE]` 结束** —— 一个尾随的 `cost` 帧跟在它后面，每个符合规范的客户端（它在哨兵处停止读取）都会丢弃。
 
 ---
 
-## B5. CRITICAL: does the OpenAI stream include `usage` by default?
+## B5. **关键**：OpenAI 流默认包括 `usage` 吗？
 
-**Yes. `usage` is present by default, with no `stream_options` sent at all.**
+**是的。默认情况下存在 `usage`，根本没有发送 `stream_options`。**
 
-Without `stream_options` (see chunk 11 above):
+没有 `stream_options`（见上面的块 11）：
 
 ```json
 {"choices":[],"usage":{"prompt_tokens":506,"completion_tokens":26,"total_tokens":532,"prompt_tokens_details":{"cached_tokens":192},"completion_tokens_details":{"reasoning_tokens":0}}}
 ```
 
-With `"stream_options": {"include_usage": true}` — identical request otherwise:
+有 `"stream_options": {"include_usage": true}` —— 否则相同的请求：
 
 ```json
 {"choices":[],"usage":{"prompt_tokens":506,"completion_tokens":26,"total_tokens":532,"prompt_tokens_details":{"cached_tokens":448},"completion_tokens_details":{"reasoning_tokens":0}}}
 ```
 
-**The difference is: none.** Same frame count (13 `data:` lines both times), same position in
-the stream, same fields. The only differing number is `cached_tokens` (192 vs 448), which
-varies run to run with cache state and is unrelated to the parameter. `stream_options` is
-accepted without error (HTTP 200) and is a **no-op**.
+**区别是：没有。** 相同的帧数（两次 13 条 `data:` 行），流中的相同位置，相同的字段。唯一不同的数字是 `cached_tokens`（192 vs 448），它会随每次运行的缓存状态不同而变化，与参数无关。`stream_options` 被接受而不出错（HTTP 200）并且是一个**空操作**。
 
-Takeaway: you get streamed usage for free here, but do not build on that. Sending
-`stream_options:{"include_usage":true}` costs nothing and is what a real OpenAI-compatible
-endpoint requires, so send it anyway — and read usage from a chunk whose `choices` array is
-**empty**, since that frame carries no delta and will crash a parser that assumes `choices[0]`.
+要点：这里免费送你流式 `usage`，但不要依赖这一点。发送
+`stream_options:{"include_usage":true}` 花费为零，是真正 OpenAI 兼容端点需要的，所以无论如何都发送它 —— 并从一个 `choices` 数组**为空**的块中读取 `usage`，因为该帧不携带任何 delta，而且会让假设 `choices[0]` 的解析器崩溃。
 
 ---
-## B6. Anthropic `"stream": true` — every event type, in order
+## B6. Anthropic `"stream": true` —— 每种事件类型，按顺序
 
-Headers: `Content-Type: text/event-stream`, `Transfer-Encoding: chunked`, `Cache-Control: no-cache`.
-Framing is `event: <name>` + `data: {...}` + blank line — so this side **does** use `event:` lines.
-**There is no `[DONE]` sentinel** (`grep -c DONE` = 0); the stream ends when the connection closes.
+头：`Content-Type: text/event-stream`、`Transfer-Encoding: chunked`、`Cache-Control: no-cache`。
+成帧是 `event: <name>` + `data: {...}` + 空行 —— 所以这一端**确实**使用 `event:` 行。
+**没有 `[DONE]` 哨兵**（`grep -c DONE` = 0）；流在连接关闭时结束。
 
-### Distinct `event:` types, in order of first appearance
+### 不同的 `event:` 类型，按首次出现的顺序
 
 ```
 ping
@@ -384,7 +344,7 @@ message_delta
 message_stop
 ```
 
-Full event sequence for a two-tool-call response:
+两个工具调用响应的完整事件序列：
 
 ```
 ping message_start
@@ -394,47 +354,45 @@ content_block_start content_block_delta x6 content_block_stop    (index 2, tool_
 message_delta message_stop ping
 ```
 
-**`ping` arrives FIRST, before `message_start`, and again LAST, after `message_stop`.** In the
-Anthropic spec `message_start` is always the first event and `message_stop` the last; pings only
-appear as keepalives in between. Here they bracket the whole stream.
+**`ping` 首先到达，在 `message_start` 之前，最后再次到达，在 `message_stop` 之后。** 在
+Anthropic 规范中 `message_start` 总是第一个事件，`message_stop` 是最后一个；pings 仅在间隙中作为保活出现。这里它们将整个流括在中间。
 
-### Where usage appears — and the two reports disagree
+### `usage` 出现的位置 —— 两个报告不一致
 
-`message_start` (no cache fields, and the envelope has no `stop_reason`/`stop_sequence`):
+`message_start`（无缓存字段，信封没有 `stop_reason`/`stop_sequence`）：
 
 ```json
 {"type":"message_start","message":{"id":"msg_e3f9307e-2dc9-41f0-a70e-cca934593aa0","type":"message","role":"assistant","model":"qwen3.7-plus","content":[],"usage":{"input_tokens":56,"output_tokens":0}}}
 ```
 
-`message_delta` (carries `stop_reason` plus a full usage block including cache fields):
+`message_delta`（携带 `stop_reason` 加一个包括缓存字段的完整使用块）：
 
 ```json
 {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"input_tokens":291,"output_tokens":63,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}}
 ```
 
-**`input_tokens` is 56 in `message_start` and 291 in `message_delta` — for the same request.**
-The `message_start` figure is wrong (the non-streaming call with the same prompt reported 291-ish).
-The spec puts authoritative `input_tokens` in `message_start`; here only `message_delta` is
-trustworthy, and it is also the only place the cache counters appear.
+**对于相同请求，`input_tokens` 在 `message_start` 中是 56，在 `message_delta` 中是 291。**
+`message_start` 数字是错误的（使用相同 prompt 的非流式调用报告了 291-ish）。
+规范将权威 `input_tokens` 放在 `message_start` 中；这里只有 `message_delta` 是
+可信的，它也是唯一出现缓存计数器的地方。
 
-### Where `cost` hides
+### `cost` 藏在哪里
 
 ```json
 {"type":"ping","cost":"0"}
 ```
 
-The trailing post-`message_stop` `ping` carries the non-standard `cost` field as an extra key on
-a `ping` event.
+`message_stop` 之后尾随的 `ping` 在 `ping` 事件上作为额外的键携带非标准 `cost` 字段。
 
-### How `input_json_delta` carries tool arguments
+### `input_json_delta` 如何携带工具参数
 
-`content_block_start` announces the block with an **empty** `input` object and the real `id`/`name`:
+`content_block_start` 以**空的** `input` 对象和真实的 `id`/`name` 宣布块：
 
 ```json
 {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_ff07c814f3f34014aa526469","name":"bash","input":{}}}
 ```
 
-Then `partial_json` fragments, in order (note the first is the empty string):
+然后 `partial_json` 片段，按顺序（注意第一个是空字符串）：
 
 ```
 ""
@@ -445,29 +403,27 @@ Then `partial_json` fragments, in order (note the first is the empty string):
 "}"
 ```
 
-Concatenated: `{"command": "ls -la /srv/app"}`. Then `content_block_stop` with the index.
-Same non-JSON-aligned splitting as the OpenAI side, and the same `/srv` + `/app` split point —
-strong evidence both protocol surfaces are rendered from one shared internal token stream.
+串联：`{"command": "ls -la /srv/app"}`。然后是带着索引的 `content_block_stop`。
+与 OpenAI 端相同的非 JSON 对齐分割，以及相同的 `/srv` + `/app` 分割点 —— 强有力的证据表明两个协议表面都从一个共享的内部 token 流呈现。
 
-Note content block `index: 1` in this stream is the `</think>` leak again, as a `text_delta`:
+注意本流中内容块 `index: 1` 再次是 `</think>` 泄露，作为一个 `text_delta`：
 
 ```json
 {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"\n</think>\n\n"}}
 ```
 
-Takeaway: read `stop_reason` and all usage from `message_delta`, never from `message_start`.
-Tolerate `ping` in any position including before `message_start` and after `message_stop`, and
-do not terminate on `message_stop` if you want the `cost` field. There is no `[DONE]`.
+要点：从 `message_delta` 读取 `stop_reason` 和所有 `usage`，永远不要从 `message_start`。
+在任何位置（包括在 `message_start` 之前和 `message_stop` 之后）容忍 `ping`，如果你想要 `cost` 字段就不在 `message_stop` 处终止。没有 `[DONE]`。
 
 ---
-## B7. Does either side stream reasoning/thinking, and via what field/event?
+## B7. 任一方是否会流式传输推理/thinking，通过什么字段/事件？
 
-**Both do. Yes.**
+**两者都是。是的。**
 
-### OpenAI side: `delta.reasoning_content`
+### OpenAI 端：`delta.reasoning_content`
 
-Prompt "What is 17 * 23? Think it through, then answer.", `stream:true`, reasoning left at
-default. Consecutive frames, verbatim `delta` objects:
+Prompt"17 * 23 是多少？仔细思考，然后回答。"、`stream:true`、推理留在
+默认值。连续帧，逐字 `delta` 对象：
 
 ```json
 "delta":{"role":"assistant","content":"","reasoning_content":null,"tool_calls":null}
@@ -478,13 +434,12 @@ default. Consecutive frames, verbatim `delta` objects:
 "delta":{"role":null,"content":null,"reasoning_content":"17 and ","tool_calls":null}
 ```
 
-There is no separate event or block type — reasoning rides in the **same** `delta` object as
-`content`, in a sibling field `reasoning_content`, distinguished only by which of the two is
-non-null. In this run: 44 frames carried `reasoning_content`, 1 carried `content`.
+没有单独的事件或块类型 —— 推理和 `content` 共享**同一个** `delta`
+对象，只是位于同级字段 `reasoning_content` 中，仅由两者中哪个非 null 来区分。在这次运行中：44 帧携带了 `reasoning_content`，1 帧携带了 `content`。
 
-### Anthropic side: `thinking_delta` inside a `thinking` content block
+### Anthropic 端：`thinking_delta` 在 `thinking` 内容块中
 
-Distinct delta types observed across the stream:
+在流中观察到的不同 delta 类型：
 
 ```
 thinking_delta
@@ -492,7 +447,7 @@ signature_delta
 text_delta
 ```
 
-Distinct `content_block` types observed: `thinking`, `text`.
+观察到的不同 `content_block` 类型：`thinking`、`text`。
 
 ```json
 {"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":"","signature":""}}
@@ -505,30 +460,27 @@ Distinct `content_block` types observed: `thinking`, `text`.
 {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" 17 ×"}}
 ```
 
-Thinking is a first-class content block at its own `index`, closed by `content_block_stop`
-before the `text` block opens at the next index.
+Thinking 是拥有自己 `index` 的一等公民内容块：先由 `content_block_stop` 关闭，
+`text` 块才在下一个索引处开启。
 
-**`signature_delta` is emitted but its `signature` is the empty string** — the frame exists to
-satisfy the shape, carrying nothing. This matches the empty `signature` seen in non-streaming
-responses. There is no cryptographic signature to round-trip.
+**`signature_delta` 被发出但其 `signature` 是空字符串** —— 帧存在以
+满足形状，不携带任何东西。这与非流式
+响应中看到的空 `signature` 相匹配。没有加密签名可以往返。
 
-Takeaway: the two protocols model reasoning completely differently — a sibling field on the
-same delta (OpenAI) versus a separate indexed content block with its own start/stop and delta
-type (Anthropic). Anthropic-side code that assumes `content_block_delta` at index 0 is text
-will render the model's private reasoning to the user. And because `signature` is always empty,
-you cannot use it to verify or replay thinking blocks on this endpoint.
+要点：两个协议对推理建模完全不同 —— 同一 delta 上的同级字段（OpenAI）vs 一个有着自己开始/停止和 delta
+类型的独立索引内容块（Anthropic）。如果 Anthropic 端代码认为索引 0 处的 `content_block_delta` 是文本，
+就会把模型的私有推理渲染给用户。并且因为 `signature` 总是空，
+你不能用它来验证或重放这个端点上的 thinking 块。
 
 ---
-## C8. Anthropic prompt caching with `cache_control: {"type":"ephemeral"}`
+## C8. Anthropic prompt 缓存使用 `cache_control: {"type":"ephemeral"}`
 
-Setup: a system block of ~9,800 tokens of varied realistic prose (a fabricated Go engineering
-handbook — 472 distinct sentences, 7,633 words, 49,277 chars, generated from a combinatorial
-template so it is real varied English, not a repeated character). Sent as
-`system: [{"type":"text","text":"<handbook>","cache_control":{"type":"ephemeral"}}]` with the
-trivial user turn `"Reply with exactly the word: ACK"` and `max_tokens: 32`.
-The identical body was POSTed three times back to back.
+设置：一个系统块，约 9,800 tokens，内容是各种逼真的散文（一个虚构的 Go 工程
+手册 —— 472 个不同的句子、7,633 个单词、49,277 个字符，由组合模板生成，所以它是真正各种各样的英文，不是重复的字符）。作为
+`system: [{"type":"text","text":"<handbook>","cache_control":{"type":"ephemeral"}}]` 发送，带有平凡的用户回合 `"Reply with exactly the word: ACK"` 和 `max_tokens: 32`。
+相同的体被逐个连续 POST 三次。
 
-### Observed `usage`, verbatim
+### 观察到的 `usage`，逐字
 
 ```
 call 1: "usage":{"input_tokens":18,"output_tokens":249,"cache_creation_input_tokens":9775,"cache_read_input_tokens":0,   "cache_creation":{"ephemeral_5m_input_tokens":9775}}
@@ -536,44 +488,42 @@ call 2: "usage":{"input_tokens":18,"output_tokens":236,"cache_creation_input_tok
 call 3: "usage":{"input_tokens":18,"output_tokens":264,"cache_creation_input_tokens":0,   "cache_read_input_tokens":9775,"cache_creation":{"ephemeral_5m_input_tokens":0}}
 ```
 
-**Caching genuinely works. These counters are not always 0.** Write on the first call, read on
-every subsequent call, exact same figure (9,775) both directions.
+**缓存真实有效。这些计数器不总是 0。** 在第一次调用时写入，在每个后续调用时读取，精确相同的数字（9,775）双向。
 
-Two structural details: there is an extra nested `cache_creation` object with
-`ephemeral_5m_input_tokens` (a 5-minute TTL bucket), and **`input_tokens` excludes the cached
-prefix** — it reports 18, the user turn only. Total billable input is
-`input_tokens + cache_read_input_tokens`.
+两个结构性细节：有一个额外的嵌套 `cache_creation` 对象，带
+`ephemeral_5m_input_tokens`（一个 5 分钟 TTL 桶），并且**`input_tokens` 排除缓存的
+前缀** —— 它只报告 18，即仅用户回合。可计费的总输入是
+`input_tokens + cache_read_input_tokens`。
 
-Note `max_tokens: 32` produced 249/236/264 output tokens, confirming A3a: the thinking block
-is not bounded by `max_tokens`.
+注意 `max_tokens: 32` 产生了 249/236/264 输出 tokens，确认 A3a：thinking 块
+不受 `max_tokens` 限制。
 
-### Control: the SAME prompt with `cache_control` REMOVED
+### 控制：**相同的** prompt，`cache_control` **被移除**
 
 ```
 no-cache_control call 1: {"input_tokens":1089,"output_tokens":250,"cache_creation_input_tokens":0,"cache_read_input_tokens":8704}
 no-cache_control call 2: {"input_tokens":1345,"output_tokens":308,"cache_creation_input_tokens":0,"cache_read_input_tokens":8448}
 ```
 
-**Caching still happens without `cache_control`** — this endpoint caches implicitly. But the
-behaviour degrades: the nested `cache_creation` object disappears, the hit is partial and
-**varies between otherwise identical calls** (8704, then 8448), and the remainder is billed as
-uncached `input_tokens` (1089, then 1345). Both implicit figures are exact multiples of 64
-(136x64 and 132x64), while the explicit `cache_control` hit of 9,775 is not — so the implicit
-cache matches on 64-token block boundaries whereas `cache_control` pins the exact prefix.
+**即使没有 `cache_control` 也会发生缓存** —— 这个端点隐式缓存。但
+行为降级：嵌套 `cache_creation` 对象消失，命中是部分的并且
+**在其他相同的调用之间变化**（8704，然后 8448），其余的作为未缓存的 `input_tokens` 计费（1089，然后 1345）。两个隐式数字都是 64 的精确倍数
+（136x64 和 132x64），而显式 `cache_control` 命中 9,775 不是 —— 所以隐式
+缓存在 64-token 块边界上匹配，而 `cache_control` 固定了精确的前缀。
 
-(These control calls ran after the explicit ones, so the prefix was already warm; that is why
-call 1 of the control already shows a read rather than a write.)
+（这些控制调用在显式调用之后运行，所以前缀已经热；那是为什么
+控制的第 1 次调用已经显示读取而不是写入。）
 
-Takeaway: caching is real and worth teaching here. Sending `cache_control` is still worth it —
-it converts a partial, run-to-run-variable 64-block hit into a complete, stable, exact-prefix
-hit. Compute your cache hit rate as `cache_read / (input_tokens + cache_read)`, never from
-`input_tokens` alone, which under-reports true input by 500x on a warm call.
+要点：缓存是真实的，值得在这里教授。发送 `cache_control` 仍然值得 ——
+它把那种部分的、每次运行都会变的 64 块命中，转换成完整、稳定、精确前缀的
+命中。把你的缓存命中率算作 `cache_read / (input_tokens + cache_read)`，永远不要
+只用 `input_tokens` 来算，它在温暖调用中会把真实输入低报 500 倍。
 
 ---
 
-## C9. OpenAI side: does `usage.prompt_tokens_details.cached_tokens` become non-zero?
+## C9. OpenAI 端：`usage.prompt_tokens_details.cached_tokens` 是否变为非零？
 
-**Yes.** Same ~9,800-token handbook, sent as a `system` message, identical body three times:
+**是的。** 相同的约 9,800-token 手册，作为 `system` 消息发送，相同的体三次：
 
 ```
 call 1: "usage":{"prompt_tokens":9815,"completion_tokens":2,"total_tokens":9817,"prompt_tokens_details":{"cached_tokens":0},   "completion_tokens_details":{"reasoning_tokens":0}}
@@ -581,55 +531,52 @@ call 2: "usage":{"prompt_tokens":9815,"completion_tokens":2,"total_tokens":9817,
 call 3: "usage":{"prompt_tokens":9815,"completion_tokens":2,"total_tokens":9817,"prompt_tokens_details":{"cached_tokens":9792},"completion_tokens_details":{"reasoning_tokens":0}}
 ```
 
-All three returned `finish_reason:"stop"` and `content:"ACK"`. Implicit caching, no parameter
-required — cold on the first call, then 9,792 of 9,815 prompt tokens served from cache.
+所有三个都返回了 `finish_reason:"stop"` 和 `content:"ACK"`。隐式缓存，不需要参数 —— 第一次调用时冷，然后 9,815 中的 9,792 个 prompt tokens 从缓存提供。
 
-**The two protocols account for cached tokens in opposite directions.** OpenAI: `prompt_tokens`
-stays at the full 9,815 and `cached_tokens` is a *subset* of it. Anthropic: `input_tokens`
-drops to 18 and `cache_read_input_tokens` is *additional* to it. The same cache hit therefore
-looks like "no change in input" on one protocol and "input collapsed by 99.8%" on the other.
+**两个协议按相反方向说明缓存的 tokens。** OpenAI：`prompt_tokens`
+保持在完整的 9,815，`cached_tokens` 是它的*子集*。Anthropic：`input_tokens`
+下降到 18，`cache_read_input_tokens` 是*额外的*添加到它。相同的缓存命中因此
+在一个协议上看起来像"输入没有变化"，在另一个上看起来像"输入下降 99.8%"。
 
-`cached_tokens` is 64-token block aligned across every observation in this document:
-9792 = 153x64, 512 = 8x64, 448 = 7x64, 192 = 3x64.
+`cached_tokens` 在本文档中每次观察都是 64-token 块对齐的：
+9792 = 153x64、512 = 8x64、448 = 7x64、192 = 3x64。
 
-Takeaway: implicit caching is on by default on both surfaces; the OpenAI side needs no opt-in
-at all. A dashboard that computes cost from `prompt_tokens` on the OpenAI side will overstate
-spend on every warm call, because it never subtracts `cached_tokens`.
+要点：隐式缓存默认在两个表面都启用；OpenAI 端根本不需要选择加入。
+一个从 OpenAI 端的 `prompt_tokens` 计算成本的仪表板会在每次温暖调用时高估支出，因为它永远不会减去 `cached_tokens`。
 
 ---
-## C10. Is `cost` ever non-zero? What JSON type is it?
+## C10. `cost` 是否曾非零？它是什么 JSON 类型？
 
-**JSON type: `string`.** Confirmed with `jq '.cost|type'` on both protocols:
+**JSON 类型：`string`。** 在两个协议上通过 `jq '.cost|type'` 确认：
 
 ```
 OpenAI  large-prompt call: {"cost":"0","cost_type":"string","prompt_tokens":9815}
 Anthropic large-prompt call: {"cost":"0","cost_type":"string","out":235,"cread":9775}
 ```
 
-**Never observed non-zero.** Every response in this document carried `"cost":"0"`, including
-the most expensive calls made:
+**从未观察到非零。** 本文档中的每个响应都携带了 `"cost":"0"`，包括
+最昂贵的调用：
 
-- 9,815 prompt tokens (OpenAI) -> `"cost":"0"`
-- 4,403 output tokens (Anthropic, A3a) -> `"cost":"0"`
-- 2,000 completion tokens, `finish_reason:"length"` -> `"cost":"0"`
-- 9,775-token cache write -> `"cost":"0"`
+- 9,815 prompt tokens（OpenAI）-> `"cost":"0"`
+- 4,403 输出 tokens（Anthropic，A3a）-> `"cost":"0"`
+- 2,000 completion tokens，`finish_reason:"length"` -> `"cost":"0"`
+- 9,775-token 缓存写入 -> `"cost":"0"`
 
-Deduplicating every `cost` occurrence across all captured streaming and non-streaming bodies
-yields exactly one distinct value: `"cost":"0"`.
+跨所有捕获的流式和非流式体去重每个 `cost` 出现
+产生精确一个不同的值：`"cost":"0"`。
 
-Whether it is non-zero on a billed (non-complimentary) key is **unverified** — this test used a
-single temporary key that appears not to be metered, so a zero here is not evidence that the
-field is hardcoded.
+它是否在计费（非免费）键上非零是**未验证的** —— 这个测试使用了一个
+单一的临时键，似乎不被计量，所以这里的零不是字段被硬编码的证据。
 
-Takeaway: `cost` is a **string**, not a number. `json.Unmarshal` into a `float64` field will
-fail with `cannot unmarshal string into Go struct field`. If you decode it at all, decode into
-`string` (or `json.Number`) and parse. On this key it is always `"0"`, so do not build a budget
-guard on it — derive spend from the token counts instead.
+要点：`cost` 是一个**字符串**，不是数字。`json.Unmarshal` 到一个 `float64` 字段会
+失败出现 `cannot unmarshal string into Go struct field`。如果你根本解码它，解码到
+`string`（或 `json.Number`）并解析。在这个键上它总是 `"0"`，所以不要在它上面构建一个预算
+守卫 —— 从 token 计数改为推导支出。
 
 ---
-## D11. Bad model id and bad API key — exact status and error body, both protocols
+## D11. 错误的模型 id 和错误的 API 键 —— 精确状态和错误体，两个协议
 
-### The four required cases
+### 四个必需的情况
 
 ```
 OpenAI    /v1/chat/completions  bad model  -> HTTP/1.1 401 Unauthorized
@@ -645,16 +592,16 @@ Anthropic /v1/messages          bad key    -> HTTP/1.1 401 Unauthorized
 {"type":"error","error":{"type":"AuthError","message":"Invalid API key."}}
 ```
 
-**An unknown model returns 401 Unauthorized**, not 404 and not 400. Status alone cannot
-distinguish "your key is wrong" from "your model name is wrong" — you must read `error.type`.
+**未知模型返回 401 Unauthorized**，不是 404 也不是 400。仅靠状态无法
+区分"你的键是错的"和"你的模型名字是错的" —— 你必须读 `error.type`。
 
-**Both protocols return the same Anthropic-shaped envelope** `{"type":"error","error":{"type","message"}}`.
-The OpenAI surface does *not* return OpenAI's error shape: there is no `param` and no `code`
-field, and `error.type` is PascalCase (`ModelError`, `AuthError`) rather than OpenAI's
-snake_case `invalid_request_error` or Anthropic's `authentication_error` / `not_found_error`.
-An official OpenAI SDK decoding this will find its `code` and `param` fields empty.
+**两个协议都返回相同的 Anthropic 形状的信封** `{"type":"error","error":{"type","message"}}`。
+OpenAI 表面*不*返回 OpenAI 的错误形状：没有 `param` 也没有 `code`
+字段，并且 `error.type` 是 PascalCase（`ModelError`、`AuthError`）而非 OpenAI 的
+snake_case `invalid_request_error` 或 Anthropic 的 `authentication_error` / `not_found_error`。
+一个官方 OpenAI SDK 解码这个会发现其 `code` 和 `param` 字段为空。
 
-### Error response headers
+### 错误响应头
 
 ```
 HTTP/1.1 401 Unauthorized
@@ -663,10 +610,10 @@ Content-Length: 105
 Server: cloudflare
 ```
 
-**`Content-Type: text/plain;charset=UTF-8` on a JSON body.** A client that branches on
-content-type before parsing will treat the error body as opaque text.
+**`Content-Type: text/plain;charset=UTF-8` 在 JSON 体上。** 一个在解析前在
+content-type 上分支的客户端会将错误体视为不透明文本。
 
-### Other error classes probed
+### 探测过的其他错误类
 
 ```
 no auth header at all      -> 401  {"type":"error","error":{"type":"AuthError","message":"Missing API key."}}
@@ -677,24 +624,24 @@ Anthropic call with `max_tokens` omitted -> 400, Content-Type: application/json,
     {"model":"qwen3.7-plus"}
 ```
 
-Two more traps there. **A client mistake (malformed JSON) is reported as 500**, which a retry
-policy keyed on "5xx = transient, retry with backoff" will retry forever — it can never succeed.
-And the 400 for a missing required field returns **no error envelope at all**: the body is a
-24-byte echo `{"model":"qwen3.7-plus"}` with `type`/`error` absent, so error-parsing code that
-does `resp.Error.Message` gets an empty string with nothing to log.
+那里还有两个陷阱。**客户端错误（格式错误的 JSON）被报告为 500**，一个
+以"5xx = 瞬态，带回退重试"为键的重试策略会永远重试 —— 它永不成功。
+以及对缺失必需字段的 400 返回**根本没错误信封**：响应体是一个
+24 字节的回显 `{"model":"qwen3.7-plus"}`，`type`/`error` 缺失，所以
+尝试做 `resp.Error.Message` 的错误解析代码得到一个空字符串，无事可记。
 
-Takeaway: never classify these errors by HTTP status. Retry on 429 and on connection failures;
-treat 401 as fatal-but-ambiguous and log `error.type`; and treat 5xx as *possibly* permanent,
-capping retries. Always guard against an error body that has no `error` field.
+要点：永不按 HTTP 状态对这些错误分类。在 429 和连接失败上重试；
+将 401 视为致命但模糊的并记录 `error.type`；以及将 5xx 视为*可能*永久的，
+限制重试。总是防护一个没有 `error` 字段的错误体。
 
 ---
 
-## D12. Does the OpenAI side accept `"parallel_tool_calls": false`?
+## D12. OpenAI 端是否接受 `"parallel_tool_calls": false`？
 
-**It accepts it (HTTP 200) and ignores it.**
+**它接受它（HTTP 200）并忽略它。**
 
-Request: `parallel_tool_calls:false`, one `bash` tool, prompt "Use the bash tool to do three
-separate things: list /a, list /b, and list /c."
+请求：`parallel_tool_calls:false`、一个 `bash` 工具、prompt"使用 bash 工具做三
+个单独的事情：列出 /a、列出 /b 和列出 /c。"
 
 ```json
 "finish_reason":"tool_calls",
@@ -704,28 +651,26 @@ separate things: list /a, list /b, and list /c."
  {"id":"call_17775982f2994613a690341f","type":"function","function":{"name":"bash","arguments":"{\"command\": \"ls /c\"}"}}]
 ```
 
-Three parallel tool calls, with `parallel_tool_calls` explicitly `false`. The control run with
-`parallel_tool_calls: true` produced an identical result — 3 calls, same arguments.
+三个并行工具调用，带 `parallel_tool_calls` 显式 `false`。控制运行，使用
+`parallel_tool_calls: true` 产生了相同的结果 —— 3 次调用，相同的参数。
 
-Related probe: an entirely invented parameter, `"totally_made_up_param_xyz":{"a":1}`, also
-returns **HTTP 200**. Unknown request parameters are silently dropped, never rejected.
+相关探测：一个完全虚构的参数，`"totally_made_up_param_xyz":{"a":1}`，也
+返回**HTTP 200**。未知请求参数被静默丢弃，永不被拒绝。
 
-Takeaway: the parameter is accepted but is a no-op, so **your agent loop must be able to execute
-a batch of tool calls no matter what you request**. More generally, a 200 here does not mean a
-parameter took effect — this gateway never validates request parameters, so the only way to know
-whether something works is to observe the response, which is the whole premise of these notes.
+要点：参数被接受但是空操作，所以**你的 Agent 循环必须能够执行一批工具调用，不管你请求什么**。更一般地，这里的 200 不意味着参数起效 —— 这个网关
+永不验证请求参数，所以唯一知道是否有效的方式是观察响应，这正是
+这些笔记的整个前提。
 
 ---
-## Provenance
+## 出处
 
-All bodies above were captured with `curl` against the live endpoint on 2026-08-27 and pasted
-verbatim, with three deliberate exceptions, each marked where it occurs:
+上述所有响应体都通过 `curl` 在 2026-08-27 对线上端点捕获并逐字粘贴，有三个刻意的例外，每个在其出现的地方标记：
 
-1. The ~4,000-token `thinking` string in A3a is elided as `[...]`; it was returned in full.
-2. In the A3b/A3c `find -exec` examples the shell terminator is shown as `\;`; on the wire it
-   was the JSON-escaped `\;`. No finding depends on it.
-3. Long SSE captures are shown as their `data:` payloads with the repeated `id`/`object`/
-   `created`/`model` envelope keys dropped after the first occurrence.
+1. 约 4,000-token `thinking` 字符串在 A3a 中省略为 `[...]`；它在线上被完整返回。
+2. 在 A3b/A3c `find -exec` 例子中，shell 终止符显示为 `\;`；在线上它
+   是 JSON 转义的 `\;`。没有发现依赖于它。
+3. 长的 SSE 捕获显示为它们的 `data:` 有效载荷，其中重复的 `id`/`object`/
+   `created`/`model` 信封键在第一次出现后被丢弃。
 
-Reproduce any section by rebuilding the request body shown and re-POSTing it. The key used was
-temporary and is expected to be revoked.
+通过重建所示的请求体并重新 POST 它来重现任何小节。使用的键是
+临时的，预计会被撤销。

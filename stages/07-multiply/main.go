@@ -1,21 +1,21 @@
-// Stage 07 — Multiply: the same loop, called again.
+// 阶段 07 — 乘法：相同的循环，再次调用。
 //
-// Two features, and neither of them is a subsystem:
+// 两个功能，两者都不是一个子系统：
 //
-//	subagents  a fresh []Msg, a different system prompt, the same everything
-//	           else — and only TEXT comes back. subagent.go.
-//	skills     a directory of Markdown files, and one paragraph in the system
-//	           prompt saying they exist. skills.go.
+//	子 Agent  一个新 []Msg、不同的系统提示词、其他一切相同——
+//	           只有 **TEXT** 返回。subagent.go。
+//	技能      一个 Markdown 文件目录，和系统提示词中的一个段落
+//	           说明它们存在。skills.go。
 //
-// The diff against stage 06 is small. call() asks a.tools() instead of naming
-// bash; the forty-line tool dispatch in runTurn became one call to dispatch(),
-// which runs subagents concurrently and returns their results in the order the
-// model asked for them; and the Bus grew a Fork so that a tree of agents writes
-// into one ordered stream.
+// 相比阶段 06，改动很小。call() 现在去问 a.tools()，而不是把 bash
+// 硬编码在里面；runTurn 里原本 40 行的工具调度代码，变成了一次
+// dispatch() 调用，它会并发运行子 Agent，并按模型发起调用的顺序返回
+// 结果；总线上也长出了一个 Fork，让一整棵 Agent 树都能写进同一条
+// 有序流。
 //
-// What did NOT change is the point. There is no scheduler, no message queue, no
-// agent registry, and no protocol between agents. A subagent is a function call
-// whose return value is a paragraph.
+// **没有改变的**，才是重点所在。没有调度器、没有消息队列、没有 Agent
+// 注册表、没有 Agent 之间的协议。子 Agent 就是一次函数调用，它的返回值
+// 是一段话。
 package main
 
 import (
@@ -51,13 +51,16 @@ either find another way or ask.
 
 When the task is done, reply with a short plain-text summary and no tool call.`
 
-// memoryPrompt is the entire long-term-memory feature.
+// memoryPrompt 是整个长期记忆特性。
 //
-// No tool, no store, no embedding, no retrieval step: a file, and a sentence
-// telling the model it may append to it with the tool it already has. The last
-// line is the part that decides whether the file is worth reading in six
-// months — "record what you learned, not what you did" is the difference
-// between a knowledge base and a diary.
+// 没有工具，没有存储，没有嵌入，
+// 没有检索步骤：一个文件，加一句
+// 话，告诉模型可以用它已有的工具，
+// 把内容追加进这个文件。最后一行
+// 是决定文件是否值得在六个月后读
+// 的部分——"记录你学到的，不是
+// 你做了什么"是知识库和日记之间
+// 的区别。
 const memoryPrompt = `
 
 Durable notes live in ` + memoryFileForWriting + ` in the working directory. If that file
@@ -72,10 +75,10 @@ gotcha, a decision the user made — append it:
 Record what you learned, not what you did. Notes written now take effect in your
 next session, not this one.`
 
-// para is a blank line. It is a constant rather than a literal at each use
-// site only because it appears in four places that must agree: the system
-// prompt the parent sees and the one every subagent sees have to be
-// byte-identical below the first paragraph, or the two share no cache prefix.
+// para 是一个空行。它之所以被写成一个常量，而不是在每个用到的地方直接
+// 写字面量，只是因为它要在四个地方保持一致：父 Agent 看到的系统提示词，
+// 和每一个子 Agent 看到的系统提示词，必须在第一段之后逐字节相同，
+// 否则两者就无法共享缓存前缀。
 var para = string([]rune{0x0A, 0x0A})
 
 func bashToolDef() Tool {
@@ -106,8 +109,8 @@ type config struct {
 }
 
 // ---------------------------------------------------------------------------
-// The permission gate. Unchanged since stage 01 except that it reports through
-// the bus.
+// 权限闸。自阶段 01 以来未改，除了它通过
+// 总线报告。
 // ---------------------------------------------------------------------------
 
 type gate struct {
@@ -116,24 +119,22 @@ type gate struct {
 	available    bool
 	out          io.Writer
 
-	// One question at a time, and it genuinely contends.
+	// 一次只问一个问题，而这一点，是真的存在并发争用的。
 	//
-	// The first version of this comment claimed it would not: dispatch() asks
-	// every question on one goroutine before starting any concurrency, so the
-	// parent's questions are serial. That reasoning was wrong, and the way it
-	// was wrong is worth more than the lock.
+	// 这个注释的第一个版本声称不会有争用：dispatch() 会在同一个 goroutine
+	// 上问完每一个问题，然后才开始任何并发，所以父 Agent 的问题都是串行的。
+	// 那个推理是错的，而错在哪里，比这把锁本身更值得琢磨。
 	//
-	// A subagent runs the same dispatch() on its own goroutine, and its bash
-	// calls ask this same shared gate — mid-concurrency, alongside its
-	// siblings. The lock stops two prompts from interleaving character by
-	// character. It does not stop something worse, because the command text and
-	// the question reach the terminal by different paths under different locks:
+	// 子 Agent 在自己的 goroutine 上运行同一个 dispatch()，它的 bash 调用
+	// 会去问这同一个共享门——就在并发进行的过程中，和它的兄弟们一起。这把
+	// 锁能阻止两个提示词逐字交错地打印出来。但它挡不住更糟的情况，因为
+	// 命令文本和问题，是经由不同的路径、在不同的锁下，分别到达终端的：
 	//
-	//	the command   printed by the RENDERER, off the bus, under bus.core.mu
-	//	the question  printed HERE, under gate.mu
+	//	命令   由**渲染器**打印，不经过总线，在 bus.core.mu 下
+	//	问题   在**这里**打印，在 gate.mu 下
 	//
-	// Two locks, one terminal, no ordering between them. The fix is not a third
-	// lock — it is in ask() below, where the question now names its own subject.
+	// 两个锁、一个终端，它们之间没有任何排序。修复的办法不是加第三把锁——
+	// 而是在下面的 ask() 里，让问题自己点明它问的是哪条命令。
 	mu sync.Mutex
 }
 
@@ -154,26 +155,26 @@ func (g *gate) ask(command string) (verdict, string) {
 	if !g.available {
 		return deny, "no terminal to ask on — rerun with --yolo to allow commands"
 	}
-	// The question names the command it is about.
+	// 问题会说清楚，自己问的是哪条命令。
 	//
-	// It did not until stage 07, and until stage 07 it did not need to: under a
-	// strictly sequential print-then-ask loop, "run?" can only ever refer to
-	// the line above it. Concurrent subagents removed that guarantee, and the
-	// failure it leaves is not a display glitch:
+	// 直到阶段 07 之前，都不是这样，而且在那之前，也确实不需要这样：在
+	// 严格顺序的 print-then-ask 循环下，"run?" 只能指上面的那一行。并发
+	// 子 Agent 抹掉了这个保证，而它留下的这个问题，不是什么显示上的小
+	// 故障：
 	//
-	//	│ $ rm -rf /tmp/build            <- child A's command, via the bus
-	//	│ $ echo hello                   <- child B's command, via the bus
-	//	  run? [y / n / a = all / q]     <- child A's question
+	//	│ $ rm -rf /tmp/build            <- 子 Agent A 的命令，通过总线
+	//	│ $ echo hello                   <- 子 Agent B 的命令，通过总线
+	//	  run? [y / n / a = all / q]     <- 子 Agent A 的问题
 	//
-	// The user answers for the command they just read and authorises the other
-	// one. A prompt that carries its own subject cannot be misread whatever
-	// else is on the screen, and it costs one line.
+	// 用户是在为自己刚读到的那条命令作答，却顺带把另一条也批准了。一句话
+	// 只要点明自己问的是哪条命令，不管屏幕上还有什么，都不会被看错——
+	// 代价不过是多出一行。
 	//
-	// Note also what `a` is now honest about. It sets `always` on the SHARED
-	// gate, so one subagent's "allow all" disarms the gate for the parent and
-	// every sibling too. Scoping it per-agent would be safer and would mean
-	// being asked again for every child, which is how people end up running
-	// --yolo. The choice stays; the prompt stops hiding it.
+	// 还要注意 `a` 现在老实交代的是什么。它设置的 `always` 是在**共享**
+	// 门上，所以只要有一个子 Agent 点了"允许全部"，父 Agent 和其他每一个
+	// 兄弟 Agent 的门就都跟着解除了。把它的作用域收窄到每个 Agent 自己，
+	// 会更安全，但也意味着每个子 Agent 都要再被问一遍——而这正是人们最后
+	// 干脆一路 --yolo 跑下去的原因。选择保留；提示词停止隐藏它。
 	fmt.Fprintf(g.out, "  run? %s\n  [y / n / a = all, this session, every agent / q = stop] ",
 		oneLineDim(command, 72))
 	if !g.in.Scan() {
@@ -194,7 +195,8 @@ func (g *gate) ask(command string) (verdict, string) {
 
 // ---------------------------------------------------------------------------
 
-// agent holds everything that lives for the whole session.
+// agent 装着贯穿整个会话生命周期、
+// 始终存在的一切。
 type agent struct {
 	p     Provider
 	httpc *http.Client
@@ -203,28 +205,28 @@ type agent struct {
 	cfg   config
 	comp  *compactor
 
-	// system is a function, not a string, because of stage 04's --break-cache
-	// experiment: a value computed once at startup is a constant prefix, and
-	// only a value recomputed per request invalidates anything. Keeping the
-	// indirection makes that difference expressible.
+	// system 是函数，不是字符串，因为
+	// 阶段 04 的 --break-cache 实验：
+	// 启动时计算一次的值是常数前缀，
+	// 只有每个请求重计算的值使任何东西
+	// 无效。保持间接使那个区别可表达。
 	system func() string
 
 	memoryDir  string
 	lastPrompt int
 
-	// stable is the environment + memory + skills block, shared verbatim with
-	// every subagent. Computed once; see stage 05's placement rule for why it
-	// must never be recomputed.
+	// stable 是环境 + 记忆 + 技能这一块，逐字共享给每一个子 Agent。只
+	// 计算一次；至于为什么绝不能重新计算，参见阶段 05 的位置规则。
 	stable string
 
-	// Stage 07.
-	depth    int // 0 is the agent the human is talking to
+	// 阶段 07。
+	depth    int // 0 是与人类交谈的 Agent
 	maxDepth int
 	subTurns int
 
 	mu        sync.Mutex
 	children  int
-	spent     Usage // this agent's own token consumption, for the subagent report
+	spent     Usage // 这个 Agent 自己的 token 消耗，用于子 Agent 报告
 	turnsUsed int
 }
 
@@ -239,20 +241,18 @@ func main() {
 		step         = flag.Bool("step", false, "replay: wait for Enter before each event")
 		showReq      = flag.Bool("show-request", false, "print the full request body before each call")
 
-		// Stage 06. The composer is a *reader*, so it takes a path and needs
-		// nothing else — no key, no provider, no network. That is not a
-		// limitation, it is the payoff of stage 02's decision to make the trace
-		// the source of truth rather than a debug log.
+		// 阶段 06。Composer 是一个**读者**，所以它只需要一个路径，其他什么都不需
+		// 要——没有密钥，没有供应商，没有网络。那不是限制，而是阶段 02 决定让
+		// trace 成为真实来源、而不是调试日志的收获。
 		composerAt = flag.String("composer", "", "open the TUI on a trace file instead of running the agent")
 
-		// The same views, printed instead of drawn.
+		// 同样的视图，印出来，而不是画出来。
 		//
-		// This is not a debug hatch. A TUI is a dead end for anything you want
-		// to diff, grep, paste into an issue, or check in CI, and "what did the
-		// model see on call 12" is exactly the kind of question whose answer
-		// you want to pipe. Rendering and drawing were separate functions
-		// already (views.go returns lines; term.go paints them), so this costs
-		// eight lines — the payoff of not letting the UI own the data.
+		// 这不是调试舱口。只要你想 diff、grep、把内容粘贴进一个 issue，或者在 CI
+		// 里检查，TUI 就是一条死路；而"模型在第 12 次调用中看到了什么"这类问题，
+		// 你恰恰想要一个能丢进管道里处理的答案。渲染和绘制原本就是两个独立的函数
+		// （views.go 返回文本行；term.go 把它们画出来），所以这里只多花八行代码——
+		// 这就是不让 UI 独占数据的回报。
 		dumpAt   = flag.String("composer-dump", "", "print one composer view for a trace and exit")
 		dumpView = flag.String("view", "model", "composer-dump: god | model | wire")
 		dumpCall = flag.Int("call", 1, "composer-dump: which model call (1-based)")
@@ -261,21 +261,21 @@ func main() {
 		noCache    = flag.Bool("no-cache", false, "omit cache_control breakpoints (stage 04 control arm)")
 		breakCache = flag.Bool("break-cache", false, "put a fresh timestamp in the system prompt on every request (stage 04)")
 
-		// Stage 05.
+		// 阶段 05。
 		compactAt = flag.Float64("compact-at", 0.70, "compact when the estimated prompt passes this fraction of the window")
 		keepAt    = flag.Float64("keep", 0.30, "fraction of the window to leave in place after compacting")
 		noCompact = flag.Bool("no-compact", false, "never compact — ride the window until the API refuses (control arm)")
 		window    = flag.Int("window", 0, "override the provider's context window, in tokens")
 		noMemory  = flag.Bool("no-memory", false, "do not read AGENTS.md / MEMORY.md")
 
-		// Stage 07.
+		// 阶段 07。
 		maxDepth = flag.Int("max-depth", 1, "how deep subagents may nest; 0 removes the task tool entirely")
 		noSkills = flag.Bool("no-skills", false, "do not index skills/*/SKILL.md")
 
-		// The out-of-process subagent, for the comparison in docs/07. One prompt
-		// in, one report out, no REPL — which is all a subagent ever was, and is
-		// why `agent --subagent "..."` run from bash is a working subagent
-		// mechanism with no task tool involved at all.
+		// 进程外的子 Agent，用于 docs/07 里的对比：一个 prompt 进去，一个报告
+		// 出来，没有 REPL——这就是子 Agent 从头到尾的全部，也正是为什么在 bash
+		// 里运行 `agent --subagent "..."`，本身就是一套能用的子 Agent 机制，
+		// 完全不需要任务工具参与。
 		subagentAt = flag.String("subagent", "", "run one subagent task, print its report, and exit")
 	)
 	cfg := config{}
@@ -286,10 +286,9 @@ func main() {
 	flag.BoolVar(&cfg.yolo, "yolo", false, "run every command without asking")
 	flag.Parse()
 
-	// Before anything else: the composer never needs a provider, and making it
-	// wait for one would mean you cannot read a trace on a machine that has no
-	// key configured — which is most of the machines you would want to read a
-	// trace on.
+	// 首先要说清楚：Composer 从来不需要供应商；要是非让它等一个供应商，就意
+	// 味着你没法在一台没配密钥的机器上读 trace——可那恰恰是你最想读 trace 的
+	// 大多数机器。
 	if *dumpAt != "" {
 		if err := dumpComposer(*dumpAt, *dumpView, *dumpCall, *dumpW, os.Stdout); err != nil {
 			fmt.Fprintln(os.Stderr, err)
@@ -321,19 +320,20 @@ func main() {
 		return
 	}
 
-	// resolveErr is deliberately NOT fatal here.
+	// resolveErr 这里故意**不是**致命的。
 	//
-	// Replay needs no key, no shell, no network and no provider — that promise
-	// is stage 02's, it is in the README, and from stage 03 until this line was
-	// written it was false: resolve() moved above the replay branch and took
-	// its os.Exit(1) with it. On a machine with the env vars set (which is
-	// every machine the author tested on) nothing looked wrong. On a machine
-	// with a trace file and nothing else — which is exactly the machine the
-	// feature exists for — `--replay` printed "no provider configured".
+	// 重放不需要密钥、不需要 shell、不需要网络，也不需要
+	// 供应商——那个承诺是阶段 02 的，它在 README 中，
+	// 从阶段 03 直到这行被写它是假的：resolve() 移动到
+	// 重放分支上方，并把它的 os.Exit(1) 带走了。
+	// 在一台设置了 env vars 的机器上（这是作者测试过的
+	// 每台机器），什么看起来都没错。在一台只有 trace 文件、
+	// 别无他物——这正是该功能存在的机器上——
+	// `--replay` 打印"no provider configured"。
 	//
-	// So the error is carried rather than raised, and checked below, on the one
-	// path that actually needs a provider. A config error should be fatal to the
-	// code that depends on the config and to nothing else.
+	// 所以错误被携带而不是被抛出，并在下面检查，
+	// 在唯一实际需要供应商的路径上。配置错误应该只对
+	// 依赖配置的代码致命，对其余代码则完全没有影响。
 	pcfg, pname, resolveErr := pf.resolve(*providerName)
 	if *window > 0 {
 		pcfg.Window = *window
@@ -396,19 +396,21 @@ func main() {
 	fmt.Printf("stage 07 · provider=%s (%s) · model=%s\ncwd=%s\n",
 		pname, provider.Protocol(), provider.Model(), wd)
 
-	// ---- the system prompt, assembled once ------------------------------
+	// ---- 系统提示词，一次组装 -----------
 	//
-	// Everything here is stable for the whole session, which is what earns it a
-	// place before the cache breakpoint. Anything that moves goes into the
-	// message stream instead — see memory.go's placement rule.
+	// 这里的一切，在整个会话期间都
+	// 不会变——这就是它们能被排在
+	// 缓存断点之前的原因。会变的东西，
+	// 则进入消息流——参见 memory.go
+	// 的放置规则。
 	memory := ""
 	if !*noMemory {
 		memory, _ = loadMemory(wd, bus)
 	}
 
-	// Skills: name and description only. The bodies stay on disk until the model
-	// decides one applies and reads it with cat — which is the whole of
-	// progressive disclosure, and the reason forty skills cost what one costs.
+	// 技能：只有名称和描述。正文一直留在磁盘上，直到模型判定某个技能
+	// 适用，用 cat 去读它——这就是渐进披露的全部内容，也是四十个技能的
+	// 成本，和一个技能的成本一样的原因。
 	var skills []skill
 	if !*noSkills {
 		skills = loadSkills(wd)
@@ -419,8 +421,8 @@ func main() {
 			Text: fmt.Sprintf("%d skills", len(skills))})
 	}
 
-	// stable is everything that cannot change while the process runs, and it is
-	// shared verbatim with every subagent. Assembled once — see stage 05.
+	// stable 是在进程运行期间不会改变的一切，它会逐字共享给每一个子
+	// Agent。只组装一次——参见阶段 05。
 	stable := stableContext(shell, wd) + memoryPrompt
 	if memory != "" {
 		stable += para + memory
@@ -451,13 +453,13 @@ func main() {
 		stable: stable, maxDepth: *maxDepth,
 	}
 
-	// --subagent: one task, one report, no conversation.
+	// --subagent：一个任务，一个报告，没有对话。
 	//
-	// This is the whole of the out-of-process subagent mechanism, and it is
-	// worth seeing how little there is. An agent that can run bash can run
-	// `agent --subagent "..."`, which means recursion needs no `task` tool at
-	// all — the shell is the orchestrator. docs/07 measures what that costs,
-	// and the answer is: not tokens, but every number on the instrument panel.
+	// 这就是进程外子 Agent 机制的全部，而且这套机制小到什么程度，值得你
+	// 亲眼看看。一个能运行 bash 的 Agent，就能运行 `agent --subagent
+	// "..."`，这意味着递归根本不需要 `task` 工具——shell 本身就是那个编排者。
+	// docs/07 量的就是这一点要付出什么代价，而答案是：付出的不是 token，
+	// 而是仪表盘上的每一个数字。
 	if *subagentAt != "" {
 		child := a.newChild("cli", func() string { return subagentSystem + para + stable })
 		msgs := child.runTurn([]Msg{TextMsg(RoleUser, *subagentAt)})
@@ -485,18 +487,22 @@ func main() {
 		}
 
 		bus.Emit(Event{Kind: KindUserMessage, Text: line})
-		// The volatile snapshot is taken HERE, once, and frozen into the
-		// message. It is never recomputed, which is the entire reason the cache
-		// survives a session that knows what time it is.
+		// 易变快照在**这里**被取出一次，
+		// 冻结进这条消息。它永远不会
+		// 重新计算，这正是缓存能在一个
+		// 知道时间的会话里活下来的
+		// 全部原因。
 		msgs = append(msgs, userTurn(line, volatileContext(shell, time.Now())))
 		msgs = a.runTurn(msgs)
 	}
 	view.SessionSummary(a.lastPrompt)
 }
 
-// command handles the slash commands. They exist for the experiments in
-// docs/05-live-forever.md: compaction that only fires when the window is nearly
-// full is hard to demonstrate and harder to test.
+// command 处理斜线命令。它们是
+// 为 docs/05-live-forever.md 中的
+// 实验而存在的：只有窗口快满时
+// 才触发的压缩，很难演示，
+// 更难测试。
 func (a *agent) command(line string, msgs []Msg) (bool, []Msg) {
 	switch {
 	case line == "/help":
@@ -544,17 +550,18 @@ func (a *agent) command(line string, msgs []Msg) (bool, []Msg) {
 	return false, msgs
 }
 
-// toolChars is the character cost of the tool definitions, which are part of
-// every prompt and are otherwise invisible to the estimator.
+// toolChars 是工具定义的字符成本，
+// 它们是每个 prompt 的一部分，
+// 否则对估算器不可见。
 func toolChars() int {
 	n := 0
 	for _, t := range []Tool{bashToolDef(), taskToolDef()} {
-		n += len(t.Name) + len(t.Description) + 200 // the schema, near enough
+		n += len(t.Name) + len(t.Description) + 200 // 模式，足够接近
 	}
 	return n
 }
 
-// call performs one model call.
+// call 执行一个模型调用。
 func (a *agent) call(turn int, msgs []Msg) (*CallResult, error) {
 	req, body, err := a.p.BuildRequest(a.system(), msgs, a.tools(), 4096)
 	if err != nil {
@@ -583,14 +590,17 @@ func (a *agent) runTurn(msgs []Msg) []Msg {
 			return msgs
 		}
 
-		// ---- the wall check -------------------------------------------
+		// ---- 墙检查 ---------------------------------
 		//
-		// It goes HERE, at the top of the tool loop, not at the top of the user
-		// loop. The thing that fills a context window is not the conversation,
-		// it is the tool output inside one turn: a single `find /` can add more
-		// than an hour of chat. Checking only between user messages means the
-		// wall is hit mid-turn, which is the one place there is no graceful
-		// recovery.
+		// 它在**这里**，在工具循环的顶部，
+		// 而不是用户循环的顶部。填满
+		// 上下文窗口的不是对话，而是
+		// 一个回合里的工具输出：单单
+		// 一个 `find /` 就能加上超过一
+		// 小时的聊天量。只在用户消息
+		// 之间检查，意味着撞墙会发生在
+		// 回合中途——那正是唯一没有
+		// 优雅恢复余地的地方。
 		base := len(a.system()) + toolChars()
 		if est := a.comp.estimate(msgs, base); a.comp.due(est) {
 			cut, why := a.comp.plan(msgs, base)
@@ -614,9 +624,11 @@ func (a *agent) runTurn(msgs []Msg) []Msg {
 		a.lastPrompt = res.Usage.Prompt()
 		a.spent = addUsage(a.spent, res.Usage)
 		a.turnsUsed = turn
-		// Calibrate. This is the only reason the agent can decide when to
-		// compact without vendoring a tokenizer: the server just told us
-		// exactly how many tokens the characters we sent turned into.
+		// 校准。这是 Agent 能决定何时压缩
+		// 而不厂商化分词器的唯一原因：
+		// 服务器刚刚精确告诉了我们，我们
+		// 发送的那些字符变成了多少个
+		// token。
 		a.comp.est.observe(sentChars, res.Usage.Prompt())
 
 		am := Msg{Role: RoleAssistant}
@@ -625,10 +637,13 @@ func (a *agent) runTurn(msgs []Msg) []Msg {
 		}
 		am.Blocks = append(am.Blocks, res.Calls...)
 
-		// A model can return nothing at all — no text, no tool call — and
-		// appending that produces a message with an empty content array, which
-		// the Anthropic protocol rejects on the *next* request. Stage 04 had
-		// this latent; validConversation() in compact.go is what found it.
+		// 模型可以返回什么都没有——无文本，
+		// 无工具调用——附加它产生一条消息，
+		// 带空内容数组，Anthropic 协议在
+		// **下一个**请求拒绝。阶段 04 里
+		// 这个问题就已经埋下了；
+		// compact.go 中的 validConversation()
+		// 是发现它的。
 		if len(am.Blocks) == 0 {
 			a.bus.Notice("the model returned an empty response (wire: %q) — not adding it to the history", res.RawStop)
 			return msgs
@@ -661,9 +676,8 @@ func (a *agent) runTurn(msgs []Msg) []Msg {
 			return msgs
 		}
 
-		// One line, where stage 06 had forty. dispatch() runs every tool call
-		// in this turn — subagents concurrently, everything else in order — and
-		// hands back the results in the order the model asked for them.
+		// 一行，阶段 06 有 40。dispatch() 运行这一回合中的每个工具调用——
+		// 子 Agent 并发，其他一切按顺序——并按模型要求的顺序交回结果。
 		blocks, stop := a.dispatch(turn, res.Calls)
 		results := Msg{Role: RoleUser, Blocks: blocks}
 		msgs = append(msgs, results)

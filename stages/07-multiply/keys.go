@@ -1,27 +1,26 @@
-// Stage 06 — the composer, input half.
+// 第 06 阶段——composer，输入的那一半。
 //
-// Bytes in, key events out. That is the whole job, and it is harder than it
-// sounds for exactly one reason: a terminal keyboard is not a device, it is a
-// *protocol*, and the protocol is forty years of sediment — VT100, VT220,
-// rxvt, xterm, and everything that copied one of them. There is no registry and
-// no version negotiation. Two terminals send different bytes for the Home key,
-// and the *same* terminal sends different bytes for the Up arrow depending on a
-// mode the application itself switched on earlier in the session.
+// 字节进，按键事件出。那就是整个工作，而它比听上去更难，原因恰好
+// 只有一个：终端键盘不是一个设备，它是一份**协议**，而这份协议是
+// 四十年的沉积物——VT100、VT220、rxvt、xterm，以及抄了它们其中
+// 之一的所有东西。没有注册表，也没有版本协商。两个终端为 Home 键
+// 发送的字节可以不一样，**同一个**终端为上箭头发送的字节也可以
+// 不一样，取决于应用程序自己在会话早些时候打开了什么模式。
 //
-// So this file is a parser for a protocol nobody ever wrote down, and its shape
-// follows from that: recognise generously, consume exactly, and never guess.
+// 所以这个文件是一份没人写下来过的协议的解析器，它的形态正是由此
+// 而来：宽容地识别，精确地消费，绝不猜测。
 //
-// Two invariants hold everywhere below, and every caller depends on them:
+// 下面从头到尾都有两条不变量，每一个调用者都靠它们：
 //
-//	Progress. Whenever ok is true, n > 0. A decoder that can return
-//	"I decoded something, and it was zero bytes long" live-locks the read loop,
-//	and it does it in production on the one sequence you never tested.
+//	进度。只要 ok 为真，n 就一定大于 0。一个会返回"我解码出了点东西，
+//	但它是零字节长"的解码器，会让读循环陷入**活锁**——而且专挑你
+//	从没测试过的那个序列，在生产环境里发作。
 //
-//	Honesty. ok=false means "these bytes are a prefix of something and I need
-//	more", never "I don't recognise this". An unrecognised but well-formed
-//	sequence is consumed whole and reported as keyUnknown with Raw set. Getting
-//	that backwards is the same live-lock wearing a different hat: the caller
-//	reads more bytes forever, waiting for a sequence that already finished.
+//	诚实。ok=false 的意思是"这些字节是某样东西的前缀，我还需要更多"，
+//	而绝不是"我不认识这个"。一个无法识别、但格式良好的序列，会被
+//	整体消费掉，报告为 keyUnknown，并附上 Raw 字段。把这两者弄反，
+//	就是同一种**活锁**换了顶帽子：调用者会永远读下去，
+//	等一个早就已经结束的序列。
 package main
 
 import (
@@ -34,7 +33,7 @@ import (
 type keyKind int
 
 const (
-	keyRune keyKind = iota // a printable character, in key.Rune
+	keyRune keyKind = iota // 可打印的字符，在 key.Rune 中
 	keyEnter
 	keyEsc
 	keyTab
@@ -52,20 +51,20 @@ const (
 	keyCtrlC
 	keyCtrlD
 	keyCtrlL
-	keyMouse // details in key.Mouse
-	keyPaste // bracketed-paste payload, in key.Text
+	keyMouse // 细节在 key.Mouse 中
+	keyPaste // 括号粘贴有效负载，在 key.Text 中
 
-	// keyUnknown is "bytes we consumed and will not act on": a well-formed
-	// sequence we chose not to interpret (a function key, a device-attributes
-	// reply), or input we could not make sense of at all. Raw always holds the
-	// exact bytes, which is the difference between a mystery and a bug report.
+	// keyUnknown 是"我们消费并不会对其采取行动的字节"：
+	// 一个我们选择不解释的格式良好序列（函数键、设备属性回复），
+	// 或我们完全无法理解的输入。Raw 始终持有确切字节，
+	// 这是神秘和 bug 报告之间的区别。
 	keyUnknown
 )
 
 type mouseEvent struct {
-	Button int  // 0 left, 1 middle, 2 right, 64 wheel-up, 65 wheel-down
-	X, Y   int  // 1-based columns/rows exactly as the terminal reports them
-	Press  bool // true = press, false = release
+	Button int  // 0 左，1 中，2 右，64 轮向上，65 轮向下
+	X, Y   int  // 1 基列/行恰好如终端报告的那样
+	Press  bool // 真 = 按，假 = 释放
 }
 
 type key struct {
@@ -73,84 +72,84 @@ type key struct {
 	Rune  rune       // keyRune
 	Text  string     // keyPaste
 	Mouse mouseEvent // keyMouse
-	Ctrl  bool       // a modifier the terminal reported (e.g. \x1b[1;5A)
+	Ctrl  bool       // 终端报告的修饰符（例如 \x1b[1;5A）
 	Alt   bool
 	Shift bool
-	Raw   string // the exact bytes consumed, for debugging and for keyUnknown
+	Raw   string // 消费的确切字节，用于调试和 keyUnknown
 }
 
 // ---------------------------------------------------------------------------
-// The Escape ambiguity
+// Escape 模糊性
 //
-// This is why there are two entry points instead of one, and it is worth
-// understanding properly, because it is not a wart in this decoder. It is a
-// hole in the terminal protocol that no decoder anywhere has ever closed.
+// 这就是为什么有两个入口点，而不是一个，这件事值得真正弄懂，因为它
+// 不是这个解码器身上的一个疣。它是终端协议里的一个洞，没有一个
+// 解码器，在任何地方，曾经把它补上过。
 //
-// Escape is 0x1b. It is also the first byte of every arrow key, every function
-// key, every mouse report and every paste. So when a read returns a buffer
-// ending in a bare 0x1b, there are exactly two possibilities:
+// Escape 是 0x1b。它也是每一个箭头键、每一个功能键、每一次鼠标
+// 报告、每一次粘贴的第一个字节。所以当一次读取返回的缓冲区，结尾
+// 是孤零零一个 0x1b 时，恰好有两种可能：
 //
-//  1. the user pressed Escape, and that is the whole story;
-//  2. the user pressed Up, and the tty handed us the first byte of "\x1b[A"
-//     because the read happened to land between two bytes of the burst.
+//  1. 用户按下了 Escape，故事到此为止；
+//  2. 用户按下了上箭头，而 tty 只把 "\x1b[A" 的第一个字节递给了我们，
+//     因为这次读取碰巧卡在了这次突发的两个字节中间。
 //
-// The bytes are identical. There is no length prefix, no terminator, no flag —
-// nothing in the stream distinguishes the two cases and nothing ever will,
-// because the encoding was designed for a terminal on which "Escape" and
-// "escape sequence introducer" were deliberately the same key.
+// 字节是完全相同的。没有长度前缀，没有终止符，没有标志位——流里
+// 没有任何东西能区分这两种情况，以后也不会有，因为这套编码设计
+// 出来的时候，针对的就是一种"Escape"键和"转义序列引导符"故意
+// 共用同一个键的终端。
 //
-// The only signal that separates them is TIME. A sequence emitted by the
-// terminal arrives as one burst: the remaining bytes are already sitting in the
-// pty buffer, microseconds behind. A human pressing Escape leaves a gap of tens
-// of milliseconds before whatever they type next. So every terminal program on
-// earth resolves this the same way — read, see a lone ESC, wait a short
-// timeout, and if nothing arrives, call it Escape.
+// 唯一能把它们分开的信号是**时间**。终端自己发出的序列，是作为
+// 一整个突发到达的：剩下的字节早就已经躺在 pty 缓冲区里了，只比
+// 第一个字节晚几微秒。而人类按下 Escape 键，在敲下一个字符之前，
+// 会留出几十毫秒的间隙。所以地球上的每一个终端程序，都用同一种
+// 方式来解决这个问题——先读，看到孤零零一个 ESC，等一小段超时，
+// 如果什么都没等到，就把它当成 Escape。
 //
-// That timeout is why Escape feels a beat slow in vim, in tmux, in your shell's
-// vi-mode, in every TUI you have ever used. It is not slow code and it is not a
-// bug: it is a program declining to guess. It is also why `set -sg escape-time
-// 10` is in half the tmux configs on GitHub, and why turning it down to 0 makes
-// arrow keys and Alt-chords start misfiring over ssh — across a real network
-// the burst is no longer guaranteed to land in one read.
+// 那个超时，就是为什么 Escape 在 vim 里、tmux 里、你 shell 的 vi
+// 模式里、你用过的每一个 TUI 里，都感觉慢半拍的原因。这不是代码
+// 写得慢，也不是 bug：是一个程序在拒绝猜测。这也是为什么
+// `set -sg escape-time 10` 会出现在 GitHub 上一半的 tmux 配置里，
+// 也是为什么把它调到 0 会让方向键和 Alt 组合键在 ssh 上开始乱
+// 触发——隔着一条真实的网络，突发不再保证落在同一次读取里了。
 //
-// The decision this file makes is to keep that policy OUT of the decoder:
+// 这个文件做出的决定，是把这条策略留在解码器**之外**：
 //
-//	decodeKey       — "ok=false": I need more bytes, and I will not guess.
-//	decodeKeyFinal  — "the caller already waited; a lone ESC is Escape."
+//	decodeKey       ——"ok=false"：我需要更多字节，我不会猜。
+//	decodeKeyFinal  ——"调用者已经等过了；孤零零一个 ESC 就是 Escape。"
 //
-// Two reasons. First, correctness: the right timeout is not a property of the
-// byte stream, it is a property of the link. 25ms is generous on a local pty
-// and far too short over a saturated ssh session, so the number belongs to the
-// layer that knows about the link, not to a parser that cannot see it.
+// 两个原因。第一，正确性：正确的超时时长，不是字节流本身的属性，
+// 而是链路的属性。25ms 在本地 pty 上绰绰有余，放到一个繁忙的 ssh
+// 会话里又太短——所以这个数字，该由懂链路的那一层来决定，而不是
+// 由看不见链路的解析器来决定。
 //
-// Second, and more practical: the moment a decoder owns a clock, it stops being
-// testable. You cannot write a table-driven test for "50ms elapsed" — you can
-// only write a sleep, and a suite full of sleeps is a suite people stop
-// running. A decoder that is a pure function of its input takes ten thousand
-// byte sequences in a millisecond, which is the only reason the table at the
-// bottom of keys_test.go is affordable.
+// 第二，也更现实的一点：解码器一旦拥有了自己的时钟，那一刻起，
+// 它就不再是可测试的了。"经过了 50 毫秒"这种事，你没法写成表驱动
+// 测试——你只能写一个 sleep，而一个写满 sleep 的测试套件，是人们
+// 迟早会不想再运行的套件。一个相对其输入而言是纯函数的解码器，
+// 一毫秒内就能吃下一万条字节序列——这也是 keys_test.go 底部
+// 那张表"养得起"的唯一原因。
 //
-// The caller's half of the contract is four lines:
+// 而调用者这一半的约定，只有四行：
 //
 //	k, n, ok := decodeKey(buf)
 //	if !ok {
-//		// short read with a deadline; when it expires with nothing:
+//		// 短读，带着一个截止时间；一旦它超时却什么都没等到：
 //		k, n, ok = decodeKeyFinal(buf)
 //	}
 //
 // ---------------------------------------------------------------------------
 
-// decodeKey decodes one key from the front of buf.
-// Returns the key, how many bytes it consumed, and ok=false when buf holds
-// only the beginning of a sequence and the caller must read more bytes.
+// decodeKey 从 buf 的开头解码出一个键。返回值是这个键、它消费掉的
+// 字节数，以及一个 ok 标志——当 buf 里只有一段序列的开头、调用者
+// 必须再读更多字节时，ok 为 false。
 func decodeKey(buf []byte) (key, int, bool) { return decodeOne(buf, false) }
 
-// decodeKeyFinal is decodeKey for the case where the caller has waited and no
-// more bytes are coming. It resolves the ambiguity that decodeKey cannot.
+// decodeKeyFinal 是调用者已经等待且没有更多字节到达的情况下的
+// decodeKey。它解决 decodeKey 无法解决的模糊性。
 //
-// It makes progress on any non-empty buffer, with exactly one exception: an
-// unterminated bracketed paste, which still returns ok=false. See decodePaste
-// for why that exception is the right call and not a leak in the abstraction.
+// 它在任何非空缓冲区上取得进展，恰好一个异常：无法终止的括号
+// 粘贴，仍然返回 ok=false。看 decodePaste，了解为什么那个例外
+// 是正确的选择，而不是抽象中的泄漏。
 func decodeKeyFinal(buf []byte) (key, int, bool) { return decodeOne(buf, true) }
 
 func decodeOne(buf []byte, final bool) (key, int, bool) {
@@ -168,32 +167,31 @@ func decodeOne(buf []byte, final bool) (key, int, bool) {
 }
 
 // ---------------------------------------------------------------------------
-// Plain bytes
+// 普通字节
 // ---------------------------------------------------------------------------
 
 func decodeRune(buf []byte, final bool) (key, int, bool) {
-	// utf8.DecodeRune cannot tell "invalid" from "not finished yet": it returns
-	// (RuneError, 1) for both. FullRune is the call that separates them, and
-	// skipping it is how a UI ends up showing a replacement character every
-	// time someone types an emoji that straddles a read boundary. The bytes
-	// were fine; the decoder just looked too early and then destroyed the
-	// evidence by emitting U+FFFD.
+	// utf8.DecodeRune 无法区分"无效"和"尚未完成"：它为两者都返回
+	// (RuneError, 1)。FullRune 是分离它们的调用，跳过它，后果就是：
+	// 每当有人打出一个刚好卡在读取边界上的表情符号，用户界面最终
+	// 显示的就是一个替换字符。字节是好的；解码器只是看得太早，
+	// 然后通过发出 U+FFFD 销毁证据。
 	if !utf8.FullRune(buf) {
 		if !final {
 			return key{}, 0, false
 		}
-		// The caller waited and the rest never came, so this really is a
-		// truncated rune — a disconnect mid-character, or a program writing
-		// half a string to the tty. Consume the fragment so the loop can make
-		// progress, but do not invent a character the user never typed.
+		// 调用者等过了，可后面的字节还是没来，所以这真的是一个被截断的
+		// rune——要么是连接在字符打到一半时断开了，要么是某个程序往 tty
+		// 里只写了半条字符串。把这个片段消费掉，好让循环能继续往前走，
+		// 但不要凭空造出一个用户从没打过的字符。
 		return key{Kind: keyUnknown, Raw: string(buf)}, len(buf), true
 	}
 	r, size := utf8.DecodeRune(buf)
 	if r == utf8.RuneError && size == 1 {
-		// A byte that can never begin a rune: 0xFF, or a stray continuation
-		// byte left over from a fragment we already dropped. Skip exactly one
-		// byte — resynchronising by hand is how you recover a stream, and
-		// U+FFFD here would push a glyph into the user's document.
+		// 一个永远不可能是 rune 开头的字节：0xFF，或者是某个我们已经丢弃的
+		// 片段里，残留下来的一个游离续字节。只跳过恰好一个字节——手动
+		// 重新同步，就是你恢复这条流的办法；这里如果放个 U+FFFD 进去，
+		// 就是把一个字形硬塞进用户的文档里。
 		return key{Kind: keyUnknown, Raw: string(buf[:1])}, 1, true
 	}
 	return key{Kind: keyRune, Rune: r, Raw: string(buf[:size])}, size, true
@@ -203,23 +201,21 @@ func decodeControl(buf []byte) key {
 	b := buf[0]
 	k := key{Raw: string(buf[:1])}
 
-	// Order matters here, and it encodes a decision rather than a lookup.
-	// Ctrl-M and Enter are the same byte. So are Ctrl-I and Tab, Ctrl-J and
-	// newline, Ctrl-H and Backspace. The terminal cannot tell them apart and
-	// neither can we, so the named key wins — which is what every editor,
-	// shell and TUI does, and why no application has ever bound Ctrl-M to
-	// something other than Enter and got away with it.
+	// 顺序在这里很重要，它编码决定而不是查找。Ctrl-M 和 Enter 是相同
+	// 的字节。Ctrl-I 和 Tab、Ctrl-J 和换行、Ctrl-H 和 Backspace 也是。
+	// 终端无法区分它们，我们也无法，所以命名的键赢了——这正是每个
+	// 编辑器、shell 和 TUI 的做法，也正因为如此，从来没有哪个应用程序
+	// 把 Ctrl-M 绑定到 Enter 以外的东西还能全身而退。
 	switch b {
-	case 0x0d, 0x0a: // CR (raw mode never translates it) and LF
+	case 0x0d, 0x0a: // CR（原始模式永远不翻译它）和 LF
 		k.Kind = keyEnter
 	case 0x09:
 		k.Kind = keyTab
 	case 0x7f, 0x08:
-		// Both, always. 0x7f (DEL) is what a modern terminal sends for
-		// Backspace and 0x08 (BS) is what the terminfo entry claims it sends;
-		// which one you get depends on the emulator, on stty erase, and on
-		// whether you are inside tmux. Treating only one as Backspace produces
-		// the classic "my backspace prints ^H over ssh" bug report.
+		// 两者，总是。0x7f (DEL) 是现代终端为 Backspace 发送的，而 0x08
+		// (BS) 是 terminfo 条目声称它发送的；你得到哪个取决于仿真器、
+		// stty 擦除，以及你是否在 tmux 内。只把其中之一当成 Backspace，
+		// 就会生成经典的"我的 backspace 在 ssh 上打印 ^H"这种 bug 报告。
 		k.Kind = keyBackspace
 	case 0x03:
 		k.Kind = keyCtrlC
@@ -228,23 +224,23 @@ func decodeControl(buf []byte) key {
 	case 0x0c:
 		k.Kind = keyCtrlL
 	case 0x00:
-		// NUL is what terminals send for Ctrl-Space, historically Ctrl-@.
-		// Reporting it as a space with Ctrl set is the form applications
-		// actually bind against.
+		// NUL 是终端为 Ctrl-Space 发送的字节，往上追溯就是 Ctrl-@。
+		// 把它报告成"带 Ctrl 修饰符的空格"，这才是应用程序实际会去
+		// 绑定的形式。
 		k.Kind, k.Rune, k.Ctrl = keyRune, ' ', true
 	default:
 		switch {
 		case b >= 0x01 && b <= 0x1a:
-			// Ctrl-A..Ctrl-Z. Lowercase, because Ctrl-A and Ctrl-Shift-A are
-			// the same byte and the shifted form does not exist on the wire.
+			// Ctrl-A..Ctrl-Z。小写，因为 Ctrl-A 和 Ctrl-Shift-A
+			// 是相同的字节，移位形式在线上不存在。
 			k.Kind, k.Rune, k.Ctrl = keyRune, rune('a'+b-1), true
 		case b >= 0x1c && b <= 0x1f:
-			// Ctrl-\ Ctrl-] Ctrl-^ Ctrl-_ — the four controls above Z. The
-			// byte is exactly the ASCII character minus 0x40.
+			// Ctrl-\ Ctrl-] Ctrl-^ Ctrl-_ ——四个控件在 Z 以上。
+			// 字节正好是 ASCII 字符减 0x40。
 			k.Kind, k.Rune, k.Ctrl = keyRune, rune(b+0x40), true
 		default:
-			// Unreachable: the only remaining byte under 0x20 is 0x1b, and
-			// decodeOne routes that to decodeEscape before we are called.
+			// 无法到达：0x20 下唯一剩余的字节是 0x1b，
+			// 而 decodeOne 在我们被调用之前将其路由到 decodeEscape。
 			k.Kind = keyUnknown
 		}
 	}
@@ -252,12 +248,12 @@ func decodeControl(buf []byte) key {
 }
 
 // ---------------------------------------------------------------------------
-// Escape sequences
+// 转义序列
 // ---------------------------------------------------------------------------
 
 func decodeEscape(buf []byte, final bool) (key, int, bool) {
 	if len(buf) == 1 {
-		// The centrepiece. See the comment block above decodeKey.
+		// 中心部分。看 decodeKey 上方的注释块。
 		if !final {
 			return key{}, 0, false
 		}
@@ -271,17 +267,17 @@ func decodeEscape(buf []byte, final bool) (key, int, bool) {
 		return decodeSS3(buf, final)
 	}
 
-	// ESC followed by anything else is Alt+that key, because terminals
-	// implement Alt as "metaSendsEscape": hold Alt, get an ESC prefix. Which
-	// means Alt-a and "Escape, then a" are also byte-identical, and the same
-	// timing argument as above applies. We choose Alt, unconditionally, for the
-	// same reason every editor does: within one read, Alt is overwhelmingly the
-	// likelier intent, and a caller that genuinely needs the distinction has
-	// the timing information we do not.
+	// ESC 后面跟着别的任何东西，就是 Alt+那个键，因为终端把 Alt 实现
+	// 成了"metaSendsEscape"：按住 Alt，得到的就是一个 ESC 前缀。这
+	// 意味着 Alt-a 和"先 Escape，再 a"在字节上也是完全相同的，上面
+	// 同样的时间论证在这里一样适用。我们无条件地选择 Alt，原因跟每个
+	// 编辑器一样：在一次读取以内，Alt 压倒性地更可能是用户的真实
+	// 意图；而如果调用者真的需要区分这两种情况，它手里有的是我们
+	// 没有的时间信息。
 	//
-	// Recursing is not laziness. It gets Alt-Enter, Alt-Backspace and even
-	// ESC ESC [ A (Alt-Up, which tmux forwards) right for free, and each of
-	// those is a sequence somebody eventually files a bug about.
+	// 递归不是偷懒。它不花额外力气，就能把 Alt-Enter、Alt-Backspace，
+	// 甚至 ESC ESC [ A（也就是 tmux 会转发的那个 Alt-Up）都处理对，
+	// 而这些序列里的每一个，最后都会有人为它提交一份 bug 报告。
 	k, n, ok := decodeOne(buf[1:], final)
 	if !ok {
 		return key{}, 0, false
@@ -291,29 +287,29 @@ func decodeEscape(buf []byte, final bool) (key, int, bool) {
 	return k, n + 1, true
 }
 
-// incompleteEscape answers "this is definitely the start of an escape sequence,
-// and it definitely has not finished yet".
+// incompleteEscape 回答"这肯定是转义序列的开始，
+// 并且它肯定还没有完成"。
 func incompleteEscape(buf []byte, final bool) (key, int, bool) {
 	if !final {
 		return key{}, 0, false
 	}
-	// The caller waited and the rest never arrived. We know it began a
-	// sequence (there is a `[` or an `O` right there) and we know it never
-	// ended, so there is no keystroke to report — but we must still consume it,
-	// or the caller asks the same question forever. keyUnknown carries the Raw
-	// bytes; log them and you will usually find a terminal doing something
-	// undocumented, which is worth knowing.
+	// 调用者等待了，其余的从未到达。我们知道它开始了一个序列（右边
+	// 有一个 `[` 或 `O`）并且我们知道它从未结束，所以没有要报告的
+	// 击键——但我们必须仍然消费它，或调用者永远问相同问题。keyUnknown
+	// 携带的是原始字节；把它们记下来，你常常会发现是某个终端在做
+	// 没有文档记载的事——这值得知道。
 	return key{Kind: keyUnknown, Raw: string(buf)}, len(buf), true
 }
 
-// decodeSS3 handles the "SS3" introducer, ESC O.
+// decodeSS3 处理的是"SS3"引导符，也就是 ESC O。
 //
-// This exists because of DECCKM, "application cursor keys" — a mode an
-// application turns on, after which the arrows arrive as ESC O A instead of
-// ESC [ A. A decoder that only knows the CSI form looks perfect on your laptop
-// and then breaks the moment someone runs it inside tmux, inside screen, or
-// under a readline-based program that left the mode on. The bug report says
-// "the arrow keys print a letter", and the letter is the one right here.
+// 这个函数之所以存在，是因为 DECCKM，也就是"应用光标键"模式——
+// 应用程序会主动打开这个模式，打开之后，方向键就会以 ESC O A
+// 的形式到达，而不是 ESC [ A。一个只认得 CSI 形式的解码器，在你
+// 自己的笔记本上看起来天衣无缝，可一旦有人在 tmux 里、在 screen
+// 里，或者在某个把这个模式开着没关的、基于 readline 的程序下
+// 运行它，它就会崩溃。bug 报告上写的是"方向键打出了一个字母"，
+// 而那个字母，正是这里这一个。
 func decodeSS3(buf []byte, final bool) (key, int, bool) {
 	if len(buf) < 3 {
 		return incompleteEscape(buf, final)
@@ -333,33 +329,32 @@ func decodeSS3(buf []byte, final bool) (key, int, bool) {
 	case 'F':
 		k.Kind = keyEnd
 	default:
-		// ESC O P/Q/R/S are F1-F4, and the rest of the range is the numeric
-		// keypad in application mode. Consumed, reported, not interpreted.
+		// ESC O P/Q/R/S 是 F1-F4，而范围的其余部分是应用模式中的
+		// 数字键盘。消费、报告、不解释。
 		k.Kind = keyUnknown
 	}
 	return k, 3, true
 }
 
-// pasteEnd terminates a bracketed paste.
+// pasteEnd 终止括号粘贴。
 var pasteEnd = []byte("\x1b[201~")
 
-// decodeCSI parses a CSI sequence: ESC [ , then parameter bytes, then
-// intermediate bytes, then exactly one final byte.
+// decodeCSI 解析的是一个 CSI 序列：ESC [，然后是参数字节，然后是
+// 中间字节，最后恰好一个终止字节。
 //
-// The byte ranges come from ECMA-48 and they are the whole reason this decoder
-// can consume a sequence it has never seen before. That matters more than
-// recognising every key: terminals send unsolicited CSI replies (cursor
-// position, device attributes, focus in/out) that no keyboard produced, and the
-// only safe thing to do with them is swallow them whole. Guessing a length, or
-// bailing out with "need more bytes", turns a stray status report into a hung
-// UI.
+// 这些字节范围的定义来自 ECMA-48，这也是这个解码器能吞下一个它
+// 从没见过的序列的全部原因。这一点，比认全每一个键还要重要：
+// 终端会主动发来一些没人请求过的 CSI 回复（光标位置、设备属性、
+// 焦点进出）——这些都不是键盘敲出来的，对它们唯一安全的处理
+// 方式，就是原样整个吞掉。要是靠猜一个长度，或者干脆用"需要更多
+// 字节"来打退堂鼓，就会把一条无关的状态报告，变成一个卡死的界面。
 func decodeCSI(buf []byte, final bool) (key, int, bool) {
 	p := 2
-	for p < len(buf) && buf[p] >= 0x30 && buf[p] <= 0x3f { // parameters 0-9 : ; < = > ?
+	for p < len(buf) && buf[p] >= 0x30 && buf[p] <= 0x3f { // 参数 0-9 : ; < = > ?
 		p++
 	}
 	q := p
-	for q < len(buf) && buf[q] >= 0x20 && buf[q] <= 0x2f { // intermediates, space through /
+	for q < len(buf) && buf[q] >= 0x20 && buf[q] <= 0x2f { // 中间字节，从空格到 /
 		q++
 	}
 	if q >= len(buf) {
@@ -368,12 +363,11 @@ func decodeCSI(buf []byte, final bool) (key, int, bool) {
 
 	fb := buf[q]
 	if fb < 0x40 || fb > 0x7e {
-		// A byte belonging to no CSI class — in practice a control character
-		// injected mid-sequence by another writer to the same tty. ECMA-48
-		// says the control is executed and the sequence abandoned, so we
-		// consume the wreckage up to but NOT including the offending byte and
-		// leave it for the next call. Ctrl-C must still work when it lands in
-		// the middle of a mouse report.
+		// 不属于任何 CSI 类别的字节——实际上，是另一个同样在往这个 tty
+		// 写数据的写入者，在序列中途注入进来的一个控制字符。ECMA-48
+		// 规定：控制字符照样执行，序列则被放弃，所以我们把残骸一路消费
+		// 到冒犯的那个字节之前，但**不包括**它本身，留给下一次调用去
+		// 处理。Ctrl-C 必须仍然能用，哪怕它恰好落在一次鼠标报告的中间。
 		return key{Kind: keyUnknown, Raw: string(buf[:q])}, q, true
 	}
 
@@ -388,21 +382,20 @@ func decodeCSI(buf []byte, final bool) (key, int, bool) {
 		return decodeMouse(params[1:], fb == 'M', raw, n)
 	}
 	if fb == 'M' && len(params) == 0 {
-		// Legacy X10 mouse reporting (mode 1000 without 1006): CSI M followed
-		// by three RAW bytes — button+32, column+32, row+32 — which are not
-		// part of the CSI sequence at all. We swallow them and report nothing.
+		// 遗留的 X10 鼠标报告（模式 1000，不带 1006）：CSI M 后面跟着三个
+		// **原始**字节——button+32、column+32、row+32——这三个字节根本
+		// 不属于 CSI 序列。我们把它们吞掉，什么都不报告。
 		//
-		// Deliberately unsupported, not merely unimplemented. A coordinate is
-		// one byte biased by 32, so the largest column X10 can express is
-		// 255-32 = 223; past that it either clamps or wraps, depending on the
-		// emulator, and a click on the right-hand side of a wide window
-		// silently reports the wrong cell. SGR (1006) exists precisely because
-		// that encoding could not be fixed compatibly, so we ask for SGR and
-		// decode only SGR.
+		// 这是故意不支持，不是单纯没实现。坐标是用一个字节偏移 32 表示
+		// 的，所以 X10 能表达的最大列号是 255-32 = 223；超过这个界限，
+		// 视仿真器而定，它要么被夹死在边界上，要么直接回绕，于是在一个
+		// 宽窗口右侧的点击，就会悄悄地报告出错误的格子。SGR (1006) 的
+		// 存在，正是因为那种编码没法在保持兼容的前提下修复，所以我们只
+		// 认 SGR，也只解码 SGR。
 		//
-		// But we still have to eat those three bytes: they are ordinary bytes
-		// in the stream, and letting them fall through to decodeRune types
-		// three garbage characters into whatever the user was editing.
+		// 但那三个字节我们还是得吃掉：它们是这条流里普普通通的字节，
+		// 要是让它们掉进 decodeRune，就会把三个垃圾字符敲进用户正在
+		// 编辑的任何东西里。
 		if len(buf) < n+3 {
 			return incompleteEscape(buf, final)
 		}
@@ -411,8 +404,8 @@ func decodeCSI(buf []byte, final bool) (key, int, bool) {
 
 	ps, ok := csiParams(params)
 	if !ok {
-		// Parameters we cannot read as numbers — a private-mode reply such as
-		// the device-attributes answer \x1b[?1;2c. Well-formed, not a key.
+		// 我们无法以数字形式读取的参数——比如私有模式回复的设备属性应答
+		// \x1b[?1;2c。格式良好，但不是一个按键。
 		return key{Kind: keyUnknown, Raw: raw}, n, true
 	}
 
@@ -427,31 +420,30 @@ func decodeCSI(buf []byte, final bool) (key, int, bool) {
 	case 'D':
 		k.Kind = keyLeft
 
-	// Home and End are the worst keys on the keyboard, and the eight forms
-	// below are why. Four independent lineages, all still in the wild:
+	// Home 和 End 是键盘上最糟的两个键，下面的八种形式
+	// 解释了为什么。四个独立的系统，全都还在使用中：
 	//
-	//	\x1b[1~ \x1b[4~   VT220 numbering, back when the keys were labelled
-	//	                  Find and Select. The Linux console sends this.
-	//	\x1b[7~ \x1b[8~   rxvt renumbered them, and everything descended from
-	//	                  rxvt kept the renumbering.
-	//	\x1b[H  \x1b[F    xterm's own form, in normal cursor mode.
-	//	\x1bOH  \x1bOF    the same two keys once DECCKM is on — which tmux and
-	//	                  screen switch on for you, without mentioning it.
+	//	\x1b[1~ \x1b[4~   VT220 编号，那时键被标记为
+	//	                  Find 和 Select。Linux 控制台会发送这个。
+	//	\x1b[7~ \x1b[8~   rxvt 重新编号了它们，所有从 rxvt 衍生的
+	//	                  终端都保留了这个编号。
+	//	\x1b[H  \x1b[F    xterm 自己的形式，在普通光标模式下。
+	//	\x1bOH  \x1bOF    开启 DECCKM 后的同两个键——tmux 和
+	//	                  screen 为你打开了它，但没有告诉你。
 	//
-	// None of these will ever be deprecated, because deprecating one breaks a
-	// terminal somebody is still using. Accepting all eight costs six lines;
-	// accepting six of them costs you a bug report that reads "Home does
-	// nothing when I ssh in from my Mac".
+	// 这八种形式永远不会被废弃，因为废弃其中任何一个都会
+	// 破坏某个人仍在使用的终端。接受全部八种形式只需六行；
+	// 接受其中六种会让你收到一个 bug 报告，内容是"当我从 Mac
+	// ssh 进入时 Home 没有反应"。
 	case 'H':
 		k.Kind = keyHome
 	case 'F':
 		k.Kind = keyEnd
 
 	case 'Z':
-		// CSI Z is CBT, "cursor backward tabulation" — what Shift-Tab sends.
-		// The Shift flag stays false: it is reserved for a modifier the
-		// terminal reported as a parameter, and this sequence has none. The
-		// shift is in the Kind, where a caller can switch on it.
+		// CSI Z 是 CBT，"光标向后制表"——Shift-Tab 发送的序列。Shift 标志保持为假：
+		// 它是为终端以参数形式报告的修饰符预留的，而这个序列没有参数。Shift 藏在
+		// Kind 里，调用者可以对它写 switch 分支来判断。
 		k.Kind = keyShiftTab
 		return k, n, true
 
@@ -468,9 +460,8 @@ func decodeCSI(buf []byte, final bool) (key, int, bool) {
 		case 6:
 			k.Kind = keyPageDown
 		default:
-			// 2 is Insert; 11-15 and 17-24 are F1-F12; 201 is a paste
-			// terminator with no opener, which means we lost sync and would
-			// rather say so than swallow it. All consumed, none interpreted.
+			// 2 是 Insert；11-15 和 17-24 是 F1-F12；201 是一个没有开启符的粘贴结束
+			// 符，意味着我们失去同步，宁可说出来也不想吞掉它。全部消耗，但无一被解读。
 			k.Kind = keyUnknown
 			return k, n, true
 		}
@@ -480,38 +471,35 @@ func decodeCSI(buf []byte, final bool) (key, int, bool) {
 		return k, n, true
 	}
 
-	// The modifier is always the SECOND parameter, for both the letter finals
-	// (\x1b[1;5A) and the tilde finals (\x1b[3;5~). The first parameter of a
-	// letter final is a repeat count when a terminal *emits* CSI as output; as
-	// input it is always 1, and ignoring it is correct.
+	// 修饰符总是**第二个**参数，对于字母结尾
+	// （\x1b[1;5A）和波浪号结尾（\x1b[3;5~）都一样。
+	// 字母结尾的第一个参数是当终端**发出** CSI 作为输出时的重复计数；
+	// 作为输入时总是 1，忽略它是正确的。
 	applyModifier(&k, csiParam(ps, 1, 1))
 	return k, n, true
 }
 
-// decodePaste handles \x1b[200~ … \x1b[201~ (bracketed paste, mode 2004).
+// decodePaste 处理 \x1b[200~ … \x1b[201~（括号粘贴，模式 2004）。
 //
-// The payload is copied out verbatim and never re-decoded. That is the entire
-// point of the mode: pasted text routinely contains 0x1b, 0x0d and control
-// bytes, and a decoder that ran them back through itself would turn a pasted
-// shell script into arrow keys and a pasted multi-line commit message into
-// however many Enter presses it takes to submit half of it. Bracketed paste
-// exists because someone pasted into vim in insert mode once.
+// 有效载荷逐字复制，永远不会重新解码。这就是这个模式的整个意义：
+// 粘贴的文本经常包含 0x1b、0x0d 和控制字节，
+// 一个把它们重新运行一遍的解码器会把粘贴的 shell 脚本
+// 变成箭头键，把粘贴的多行提交消息变成多少个
+// 回车按下，取决于提交一半内容需要多少个。括号粘贴
+// 存在是因为有人曾在 vim 的插入模式下粘贴过。
 func decodePaste(buf []byte, start int) (key, int, bool) {
 	i := bytes.Index(buf[start:], pasteEnd)
 	if i < 0 {
-		// Unterminated — and note this returns ok=false even from
-		// decodeKeyFinal, the one place that rule is broken.
+		// 未终止——注意这一点甚至连 decodeKeyFinal 也不例外，仍然会返回 ok=false，
+		// 而这是这条规则唯一被打破的地方。
 		//
-		// It is broken on purpose. The escape timeout answers a question about
-		// a human's fingers; a paste is a machine writing at pipe speed, and a
-		// megabyte of it arrives over many reads with gaps that mean nothing.
-		// "The timeout expired" is simply not evidence that a paste has ended,
-		// so resolving it here would emit half the payload as text and then
-		// decode the rest as individual keystrokes — including any newline in
-		// it, which in a prompt UI means submitting a half-finished line. A
-		// caller that wants a safety valve bounds the buffer and discards an
-		// absurdly long unterminated paste. That is a policy, and policies
-		// live in the caller, same as the clock does.
+		// 打破是有意的。转义超时回答的是一个关于人类手指的问题；而粘贴是一台机器
+		// 在以管道速度写入，哪怕一兆字节的数据，也要经过很多次读取才能到达，中间
+		// 的间隙毫无意义。"超时已过期"根本不能证明粘贴已经结束，所以在这里就此了
+		// 结，会把一半的有效载荷当文本发出，再把剩下的部分解码成一个个按键——包括
+		// 其中的任何换行符，这在提示符 UI 里意味着提交一个没打完的行。想要安全阀
+		// 的调用者，可以自己限制缓冲区大小，丢弃一个长得离谱的未终止粘贴。那是一
+		// 种策略，策略该放在调用者那边，就像时钟一样。
 		return key{}, 0, false
 	}
 	n := start + i + len(pasteEnd)
@@ -520,27 +508,27 @@ func decodePaste(buf []byte, start int) (key, int, bool) {
 		Text: string(buf[start : start+i]),
 		Raw:  string(buf[:n]),
 	}, n, true
-	// Worth knowing: the protocol has no escaping, so a payload that literally
-	// contains "\x1b[201~" ends the paste early. That hole is in the protocol,
-	// not here — terminals paper over it by filtering ESC out of pasted text
-	// before they send it, which is also why you cannot paste an escape
-	// sequence into a terminal and have it execute.
+	// 值得了解：协议没有转义，所以一个字面上
+	// 包含 "\x1b[201~" 的有效载荷会提前结束粘贴。那个漏洞在协议里，
+	// 不在这里——终端通过在发送前从粘贴的文本中过滤 ESC 来弥补，
+	// 这也是为什么你不能粘贴一个转义序列进终端
+	// 并让它执行。
 }
 
 // ---------------------------------------------------------------------------
-// Mouse
+// 鼠标
 // ---------------------------------------------------------------------------
 
-// Modifier and motion bits packed into the SGR button field.
+// 修饰符和运动位打包到 SGR 按钮字段中。
 const (
 	mouseShift  = 0x04
 	mouseAlt    = 0x08
 	mouseCtrl   = 0x10
-	mouseMotion = 0x20 // set on drag/move reports
+	mouseMotion = 0x20 // 在拖拽/移动报告时设置
 )
 
-// decodeMouse parses an SGR (1006) mouse report: \x1b[<b;x;yM for press,
-// \x1b[<b;x;ym for release. Only SGR — see the X10 note in decodeCSI.
+// decodeMouse 解析一个 SGR（1006）鼠标报告：按下时 \x1b[<b;x;yM，
+// 释放时 \x1b[<b;x;ym。仅 SGR——见 decodeCSI 中的 X10 说明。
 func decodeMouse(params []byte, press bool, raw string, n int) (key, int, bool) {
 	ps, ok := csiParams(params)
 	if !ok || len(ps) < 3 || ps[0] < 0 || ps[1] < 0 || ps[2] < 0 {
@@ -553,46 +541,43 @@ func decodeMouse(params []byte, press bool, raw string, n int) (key, int, bool) 
 	k.Alt = b&mouseAlt != 0
 	k.Ctrl = b&mouseCtrl != 0
 	k.Mouse = mouseEvent{
-		// Strip the modifier and motion bits so Button is a button number and
-		// nothing else. Skip this and Ctrl-click reports button 16, a drag with
-		// the left button held reports button 32, and every switch statement on
-		// Button gets a `default:` that quietly eats real clicks. The wheel
-		// bit (0x40) is NOT stripped, because on this wire wheel-up genuinely
-		// is button 64 — that is how the encoding names it.
+		// 去掉修饰符和运动位，使 Button 只是一个按钮号，别的什么都不是。跳过这一
+		// 步，Ctrl-点击会报告按钮 16，按住左键拖拽会报告按钮 32，而每个针对
+		// Button 的 switch 语句都会多出一个 `default:` 分支，悄悄吃掉真正的点击。
+		// 滚轮位（0x40）**不**被去掉，因为在这条线上滚轮向上确实是按钮 64——编码
+		// 本身就是这么命名的。
 		Button: b &^ (mouseShift | mouseAlt | mouseCtrl | mouseMotion),
 		X:      x,
 		Y:      y,
-		// Motion reports arrive with the final byte 'M', so a drag surfaces as
-		// a press at the new cell. That is deliberate: mouseEvent has no Drag
-		// field, and a caller reconstructs a drag as "presses with no release
-		// in between", which is what it has to track anyway to know which
-		// button is down. Motion only arrives at all if the caller asked for
-		// mode 1002/1003.
+		// 运动报告到达时最后一个字节是 'M'，所以拖拽在新的单元格上显示为一次按下。
+		// 这是故意的：mouseEvent 没有 Drag 字段，调用者把拖拽重建成"一连串按下、
+		// 中间不夹释放"，而这正是它本来就必须跟踪的东西，为的是知道哪个按钮正按
+		// 着。运动事件只有在调用者请求了模式 1002/1003 时才会到达。
 		Press: press,
 	}
 	return k, n, true
 }
 
 // ---------------------------------------------------------------------------
-// Parameters
+// 参数
 // ---------------------------------------------------------------------------
 
-// csiParams splits CSI parameter bytes into integers, or reports that they are
-// not numbers at all. An omitted parameter becomes -1 rather than 0, because
-// ECMA-48 says an omitted parameter means "use the default" and the default is
-// not always zero — \x1b[;5A is Ctrl-Up, not Ctrl-something-zero.
+// csiParams 把 CSI 参数字节分割成整数，或报告它们
+// 根本不是数字。一个省略的参数变成 -1 而不是 0，因为
+// ECMA-48 说一个省略的参数意味着"使用默认值"，而默认值
+// 不总是零——\x1b[;5A 是 Ctrl-Up，不是 Ctrl-某-零。
 func csiParams(p []byte) ([]int, bool) {
 	if len(p) == 0 {
 		return nil, true
 	}
 	out := make([]int, 0, 4)
 	for _, f := range bytes.Split(p, []byte{';'}) {
-		// xterm's modifyOtherKeys and kitty's protocol pack sub-parameters
-		// after a colon (\x1b[1;5:3A distinguishes press from repeat). Nothing
-		// here needs them, and dropping them beats rejecting the sequence: the
-		// base key and its modifier are still perfectly readable, and a
-		// terminal that opts into a richer protocol should not become a
-		// terminal whose arrow keys stopped working.
+		// xterm 的 modifyOtherKeys 和 kitty 的协议在冒号后
+		// 打包子参数（\x1b[1;5:3A 区分按下和重复）。这里
+		// 没有任何东西需要它们，而丢弃它们比拒绝序列更好：
+		// 基础键和它的修饰符仍然非常可读，
+		// 一个选择加入更丰富协议的终端不应该变成
+		// 一个箭头键停止工作的终端。
 		if i := bytes.IndexByte(f, ':'); i >= 0 {
 			f = f[:i]
 		}
@@ -616,14 +601,15 @@ func csiParam(ps []int, i, def int) int {
 	return ps[i]
 }
 
-// applyModifier decodes the xterm modifier parameter.
+// applyModifier 解码 xterm 修饰符参数。
 //
-// The encoding is a bitmask PLUS ONE, and the +1 is the single most reliable
-// off-by-one in terminal code. Unmodified is 1, not 0, so you have to subtract
-// before you mask. Forget it and every modifier reads as the next one along:
-// Ctrl-Up (5) comes through with shift set, Shift-Right (2) comes through as
-// Alt, and the resulting bug is maddening precisely because arrows still
-// "work" — they just work with the wrong modifier, in one terminal, sometimes.
+// 编码是一个位掩码加一，而那个加一是终端代码中
+// 最可靠的差一错误。未修饰是 1，不是 0，
+// 所以你必须在掩码前减去。忘了它，
+// 每个修饰符都被读为下一个：Ctrl-Up（5）带着 shift 来，
+// Shift-Right（2）作为 Alt 来，结果的 bug 令人发疯，
+// 恰恰因为箭头仍然"工作"——它们只是工作时用了
+// 错误的修饰符，在某个终端，有时。
 func applyModifier(k *key, mod int) {
 	if mod <= 1 {
 		return
@@ -632,14 +618,14 @@ func applyModifier(k *key, mod int) {
 	k.Shift = m&1 != 0
 	k.Alt = m&2 != 0
 	k.Ctrl = m&4 != 0
-	// Bit 8 is Meta. Ignored: nothing in this decade's terminals emits it,
-	// and folding a phantom modifier into Alt would make Alt untrustworthy.
+	// 第 8 位是 Meta。忽略：这十年的终端中没有任何东西发出它，
+	// 而把一个虚拟修饰符折叠进 Alt 会使 Alt 变得不可靠。
 }
 
 // ---------------------------------------------------------------------------
-// Debug rendering. Exists so a failing test says "wanted keyUp, got
-// keyUnknown raw=\"\\x1bOA\"" instead of "wanted 6, got 20" — which is the
-// difference between a fix and an afternoon.
+// 调试渲染。存在的目的是让一个失败的测试说"想要 keyUp，得到
+// keyUnknown raw=\"\\x1bOA\""，而不是"想要 6，得到 20"——
+// 这是修复和整个下午的区别。
 // ---------------------------------------------------------------------------
 
 var keyKindNames = [...]string{

@@ -1,13 +1,15 @@
-// Stage 00 — The Loop.
+// 阶段 00 ——主循环。
 //
-// This is the entire idea of a coding agent, with everything that makes it
-// survivable deliberately left out. One tool (bash), one loop, raw net/http,
-// no SDK, no streaming, no output truncation, no command timeout, and no
-// permission gate. Stage 01 adds the parts that stop it from hurting itself.
+// 这是编写 coding Agent 的整个核心思想，所有让它能
+// 活下去的东西都被刻意排除了。一个工具（bash），一个
+// 主循环，裸 net/http，没有 SDK，没有流式，没有输出
+// 截断，没有命令超时，没有权限闸。阶段 01 添加那些
+// 防止它伤害自己的部分。
 //
-// Read main() first, then callModel(), then runBash(). That is the whole thing.
+// 先读 main()，再读 callModel()，再读 runBash()。
+// 这就是全部。
 //
-// Run it in a scratch directory. It executes whatever the model asks for.
+// 在临时目录中运行。它执行 Agent 要求的任何东西。
 package main
 
 import (
@@ -37,16 +39,17 @@ commands — the shell may be bash 3.2.
 
 When the task is done, reply with a short plain-text summary and no tool call.`
 
-// A fuse. Without it, a model that keeps calling tools loops until your key
-// runs dry. Stage 01 turns this into a real budget.
+// 一个保险丝。没有它，一个 Agent 不停调用工具就会
+// 陷入循环，直到你的密钥用尽。阶段 01 把这变成真正
+// 的预算。
 const maxTurns = 25
 
 // ---------------------------------------------------------------------------
-// Wire types — the OpenAI chat-completions protocol, hand-written.
+// 线上格式——OpenAI chat-completions 协议，手写版。
 //
-// Every field here exists because the API sends it. Nothing is abstracted yet;
-// stage 03 (Babel) is where these get split behind a provider-neutral type so a
-// second protocol can plug in.
+// API 发送的每个字段都在这里；还没有任何抽象。
+// 阶段 03（Babel）是这些字段被拆到供应商中立类型后面的
+// 地方，这样第二个协议就能接入。
 // ---------------------------------------------------------------------------
 
 type message struct {
@@ -54,8 +57,8 @@ type message struct {
 	Content   string     `json:"content,omitempty"`
 	ToolCalls []toolCall `json:"tool_calls,omitempty"`
 
-	// Only set on role:"tool" messages — it pairs a result with the call that
-	// asked for it. The Anthropic protocol does this differently; see stage 03.
+	// 只在 role:"tool" 消息上设置——它把结果和要求它的
+	// 调用配对。Anthropic 协议做法不同；见阶段 03。
 	ToolCallID string `json:"tool_call_id,omitempty"`
 }
 
@@ -64,8 +67,9 @@ type toolCall struct {
 	Type     string `json:"type"`
 	Function struct {
 		Name string `json:"name"`
-		// Note: a JSON *string* containing JSON, not a nested object. This trips
-		// up everyone once. Always json.Unmarshal it; never string-match it.
+		// 注意：一个 JSON **字符串**，里面装着 JSON，不是
+		// 嵌套对象。这会绊倒每个人一次。总是 json.Unmarshal 它；
+		// 永远不要字符串匹配它。
 		Arguments string `json:"arguments"`
 	} `json:"function"`
 }
@@ -100,7 +104,7 @@ type chatResponse struct {
 	} `json:"error"`
 }
 
-// bashTool is the only tool this agent will ever have.
+// bashTool 是这个 Agent 仅有的工具。
 func bashTool() toolDef {
 	var t toolDef
 	t.Type = "function"
@@ -121,7 +125,7 @@ func bashTool() toolDef {
 }
 
 // ---------------------------------------------------------------------------
-// The API call. Raw net/http — there is no magic under an SDK, only this.
+// API 调用。裸 net/http——SDK 下面没有魔法，只有这个。
 // ---------------------------------------------------------------------------
 
 type client struct {
@@ -177,12 +181,12 @@ func (c *client) callModel(msgs []message) (*chatResponse, error) {
 }
 
 // ---------------------------------------------------------------------------
-// The tool. Every action the agent can take goes through these ten lines.
+// 工具。Agent 能采取的每个动作都要过这十行。
 // ---------------------------------------------------------------------------
 
-// findBash locates a POSIX shell. On Windows that means Git Bash, which every
-// developer with git installed already has. Stage 08 replaces this with an
-// embedded interpreter; until then we borrow the system's.
+// findBash 定位 POSIX shell。在 Windows 上，那意味着
+// Git Bash，每个装了 git 的开发者都已经有了。
+// 阶段 08 用嵌入式解释器替换这个；在那之前我们借用系统的。
 func findBash() (string, error) {
 	if p := os.Getenv("AGENT_BASH"); p != "" {
 		return p, nil
@@ -204,15 +208,16 @@ func findBash() (string, error) {
 	return "", fmt.Errorf("no bash found on PATH")
 }
 
-// runBash executes one command and returns everything the model should see.
+// runBash 执行一条命令并返回 Agent 应该看到的所有东西。
 //
-// Note what it does NOT do: no timeout, so a dev server hangs the agent
-// forever; no output cap, so `find /` floods the context window. Both are
-// stage 01. Note also that a non-zero exit is not an error here — it is an
-// observation, and the model is the one who should react to it.
+// 注意它**不**做什么：没有超时，所以开发服务器会让
+// Agent 永远挂起；没有输出上限，所以 `find /` 会淹没
+// 上下文窗口。两个都是阶段 01 的事。还要注意，非零
+// 退出码在这里不是错误——它是一次观察，Agent 应该
+// 对它做出反应。
 func runBash(shell, command string) string {
 	cmd := exec.Command(shell, "-c", command)
-	cmd.Stdin = nil // never let a command block waiting on input
+	cmd.Stdin = nil // 永远不要让命令阻塞在等待输入上
 	out, err := cmd.CombinedOutput()
 
 	result := string(out)
@@ -226,7 +231,7 @@ func runBash(shell, command string) string {
 }
 
 // ---------------------------------------------------------------------------
-// The loop.
+// 主循环。
 // ---------------------------------------------------------------------------
 
 func main() {
@@ -253,8 +258,8 @@ func main() {
 	fmt.Println("no permission gate in this stage: it runs whatever the model says. use a scratch dir.")
 	fmt.Println()
 
-	// The conversation. It only ever grows — that is the agent's short-term
-	// memory, and stage 05 is where it stops growing forever.
+	// 对话。它只会增长——这是 Agent 的短期记忆，
+	// 阶段 05 是它停止永远增长的地方。
 	msgs := []message{{Role: "system", Content: systemPrompt}}
 
 	stdin := bufio.NewScanner(os.Stdin)
@@ -275,9 +280,9 @@ func main() {
 		}
 		msgs = append(msgs, message{Role: "user", Content: line})
 
-		// Inner loop: keep going while the model wants to use tools. This
-		// while-there-are-tool-calls shape IS the agent. Everything else in this
-		// repo is instrumentation around it.
+		// 内层循环：当 Agent 想用工具时保持继续。
+		// 这个有工具调用的 while 形状**就是** Agent。
+		// 这个仓库里的其他一切都是它周围的仪表。
 		for turn := 1; ; turn++ {
 			if turn > maxTurns {
 				fmt.Printf("\n[stopped: hit %d turns]\n\n", maxTurns)
@@ -290,7 +295,7 @@ func main() {
 				break
 			}
 			choice := resp.Choices[0]
-			msgs = append(msgs, choice.Message) // echo the assistant turn back verbatim
+			msgs = append(msgs, choice.Message) // 把助手回合原样回显
 
 			fmt.Printf("  [tokens: prompt=%d completion=%d]\n",
 				resp.Usage.PromptTokens, resp.Usage.CompletionTokens)
@@ -300,19 +305,19 @@ func main() {
 			}
 			if len(choice.Message.ToolCalls) == 0 {
 				fmt.Println()
-				break // no tools requested: the turn is over
+				break // 没请求工具：回合结束
 			}
 
-			// Execute every requested call, then return ALL results before the
-			// next request. Splitting them across separate requests teaches the
-			// model to stop batching calls.
+			// 执行每个请求的调用，然后在下一个请求前
+			// 返回**所有**结果。把它们分散到单独的请求中会
+			// 教 Agent 停止批处理调用。
 			for _, call := range choice.Message.ToolCalls {
 				var args struct {
 					Command string `json:"command"`
 				}
 				if err := json.Unmarshal([]byte(call.Function.Arguments), &args); err != nil {
-					// Malformed arguments are the model's problem to fix, so hand
-					// the parse error back instead of crashing.
+					// 格式错误的参数是 Agent 要修复的问题，
+					// 所以把解析错误递回去而不是崩溃。
 					msgs = append(msgs, message{
 						Role:       "tool",
 						ToolCallID: call.ID,

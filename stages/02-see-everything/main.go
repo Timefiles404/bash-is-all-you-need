@@ -1,16 +1,15 @@
-// Stage 02 — See Everything.
+// 阶段 02——看见一切。
 //
-// The same agent as stage 01, with one structural change: it prints nothing.
-// It emits events, and the things you can see subscribe to them.
+// 和阶段 01 是同一个 Agent，只有一处结构上的改变：它什么都不
+// 打印。它发出事件，你能看到的东西订阅它们。
 //
-//	agent core ──emit──▶ Bus ──┬──▶ renderer   (the terminal, instrumented)
-//	                           └──▶ TraceWriter (session.jsonl, one event per line)
+//	Agent 核心 ──发出──▶ 总线 ──┬──▶ 渲染器   （终端，已插桩）
+//	                           └──▶ TraceWriter（session.jsonl，每行一个事件）
 //
-//	replay: session.jsonl ──▶ Replay ──▶ the same renderer, no network, no key
+//	重放：session.jsonl ──▶ Replay ──▶ 相同的渲染器，无网络，无密钥
 //
-// Everything new in this stage falls out of that one decision. Read events.go
-// for the argument, then this file for the wiring, then render.go for what the
-// numbers mean.
+// 这个阶段所有的新东西，都源于那一个决定。读 events.go 了解
+// 论证，再读这个文件了解接线，最后读 render.go 了解数字的含义。
 package main
 
 import (
@@ -47,10 +46,8 @@ either find another way or ask.
 
 When the task is done, reply with a short plain-text summary and no tool call.`
 
-// ---------------------------------------------------------------------------
-// Wire types. Still hand-written, still the OpenAI protocol only — stage 03 is
-// where a second protocol arrives and these move behind a neutral core.
-// ---------------------------------------------------------------------------
+// 线上类型。仍然手写，仍然只有 OpenAI 协议——到了阶段 03，
+// 第二个协议加入进来，这些类型就会挪到中立核心背后。
 
 type message struct {
 	Role       string     `json:"role"`
@@ -75,11 +72,11 @@ type chatRequest struct {
 	Tools     []toolDef `json:"tools"`
 	Stream    bool      `json:"stream"`
 
-	// A real OpenAI endpoint will not stream usage without this. The gateway
-	// this repo was developed against sends usage either way — see
-	// docs/wire-notes.md §B5, where the flag is measurably a no-op. Send it
-	// anyway: it costs nothing and the alternative is an agent that reports
-	// zero tokens the day someone points it at a different provider.
+	// 如果没有这个字段，真正的 OpenAI 端点不会流式返回 usage。这个
+	// 仓库据以开发的那个网关，无论如何都会发送 usage——参见
+	// docs/wire-notes.md §B5，那里实测证实这个标志是无操作的。但
+	// 还是要发送它：这不花一分钱，不发的代价是某天有人把 Agent
+	// 指向另一个供应商时，它会开始报告零 token。
 	StreamOptions *streamOptions `json:"stream_options,omitempty"`
 }
 
@@ -133,10 +130,10 @@ type client struct {
 	http *http.Client
 }
 
-// stream sends one request and lets the SSE parser turn the response into
-// events. Note what this function does NOT do: it never formats anything for a
-// human. The only reason it can be read in one screen is that presentation left
-// the building.
+// stream 发送一个请求，让 **SSE** 解析器把响应变成事件。注意
+// 这个函数**不**做的事：它从不为人类格式化任何东西。它之所以
+// 能在一屏之内读完，唯一的原因就是这里完全不管"怎么展示给
+// 人看"。
 func (c *client) stream(msgs []message, bus *Bus, turn int) (*streamResult, error) {
 	body, err := json.Marshal(chatRequest{
 		Model:         c.cfg.model,
@@ -150,9 +147,8 @@ func (c *client) stream(msgs []message, bus *Bus, turn int) (*streamResult, erro
 		return nil, err
 	}
 
-	// The request inspector, and the single most useful line in any trace: the
-	// only record of what the model actually saw. Everything else in a
-	// transcript is a reconstruction.
+	// 请求检查器，以及任何 **trace** 中最有用的单行：
+	// 模型实际看到的唯一记录。转录中的其他东西都是重建。
 	bus.Emit(Event{Kind: KindRequest, Turn: turn, Request: body})
 
 	req, err := http.NewRequest("POST", c.cfg.baseURL+"/chat/completions", bytes.NewReader(body))
@@ -163,8 +159,8 @@ func (c *client) stream(msgs []message, bus *Bus, turn int) (*streamResult, erro
 	req.Header.Set("Authorization", "Bearer "+c.cfg.apiKey)
 	req.Header.Set("Accept", "text/event-stream")
 
-	// Started is stamped as late as possible, so TTFT measures what the user
-	// experiences — network included — rather than what the model did.
+	// Started 尽可能晚地加时间戳，这样 TTFT 衡量的是用户实际体验到的
+	// ——把网络耗时也算在内——而不是模型自己做了什么。
 	started := time.Now()
 	resp, err := c.http.Do(req)
 	if err != nil {
@@ -174,17 +170,18 @@ func (c *client) stream(msgs []message, bus *Bus, turn int) (*streamResult, erro
 
 	if resp.StatusCode != http.StatusOK {
 		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 8<<10))
-		// Worth knowing before you write a retry policy: on this gateway an
-		// unknown model id returns 401, and a malformed body returns 500. A
-		// naive "retry all 5xx" loop will retry a client bug forever.
+		// 在写重试策略之前，有一件事值得知道：在这个网关上，未知的
+		// 模型 id 返回 401，畸形体返回 500。朴素的"重试所有 5xx"循环
+		// 会永远重试客户端 bug。
 		return nil, fmt.Errorf("http %d: %s", resp.StatusCode, strings.TrimSpace(string(raw)))
 	}
 	return parseOpenAIStream(resp.Body, bus, turn, started)
 }
 
 // ---------------------------------------------------------------------------
-// The permission gate. Unchanged in substance from stage 01; it now reports its
-// verdict as an event so a denial is visible in the trace six months later.
+// 权限闸。较之阶段 01，实质上没有变化；它现在把裁决报告
+// 为一个事件，这样一次拒绝在六个月后仍然能在 **trace** 中
+// 看到。
 // ---------------------------------------------------------------------------
 
 type gate struct {
@@ -256,9 +253,9 @@ func main() {
 	view := newRenderer(os.Stdout, colorEnabled(os.Stdout), prices, *window)
 	view.showRequest = *showReq
 
-	// Replay needs no key, no shell and no network. That is the point: a
-	// student can study a real session they never paid for, and you can debug
-	// a user's run from the file they sent you.
+	// 重放不需要密钥、shell，也不需要网络。这就是意义所在：一个
+	// 学生能够研究一次自己完全没有付费的真实会话，你也能直接用
+	// 用户发给你的文件，调试他们的那次运行。
 	if *replayPath != "" {
 		events, err := ReadTrace(*replayPath)
 		if err != nil {
@@ -334,8 +331,8 @@ func main() {
 	view.SessionSummary(lastPrompt)
 }
 
-// runTurn drives one user message to completion, returning the grown history
-// and the size of the last prompt sent (which is the context watermark).
+// runTurn 把一条用户消息推进到完成，返回增长后的历史，
+// 以及发送的最后一个 prompt 的大小（这是上下文水位线）。
 func runTurn(c *client, g *gate, bus *Bus, cfg config, msgs []message, lastPrompt int) ([]message, int) {
 	for turn := 1; ; turn++ {
 		if turn > cfg.maxTurns {
@@ -351,10 +348,9 @@ func runTurn(c *client, g *gate, bus *Bus, cfg config, msgs []message, lastPromp
 		}
 		lastPrompt = res.Usage.Prompt()
 
-		// Rebuild the assistant message the API would have returned
-		// non-streamed, because that is what has to go back in the history.
-		// Reassembly is the tax you pay for streaming, and forgetting it is
-		// why streaming agents "lose" their tool calls.
+		// 重建 API 在非流式情况下本应返回的那条 assistant 消息，因为
+		// 回到历史里的，必须是这个版本。重新组装，是你为流式付出的
+		// 税，忘掉这一点，就是流式 Agent 会"丢"工具调用的原因。
 		am := message{Role: "assistant", Content: res.Text}
 		for _, tc := range res.ToolCalls {
 			var call toolCall
@@ -364,13 +360,12 @@ func runTurn(c *client, g *gate, bus *Bus, cfg config, msgs []message, lastPromp
 		}
 		msgs = append(msgs, am)
 
-		// Note what is NOT here: a KindResponseEnd. The stream parser already
-		// emitted one, because it is the component that knows when the response
-		// actually ended and whether it ended cleanly. Emitting a second from
-		// here is the bug this comment exists to stop you re-introducing — two
-		// components each believing they own an event is the most common way an
-		// event-driven design goes wrong, and it shows up as a duplicated,
-		// half-empty panel rather than as a crash.
+		// 注意这里**没有**什么：一个 KindResponseEnd。流解析器已经
+		// 发出了一个，因为知道响应到底什么时候结束、结束得干不干净
+		// 的，正是这个组件。从这里再发出第二个，就是这条注释想要
+		// 阻止你重新引入的那个 bug——两个组件各自都以为自己拥有
+		// 某个事件，是事件驱动设计出错最常见的方式，它显示为一个
+		// 复制的、半空的面板，而不是崩溃。
 
 		switch res.FinishReason {
 		case "length", "max_tokens":
@@ -393,9 +388,9 @@ func runTurn(c *client, g *gate, bus *Bus, cfg config, msgs []message, lastPromp
 			return msgs, lastPrompt
 		}
 
-		// Every tool call gets a result, including the ones we refuse. An
-		// unanswered call makes the *next* request malformed, possibly several
-		// user messages later.
+		// 每个工具调用都会得到一个结果，包括我们拒绝的那些。未回答
+		// 的调用会让**下一个**请求变得畸形——可能是好几条用户消息
+		// 之后的事。
 		stop := false
 		for _, tc := range res.ToolCalls {
 			if stop {
@@ -438,8 +433,8 @@ func runTurn(c *client, g *gate, bus *Bus, cfg config, msgs []message, lastPromp
 	}
 }
 
-// toolResult emits the result and returns the message to append, so the thing
-// the user sees and the thing the model is told can never drift apart.
+// toolResult 发出结果，并返回待追加的那条消息，这样用户看到
+// 的东西和模型被告知的东西，就永远不会彼此漂移开。
 func toolResult(bus *Bus, turn int, callID, content string) message {
 	bus.Emit(Event{Kind: KindToolResult, Turn: turn, ToolID: callID, Text: content})
 	return message{Role: "tool", ToolCallID: callID, Content: content}

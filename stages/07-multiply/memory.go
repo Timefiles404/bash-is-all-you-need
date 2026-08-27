@@ -1,21 +1,29 @@
-// Stage 05 — memory, and where context is allowed to go.
+// 阶段 05 — 记忆，以及上下文可以去的地方。
 //
-// "Long-term memory" is the phrase that sells vector databases. An agent with a
-// shell does not need one, and this file is the whole implementation:
+// "长期记忆"是推销向量数据库的说辞。
+// 带 shell 的 Agent 不需要它，这个
+// 文件就是完整的实现：
 //
-//	memory is a file. The agent reads it with `cat` and writes it with `>>`.
+//	记忆是文件。Agent 用 `cat` 读它，
+//	用 `>>` 写它。
 //
-// That is not a simplification for teaching purposes; it is what the tools you
-// use every day do. A file is greppable, diffable, reviewable, versionable, and
-// editable by the human whose project it describes — five properties an
-// embedding index does not have, in exchange for a similarity search over notes
-// that a `grep` would have found.
+// 这不是为了教学而做的简化；这就是
+// 你每天在用的工具本来就会做的事。
+// 文件是可以 grep 的、可以 diff 的、
+// 可以审查的、可以版本化的，也能被
+// 这个文件所描述项目的那个人编辑——
+// 这五个特性，嵌入索引一个都没有，
+// 它换来的只是对笔记做相似度搜索，
+// 而这些笔记，`grep` 本来就能找到。
 //
-// The harder half of this file is not memory but **placement**: given a piece
-// of context, where in the prompt does it go? Stage 04 established that the
-// prefix must be byte-stable or the cache dies. This file turns that into a
-// rule with two cases, and the rule is the reason the code is shaped the way it
-// is.
+// 这个文件较难的那一半不是记忆，
+// 而是**放置**：给定一块上下文，
+// 它该放进 prompt 的哪个位置？
+// 阶段 04 确立了一条规则：前缀
+// 必须字节稳定，否则缓存就会失效。
+// 这个文件把它变成一条分两种情况
+// 讨论的规则，这条规则，就是代码
+// 会长成现在这个样子的原因。
 package main
 
 import (
@@ -28,66 +36,92 @@ import (
 )
 
 // ---------------------------------------------------------------------------
-// The placement rule
+// 放置规则
 // ---------------------------------------------------------------------------
 //
-// Every piece of injected context is one of two things, and the difference is
-// not what it contains but **how often its value changes**:
+// 每块被注入的上下文，都是两种
+// 东西之一，区别不在于它包含
+// 什么，而在于**它的值多久变
+// 一次**：
 //
-//	STABLE for the session   → the system prompt, before the cache breakpoint.
-//	                           Written once, cached forever, costs its tokens
-//	                           exactly once no matter how long the session runs.
-//	                           (memory files, cwd, OS, shell, model limits)
+//	会话的稳定   → 系统提示词，在缓存断点之前。
+//	                  写一次，永远缓存，只花费其 token
+//	                  恰好一次，无论会话运行多长。
+//	                  （记忆文件，cwd，OS，shell，模型限制）
 //
-//	VOLATILE                 → frozen into a message at the moment that message
-//	                           is created, and never recomputed.
-//	                           (the clock, git HEAD, the working tree's dirtiness)
+//	易变                 → 在消息创建的那一刻冻结进消息，
+//	                  此后永不重新计算。
+//	                  （时钟，git HEAD，工作树脏度）
 //
-// The second case is the one people get wrong, and they get it wrong in the
-// direction that costs money. The instinct is to keep volatile context *fresh*
-// — recompute the timestamp on every request so the model always knows the
-// time. That is stage 04's `--break-cache` experiment, and it measured 3.4x.
+// 第二种情况是人们常常搞错的，
+// 而且错的方向总是要花钱的那个
+// 方向。本能反应是让易变上下文
+// 保持**新鲜**——每个请求都重新
+// 计算一次时间戳，好让模型始终
+// 知道现在几点。那就是阶段 04 的
+// `--break-cache` 实验，测出的
+// 结果是 3.4 倍。
 //
-// The resolution is that "fresh" and "in the prefix" are the two things you
-// cannot have together, and freshness is the one you can give up almost for
-// free: a snapshot taken when the user pressed Enter is accurate for the whole
-// turn it belongs to, and it stays in history unchanged afterwards — which is
-// exactly what a byte-stable prefix means. The model gets fresh information
-// each turn AND the cache survives, because each turn's snapshot is a
-// different, permanent line rather than the same line with a moving value.
+// 解法是："新鲜"和"在前缀里"，
+// 这两样你不能同时拥有，而新鲜，
+// 恰恰是那个你几乎可以免费放弃
+// 的东西：用户按下 Enter 时取得
+// 的快照，在它所属的整个回合内
+// 都是准确的，此后在历史里也
+// 保持不变——这正是字节稳定
+// 前缀的意思。模型每个回合都能
+// 拿到新鲜信息，**且**缓存幸存，
+// 因为每个回合的快照都是一条
+// 不同的、永久的行，而不是同一
+// 行里塞进一个不断变化的值。
 //
-// One sentence, worth more than the rest of the file: **inject once and freeze;
-// never recompute what is already in the prefix.**
+// 一句话，比这个文件其余部分
+// 加起来都更有价值：**注入一次，
+// 然后冻结；前缀里已经有的东西，
+// 永不重新计算。**
 
-// memoryFiles are read at startup, in order, and concatenated into the system
-// prompt. Both are plain Markdown in the working directory.
+// memoryFiles 在启动时按顺序读取，
+// 并拼接进系统提示词。两者都是
+// 工作目录中的纯 Markdown。
 //
-// The split is by author, not by content:
+// 分割是按作者，不是按内容：
 //
-//	AGENTS.md — written by a human, for the agent. Conventions, build commands,
-//	            "do not touch generated/", the things a new colleague would be
-//	            told on day one. The agent should not edit it.
-//	MEMORY.md — written by the agent, for its future self. Discoveries that
-//	            cost tool calls to make.
+//	AGENTS.md — 由人类为 Agent 写。惯例，
+//	             构建命令，"不要接触 generated/"，
+//	             一个新同事会在第一天被告知的东西。
+//	             Agent 不应编辑它。
+//	MEMORY.md — 由 Agent 为未来的自己写。
+//	             那些得靠工具调用才能重新
+//	             发现的东西。
 //
-// Keeping them apart means a human can review what the agent decided to
-// remember without wading through their own instructions, and can delete a bad
-// memory with an editor. An agent that writes into the human's file eventually
-// argues with it.
+// 保持它们分开，意味着人类可以
+// 审查 Agent 决定记住了什么，
+// 而不必把自己写的指令也翻一遍，
+// 还可以用编辑器删掉一条错误的
+// 记忆。如果 Agent 也往人类的文件
+// 里写东西，迟早会跟人类的意见
+// 对不上。
 var memoryFiles = []string{"AGENTS.md", "MEMORY.md"}
 
 const memoryFileForWriting = "MEMORY.md"
 
-// loadMemory reads whichever memory files exist and returns them as one block,
-// plus the list of files found.
+// loadMemory 读取所有存在的记忆
+// 文件，把它们作为一整块返回，
+// 再加上找到的文件列表。
 //
-// Note what it does NOT do: watch the files, re-read them per turn, or notice
-// that the agent just appended to MEMORY.md. That is deliberate and it is a
-// cache decision, not an oversight — memory sits in the system prompt, so
-// re-reading it mid-session would rewrite the prefix and invalidate everything.
-// A note written now takes effect next session. Trading a turn of latency for a
-// session of cache hits is the right side of that trade, and it is worth
-// knowing you made it.
+// 注意它**不**做什么：不监视文件，
+// 不在每个回合重新读取它们，也
+// 不会注意到 Agent 刚刚往 MEMORY.md
+// 里追加了内容。这是故意的，是
+// 一个缓存上的决定，不是疏忽——
+// 记忆坐在系统提示词里，会话
+// 中途重读它会重写前缀，让一切
+// 缓存失效。现在写下的笔记，
+// 要到下一次会话才会生效。用
+// 一回合的延迟，换一整个会话的
+// 缓存命中，这笔交易划算，而且
+// 值得你清楚意识到自己做了这个
+// 选择。
 func loadMemory(dir string, bus *Bus) (string, []string) {
 	var b strings.Builder
 	var found []string
@@ -106,17 +140,26 @@ func loadMemory(dir string, bus *Bus) (string, []string) {
 	return b.String(), found
 }
 
-// remember appends a note to the agent's memory file.
+// remember 把一条笔记追加进
+// Agent 的记忆文件。
 //
-// This exists for the `/remember` command, and it is worth being clear about
-// why there is a Go function here at all when the agent could run
-// `echo ... >> MEMORY.md` itself. It could, and the system prompt tells it so.
-// But leaving memory entirely to the model's discretion means it happens
-// roughly never: models do not spontaneously decide to write notes, because
-// nothing in the current turn rewards it. Every agent that actually accumulates
-// useful memory has an explicit trigger — a command, an end-of-session hook, a
-// prompt that asks. The mechanism being trivially simple does not make the
-// policy question go away.
+// 这是为 `/remember` 命令而存在的，
+// Agent 明明可以自己运行
+// `echo ... >> MEMORY.md`，这里却
+// 还专门写了一个 Go 函数，这一点
+// 值得说清楚为什么。它确实可以，
+// 系统提示词里也是这么告诉它的。
+// 但把记忆完全交给模型自行决定，
+// 就意味着它几乎从不会发生：
+// 模型不会自发决定写笔记，因为
+// 当前回合里没有任何东西会奖励
+// 这么做。每个真正积累起有用
+// 记忆的 Agent，都有一个显式的
+// 触发点——一条命令、一个会话
+// 结束钩子、一句会主动问的
+// prompt。机制本身简单得不值
+// 一提，但这并不会让策略问题
+// 跟着消失。
 func remember(dir, note string) error {
 	path := filepath.Join(dir, memoryFileForWriting)
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
@@ -124,25 +167,33 @@ func remember(dir, note string) error {
 		return err
 	}
 	defer f.Close()
-	// Datestamped, because a memory whose age you cannot tell is a memory you
-	// cannot decide to delete. Six months of undated notes is a file nobody
-	// prunes and everybody stops reading.
+	// 打上日期戳，因为一条你判断不出
+	// 年龄的记忆，就是一条你没法
+	// 决定删不删的记忆。六个月不带
+	// 日期的笔记，攒成的是一个没人
+	// 修剪、所有人都不再读的文件。
 	_, err = fmt.Fprintf(f, "\n- (%s) %s\n", time.Now().Format("2006-01-02"), strings.TrimSpace(note))
 	return err
 }
 
 // ---------------------------------------------------------------------------
-// Stable context: goes in the system prompt
+// 稳定上下文：进入系统提示词
 // ---------------------------------------------------------------------------
 
-// stableContext describes things that cannot change while the process runs.
+// stableContext 描述的是进程运行
+// 期间不会改变的东西。
 //
-// The cwd is here rather than in the volatile block on purpose: the agent's
-// shell is not persistent (each command is a fresh process, stage 00), so `cd`
-// inside a command cannot move it. The one thing that would make this wrong is
-// giving the agent a persistent shell — at which point cwd becomes volatile and
-// has to move to the other block. Worth noticing how a change in the execution
-// model propagates straight into the cache layout.
+// cwd 之所以在这里，而不是在
+// 易变块里，是故意安排的：Agent
+// 的 shell 不是持久的（每个命令
+// 都是一个新进程，阶段 00），
+// 所以命令内部的 `cd` 无法真正
+// 移动它。唯一会让这个假设变错
+// 的，是给 Agent 一个持久 shell——
+// 到那时 cwd 就变成了易变的，
+// 必须挪到另一块里去。值得
+// 留意执行模型上的一个改动，
+// 是如何直接传导进缓存布局的。
 func stableContext(shell, cwd string) string {
 	return fmt.Sprintf(`<environment>
 os: %s/%s
@@ -152,24 +203,33 @@ working directory: %s
 }
 
 // ---------------------------------------------------------------------------
-// Volatile context: frozen into one message, once
+// 易变上下文：冻结到一条消息，一次
 // ---------------------------------------------------------------------------
 
-// volatileContext takes a snapshot of the things that move.
+// volatileContext 取的是那些会
+// 变化的东西的快照。
 //
-// It runs git, which costs a process. That is affordable once per user turn and
-// would not be affordable once per request — another reason the snapshot is
-// attached to the user's message rather than rebuilt at request time. The cheap
-// design and the cache-correct design happen to be the same design here, which
-// is usually a sign the boundary is in the right place.
+// 它会运行 git，这要花掉一个
+// 进程的开销。这份开销，每个
+// 用户回合负担得起，但换成每个
+// 请求都要负担，就不行了——这
+// 也是快照被附加在用户消息上，
+// 而不是在请求时重新构建的另
+// 一个原因。便宜的设计和对缓存
+// 友好的设计，在这里恰好是同
+// 一个设计，这通常就是边界
+// 划对了地方的迹象。
 func volatileContext(shell string, now time.Time) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "<now>%s</now>\n", now.Format("2006-01-02 15:04:05 -0700"))
 
-	// One command, one process, everything we want. The `|| true` matters: this
-	// runs in directories that are not repositories, and a context probe that
-	// reports failure as content teaches the model that its environment is
-	// broken.
+	// 一个命令，一个进程，所有我们
+	// 想要的东西。`|| true` 很重要：
+	// 这段命令会在不是 git 仓库的
+	// 目录里运行，而且，如果这个
+	// 上下文探针把失败当成内容原样
+	// 报告出来，就等于在告诉模型：
+	// 你的环境坏了。
 	const gitProbe = `git rev-parse --abbrev-ref HEAD 2>/dev/null && ` +
 		`git status --porcelain 2>/dev/null | wc -l && ` +
 		`git log -1 --format=%s 2>/dev/null || true`
@@ -186,14 +246,21 @@ func volatileContext(shell string, now time.Time) string {
 	return strings.TrimSpace(b.String())
 }
 
-// userTurn builds the message for one thing the human typed, with the volatile
-// snapshot frozen alongside it.
+// userTurn 为人类输入的某一样
+// 东西构建消息，同时把易变
+// 快照冻结在它旁边。
 //
-// Two blocks rather than one concatenated string, because stage 06 renders them
-// differently: the God view shows exactly what was injected, and the Model view
-// shows the message as the model received it. Merging them here would make that
-// distinction unrecoverable — and "what did the model actually see" is a
-// question you can only answer if you never threw the answer away.
+// 两块，而不是拼成一个字符串，
+// 是因为阶段 06 会用不同方式
+// 呈现它们：上帝视角显示的是
+// 究竟注入了什么，模型视角
+// 显示的则是模型实际收到的
+// 那条消息。要是在这里把两者
+// 合并，这个区别就再也恢复
+// 不了——而"模型实际看到了
+// 什么"这个问题，只有在你从来
+// 没有把答案扔掉的前提下，
+// 才回答得出来。
 func userTurn(text, volatile string) Msg {
 	m := Msg{Role: RoleUser}
 	if volatile != "" {

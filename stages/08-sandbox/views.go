@@ -1,33 +1,31 @@
-// Stage 06 — three views of one session, and why they have to disagree.
+// 阶段 06 —— 一个会话的三个视图，以及为什么这三者注定不一致。
 //
-// A trace holds two different stories and most tools show you only the first:
+// 一个 trace 里有两个不同的故事，大多数工具只会给你看第一个：
 //
-//	GOD   what happened. Every event, in order, with its timings, its token
-//	      counts, its exit codes and its gate verdicts. Nothing is hidden,
-//	      including the things that were never sent to the model.
+//	GOD   发生了什么。每个事件，按顺序，带有它的时序、它的 token
+//	      计数、它的退出码和它的权限闸裁决。什么都没有隐藏，
+//	      包括从不发送给模型的东西。
 //
-//	MODEL what the model saw. Not a reconstruction — the *actual bytes*, decoded
-//	      out of the request event stage 02 has been recording since it existed.
+//	MODEL 模型看到了什么。不是重建出来的——而是**实际字节**：从
+//	      阶段 02 打从一开始就在录制的请求事件里解码出来的。
 //
-//	WIRE  those bytes, unmodified, for when the answer is in the punctuation.
+//	WIRE  那些字节，未修改，用于当答案在标点中的时候。
 //
-// The reason to build all three is that the gap between the first two is where
-// agent bugs live. Every one of these is invisible unless you can put the two
-// side by side:
+// 构建这三者的原因就是：前两者之间的差距，正是 Agent bug 藏身的地
+// 方。而下面每一条，除非你能把两者并排放在一起看，否则都是看不见
+// 的：
 //
-//   - The model reasoned for four hundred tokens and none of it is in the next
-//     request, because thinking is dropped from the history.
-//   - The user typed nine words and the model received nine words plus an
-//     environment block it never mentioned.
-//   - A tool printed 40kB and the model was given 8kB with a truncation marker.
-//   - Thirty turns happened and the model can see three messages, because the
-//     other twenty-seven were compacted into a paragraph.
+//   - 模型推理了四百个 token，其中没有一个在下一个请求中，因为思考从
+//     历史记录中被删除。
+//   - 用户输入了九个单词，模型收到九个单词加一个它从未提到的环境块。
+//   - 一个工具打印了 40kB，模型只拿到 8kB，外加一个截断标记。
+//   - 三十个回合过去了，模型能看到的却只有三条消息，因为其他二十七条
+//     被压缩成了一个段落。
 //
-// That last one is the whole reason this chapter follows stage 05. After a
-// compaction, **the history that happened and the history the model has are
-// different objects**, and an agent that starts behaving strangely is usually
-// an agent whose model view no longer contains the thing you are asking it
-// about. You cannot debug that from a chat log.
+// 最后这一条，就是这一章排在阶段 05 之后的全部原因。压缩之后，**发
+// 生过的历史，和模型手上的历史，成了两个不同的对象**——一个 Agent
+// 一旦开始表现古怪，通常就是因为它的模型视角里，已经不再包含你正在
+// 问它的那件事。你不能从聊天日志中调试这个。
 package main
 
 import (
@@ -39,17 +37,17 @@ import (
 )
 
 // ---------------------------------------------------------------------------
-// Decoding a recorded request
+// 解码一个录制的请求
 // ---------------------------------------------------------------------------
 
-// wireBlock is one piece of content, in whichever protocol produced it.
+// wireBlock 是一条内容，无论哪个协议产生了它。
 type wireBlock struct {
 	Kind   string // "text" | "thinking" | "tool_call" | "tool_result"
 	Text   string
 	ID     string
 	Name   string
 	Args   string
-	Cached bool // this block carried a cache_control marker
+	Cached bool // 这个块携带了一个 cache_control 标记
 }
 
 type wireMsg struct {
@@ -57,13 +55,13 @@ type wireMsg struct {
 	Blocks []wireBlock
 }
 
-// wireView is a request body, decoded far enough to read.
+// wireView 是一个请求体，解码得足以阅读。
 //
-// Deliberately not built on the adapters' own structs. Those types describe
-// what this agent *sends*; this one has to be able to read a trace recorded by
-// a different build, or a hand-written request, or a protocol whose adapter was
-// deleted three versions ago. A viewer that can only parse what its own encoder
-// produces stops working exactly when you need it — after a change.
+// 有意不建立在适配器自己的结构上。这些类型描述了这个 Agent **发送**的
+// 东西；这一个必须能读取一条 trace——不管它是由另一个构建版本录制的，
+// 是一次手写请求，还是由一个三个版本前就已经删掉了适配器的协议录制的。
+// 一个查看器如果只能解析自己编码器生成的东西，就会在你最需要它的时候
+// 失灵——也就是在一次改动之后。
 type wireView struct {
 	Protocol   string
 	Model      string
@@ -76,13 +74,12 @@ type wireView struct {
 	Err        string
 }
 
-// decodeRequest sniffs the protocol and decodes.
+// decodeRequest 嗅探协议特征并解码。
 //
-// The sniff is structural, not a version header: a top-level `system` key means
-// the Anthropic shape, its absence means the OpenAI shape. That is exactly the
-// difference stage 03 called DISAGREEMENT 1, and it is the most reliable
-// discriminator precisely because it is the one thing neither protocol can
-// imitate without becoming the other.
+// 这种嗅探是结构性的，不是靠版本标头：顶级 `system` 键意味着
+// Anthropic 形状，它的缺失则意味着 OpenAI 形状。这正是阶段 03 称为
+// **分歧 1** 的那个差异，而它之所以是最可靠的判别依据，恰恰是因为
+// 这是唯一一件两个协议都无法模仿、又不因此变成对方的事情。
 func decodeRequest(raw json.RawMessage) wireView {
 	v := wireView{Bytes: len(raw)}
 	var probe struct {
@@ -186,10 +183,10 @@ func viewOpenAIRequest(raw json.RawMessage, v *wireView) {
 		return
 	}
 	for _, m := range body.Messages {
-		// The system prompt is messages[0] on this protocol. Lifting it into
-		// the System field is what lets the Model view render both protocols
-		// with one function — and it is a small, honest lie about the wire,
-		// which is why the Wire view exists next door.
+		// 这个协议上，系统提示词就是 messages[0]。把它提到
+		// System 字段里，是模型视角能用同一个函数渲染两种协议的原因——
+		// 这也是一个关于线上情况的、小小的、诚实的谎言，这就是为什么线上视
+		// 角就在隔壁。
 		if m.Role == "system" && len(v.Messages) == 0 {
 			v.System = append(v.System, wireBlock{Kind: "text", Text: m.Content})
 			continue
@@ -214,20 +211,20 @@ func viewOpenAIRequest(raw json.RawMessage, v *wireView) {
 }
 
 // ---------------------------------------------------------------------------
-// The session index
+// 会话索引
 // ---------------------------------------------------------------------------
 
-// call is one model call: the request that started it and everything the
-// session did until the next one.
+// call 是一次模型调用：包括启动它的那个请求，以及会话在下一次调用
+// 之前所做的一切。
 type call struct {
 	Seq     int
 	Turn    int
 	At      time.Time
 	Request json.RawMessage
-	Events  []Event // this call's slice of the stream, request included
+	Events  []Event // 这个调用在事件流里的那一段，包括请求
 
 	Usage      *Usage
-	Compaction bool // this call was the summariser, not the agent
+	Compaction bool // 这个调用是汇总者，不是 Agent
 }
 
 type session struct {
@@ -236,25 +233,24 @@ type session struct {
 	Calls  []call
 	Start  time.Time
 
-	// Display is Events with delta runs merged. A streamed response is a
-	// thousand text_delta events of four characters each, and a viewer that
-	// renders one row per event is a viewer nobody can scroll. Collapsing is
-	// done ONCE, here, and every part of the God view — rendering, clicking,
-	// scroll positions — reads this slice, because a line index that means one
-	// thing to the renderer and another to the click handler is a bug that only
-	// shows up when someone uses the mouse.
+	// Display 是把增量的连续段合并之后得到的 Events。一个流式响应是一
+	// 千个四字符的 text_delta 事件，一个每个事件渲染一行的查看器，就是
+	// 一个没人能滚动的查看器。折叠这个动作，**只在这里**做一次，上帝视
+	// 角的每一部分——渲染、点击、滚动位置——读取的都是这个切片，因为如
+	// 果一个行索引对渲染器来说是一个意思，对点击处理程序来说又是另一个
+	// 意思，那这种 bug 就只会在有人真的用鼠标点的时候才会冒出来。
 	Display []Event
 
 	Total       Usage
 	Compactions int
 }
 
-// indexSession slices the flat event stream into calls.
+// indexSession 把扁平的事件流切成一个个调用。
 //
-// Every call begins at a KindRequest, which is the only event guaranteed to
-// exist for one — a call that died before its first token still has one. Anchor
-// the index on something the failure path also produces, or your viewer goes
-// blank precisely on the sessions worth viewing.
+// 每个调用都始于一个 KindRequest，这是唯一能保证每次调用都会有的事
+// 件——哪怕一次调用在它的第一个 token 之前就已经死掉，它也仍然会有
+// 这个事件。把索引锚定在失败路径也会产生的东西上，不然你的查看器偏
+// 偏会在最值得看的那些会话上，变成一片空白。
 func indexSession(path string, events []Event) *session {
 	s := &session{Path: path, Events: events}
 	if len(events) > 0 {
@@ -289,14 +285,13 @@ func indexSession(path string, events []Event) *session {
 	return s
 }
 
-// collapseDeltas merges each run of same-kind streaming deltas into one event
-// whose Text is the joined text and whose Bytes is how many arrived.
+// collapseDeltas 把每一段连续的、同类型流式增量，合并成一个事件：它的
+// Text 是拼接后的文本，Bytes 是一共到达了多少。
 //
-// The merged event keeps the Seq of the FIRST delta in the run. That choice
-// matters for the click handler: clicking a collapsed row should select the
-// call the run started in, and a run that straddles a boundary — which happens
-// when a response ends and the next request begins — would otherwise jump you
-// forward a call.
+// 合并后的事件，保留的是这一段连续增量里**第一个**的 Seq。这个选择对
+// 点击处理程序很重要：点击一个折叠后的行，选中的应该是这段连续增量开
+// 始的那次调用；一个跨越边界的连续段——这种情况发生在一次响应结束、
+// 下一次请求开始的地方——不然就会把你跳到下一个调用去。
 func collapseDeltas(events []Event) []Event {
 	streaming := func(k Kind) bool {
 		return k == KindTextDelta || k == KindReasoningDelta || k == KindToolArgsDelta
@@ -323,7 +318,7 @@ func collapseDeltas(events []Event) []Event {
 }
 
 // ---------------------------------------------------------------------------
-// Rendering. Every view returns plain lines; the TUI does the scrolling.
+// 渲染。每个视图返回普通行；TUI 做滚动。
 // ---------------------------------------------------------------------------
 
 const (
@@ -335,13 +330,13 @@ const (
 	sWarn = "\x1b[33m"
 	sBad  = "\x1b[31m"
 	sSys  = "\x1b[35m"
-	sSel  = "\x1b[7m" // reverse video for the selected row
+	sSel  = "\x1b[7m" // 选定行的反色
 )
 
 func dim(s string) string  { return sDim + s + sOff }
 func bold(s string) string { return sBold + s + sOff }
 
-// godView renders the whole event stream.
+// godView 渲染整个事件流。
 func (s *session) godView(w int, selSeq int) ([]string, int) {
 	var out []string
 	selLine := 0
@@ -358,10 +353,9 @@ func (s *session) godLine(e Event, w int) []string {
 	off := e.T.Sub(s.Start).Seconds()
 	head := fmt.Sprintf("%5d %7.2fs ", e.Seq, off)
 
-	// Depth gutter. This is what the God view is FOR once agents nest: the
-	// terminal renderer had to give up on interleaving concurrent children
-	// (see render.go), and a scrollable list does not, because it is not
-	// competing for one cursor. Everything the plain output dropped is here.
+	// 深度沟。这就是一旦 Agent 开始嵌套，上帝视角的**用途**所在：终端渲染
+	// 器不得不放弃交错显示并发的子 Agent（看 render.go），而一个可滚动列表
+	// 不必，因为它不需要争抢同一个光标。普通输出丢弃的一切，都在这里。
 	gutter := strings.Repeat("│ ", e.Depth)
 
 	line := func(style, kind, rest string) []string {
@@ -374,10 +368,10 @@ func (s *session) godLine(e Event, w int) []string {
 	case KindTurnStart:
 		return line(sDim, "turn_start", dim(fmt.Sprintf("turn %d", e.Turn)))
 	case KindToolCallStart:
-		// Without its own case this rendered blank: the payload is in ToolID and
-		// ToolName, not in Text. It earns a row because the gap between it and
-		// tool_call_ready is where the arguments streamed — a long gap here means
-		// the model spent real time writing one command.
+		// 没有专属 case 的话，这里会被渲染成空白：payload 在 ToolID 和 ToolName
+		// 里，不在 Text 里。它赚得一行，是因为它和 tool_call_ready 之间的间隙，
+		// 正是参数流式传输的地方 —— 这里间隙一长，就说明模型是真的花了时间在写
+		// 这一个命令。
 		return line(sDim, "tool_call_start", dim(e.ToolName+"  "+e.ToolID))
 
 	case KindTurnEnd:
@@ -390,10 +384,10 @@ func (s *session) godLine(e Event, w int) []string {
 	case KindFirstToken:
 		return line(sDim, "first_token", dim(fmt.Sprintf("TTFT %dms", e.Millis)))
 	case KindTextDelta, KindReasoningDelta, KindToolArgsDelta:
-		// A collapsed run. Both numbers are shown — how many frames arrived and
-		// how much text they carried — because their ratio is the shape of the
-		// stream, and a provider that suddenly sends one delta per token
-		// instead of one per chunk is visible here and nowhere else.
+		// 一个折叠后的连续段。两个数字都会显示——有多少帧抵达，以及它们总
+		// 共带了多少文本——因为这两者的比例，就是这个流本身的形状；如果某
+		// 个供应商突然改成每个 token 发一次增量、而不是每个块发一次，这种
+		// 变化只有在这里才看得出来，其他任何地方都看不出。
 		st := sDim
 		if e.Kind == KindTextDelta {
 			st = ""
@@ -403,11 +397,10 @@ func (s *session) godLine(e Event, w int) []string {
 	case KindToolCallReady:
 		return line(sAsst, "tool_call", "$ "+oneLine(e.Command, w-34))
 	case KindCommandStart:
-		// Without its own case this fell through to the default, which prints
-		// e.Text — and a command_start carries its payload in e.Command, so the
-		// row rendered blank. A viewer with a silently empty row is worse than
-		// one that omits the event: it looks like something happened that has
-		// no description.
+		// 这里没有专属的 case，于是落到了 default 分支，而 default 打印的是
+		// e.Text——但 command_start 的有效负载是放在 e.Command 里的，所以这
+		// 一行渲染出来是空的。一个悄悄留下空行的查看器，比干脆省略这个事件
+		// 的查看器更糟：看上去像是发生了什么事，却没有任何描述。
 		return line(sDim, "command_start", dim(oneLine(e.Command, w-34)))
 
 	case KindGateVerdict:
@@ -449,10 +442,9 @@ func (s *session) godLine(e Event, w int) []string {
 	case KindCacheInvalidated:
 		return line(sBad, "cache_lost", sBad+oneLine(e.Text, w-34)+sOff)
 	case KindSandboxExec:
-		// The row that makes a shell command legible: one line per program the
-		// shell actually ran, after expansion. A pipeline is several of these;
-		// a loop is many. That volume is why the terminal renderer hides them
-		// and the composer does not.
+		// 让一个 shell 命令变得可读的这一行：shell 实际运行的每个程序各占一
+		// 行，都在展开之后。一个 pipeline 有其中好几行；一个循环有很多行。这
+		// 么大的量，就是终端渲染器把它们藏起来、而 composer 不藏的原因。
 		return line(sAsst, "sandbox exec", dim(oneLine(e.Command, w-40)))
 
 	case KindSandboxOpen:
@@ -469,8 +461,8 @@ func (s *session) godLine(e Event, w int) []string {
 		if e.Usage != nil {
 			u = *e.Usage
 		}
-		// Spent next to returned, because that ratio is the reason the subagent
-		// existed and it is not visible anywhere else in the trace.
+		// 把"花费"放在"返回"旁边，是因为这个比率正是子 Agent 存在的原因，在
+		// trace 里的其他地方都看不到。
 		return line(sUser, "SUBAGENT ←", dim(fmt.Sprintf("%s · %d turns · %d prompt + %d out · %dms → %s returned",
 			e.ToolName, e.Turn, u.Prompt(), u.Output, e.Millis, humanBytes(e.Bytes))))
 
@@ -488,12 +480,12 @@ func (s *session) godLine(e Event, w int) []string {
 	return line(sDim, string(e.Kind), dim(oneLine(e.Text, w-32)))
 }
 
-// modelView renders what the model saw on one call.
+// modelView 渲染模型在某一次调用上看到的东西。
 //
-// The header is the point of the whole chapter: it puts "events so far" next to
-// "messages the model can see" on the same line. Before a compaction those
-// numbers rise together. After one, they part company permanently, and that
-// divergence is the single most useful number in a long agent session.
+// 标头是整章的重点：它把"迄今为止的事件数"和"模型能看到的消息
+// 数"并排放在同一行上。压缩之前，这些数字会一起上升；而压缩过后，
+// 它们就永远分道扬镳了，这个差距，就是一场长 Agent 会话里最有用的
+// 一个数字。
 func (s *session) modelView(idx, w int) []string {
 	if idx < 0 || idx >= len(s.Calls) {
 		return []string{dim("  no calls in this trace")}
@@ -567,7 +559,7 @@ func (s *session) modelView(idx, w int) []string {
 	return out
 }
 
-// blockLines renders one content block, wrapped to the window.
+// blockLines 渲染一个内容块，按窗口宽度换行。
 func blockLines(b wireBlock, w int, prefix string) []string {
 	var out []string
 	body := func(s string) {
@@ -595,7 +587,7 @@ func blockLines(b wireBlock, w int, prefix string) []string {
 	return out
 }
 
-// wireLines pretty-prints the raw request body.
+// wireLines 格式化打印原始请求体。
 func (s *session) wireView(idx, w int) []string {
 	if idx < 0 || idx >= len(s.Calls) {
 		return []string{dim("  no calls in this trace")}
@@ -611,17 +603,17 @@ func (s *session) wireView(idx, w int) []string {
 		"",
 	}
 	for _, l := range strings.Split(pretty.String(), "\n") {
-		// Wrapped, not truncated: a 30kB system prompt on one line is the
-		// commonest thing you want to read in this view, and a viewer that cuts
-		// it at the window edge is a viewer that hides the answer.
+		// 换行，而不是截断：在这个视图里，你最常想读到的，就是挤在一行里
+		// 的 30kB 系统提示词；一个在窗口边缘把它截断的查看器，就是一个把
+		// 答案藏起来的查看器。
 		out = append(out, wrapCols("  "+l, max(20, w-2))...)
 	}
 	return out
 }
 
-// oneLine flattens whitespace so a multi-line value fits one row of the God
-// view. Newlines become ⏎ rather than disappearing, because "this string
-// contained newlines" is frequently the bug.
+// oneLine 展平空白，好让一个多行的值，能塞进上帝视角的一行里。换
+// 行符会变成 ⏎ 而不是直接消失，因为"这个字符串里有换行符"这件事本
+// 身，往往就是 bug 所在。
 func oneLine(s string, w int) string {
 	s = strings.ReplaceAll(strings.TrimRight(s, "\n"), "\n", dim("⏎ "))
 	if w < 8 {

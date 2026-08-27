@@ -1,7 +1,6 @@
-# Stage 06 — The Composer
+# 阶段 06 — The Composer
 
-A trace holds two different stories, and every tool you have used shows you only
-the first.
+一个 trace 讲述两个不同的故事，你用过的每个工具都只给你看第一个。
 
 ```
 GOD     what happened.  Every event, with its timings, tokens, exit codes and
@@ -13,8 +12,7 @@ MODEL   what the model saw.  Not a reconstruction: the actual bytes, decoded out
 WIRE    those bytes, unmodified, for when the answer is in the punctuation.
 ```
 
-Building all three is the point. **The gap between the first two is where agent
-bugs live**, and you cannot see a gap with one view.
+构建这三个视角才是重点。**前两者之间的间隙，就是 Agent bug 藏身的地方**，单一视角看不出这道间隙。
 
 ```sh
 go build -o agent ./stages/06-the-composer
@@ -23,9 +21,9 @@ go build -o agent ./stages/06-the-composer
 
 ---
 
-## The line the whole chapter is for
+## 这章存在的那一行
 
-Open the Model view on any call after a compaction:
+在任意一次压缩之后的调用上，打开模型视角：
 
 ```
   call 12 of 24   openai · mimo-v2.5 · max_tokens 4096 · 16.4kB
@@ -33,33 +31,22 @@ Open the Model view on any call after a compaction:
   ⚠ 1 compaction(s) happened before this call: everything below is what SURVIVED, not what happened
 ```
 
-**629 events happened. The model can see eleven messages.** Before a compaction
-those two numbers rise together. After one they part company permanently, and
-the divergence never closes.
+**629 个事件已经发生。模型能看到十一条消息。** 压缩之前，这两个数字一起上升；压缩之后，它们永久分家，间隙再也不会闭合。
 
-Every "the agent forgot what I told it" bug is that line. So is every "it keeps
-redoing work it already did", and every "it contradicted itself". They are all
-the same bug — *the thing you are asking about is not in the model's context* —
-and a chat log cannot show it to you, because a chat log renders the God view
-and calls it the conversation.
+每一个"Agent 忘了我告诉过它的事"这种 bug，都是这一行；每一个"它老在重复已经做过的工作"，每一个"它自相矛盾"，也都是同一回事。它们其实是同一个 bug——*你问的东西根本不在模型的上下文里*——而聊天记录展示不出这一点，因为聊天记录渲染的是上帝视角，却把它叫作对话。
 
-Four more differences the two views expose, all of them normal, all of them
-invisible from one side:
+这两种视角还暴露了四个更多的差异，全都是常见的，全都从一边看不到：
 
-- The model reasoned for four hundred tokens and **none of it is in the next
-  request**, because thinking is dropped from the history (stage 03).
-- The user typed nine words and the model received nine words **plus an
-  environment block** it never mentions (stage 05).
-- A command printed 40kB and the model was handed 8kB **with a truncation
-  marker** (stage 01).
-- The `cache breakpoint` markers sit on two specific blocks, and after a
-  compaction **the rolling one is somewhere else entirely** (stage 04).
+- 模型推理用了四百个 token，**其中没有一个进了下一个请求**，因为思考的内容会被从历史里删掉（阶段 03）。
+- 用户敲了九个词，模型收到的却是九个词**外加一个环境块**——这个环境块，模型从不提及（阶段 05）。
+- 一个命令打印了 40kB，模型却只拿到 8kB，**外加一个截断标记**（阶段 01）。
+- `cache breakpoint` 标记停在两个具体的块上，压缩之后**滚动的那个完全换了地方**（阶段 04）。
 
 ---
 
-## What a TUI actually is
+## TUI 实际上是什么
 
-Strip the frameworks away and it is three functions and a `select`:
+剥去框架，它就是三个函数和一个 `select`：
 
 ```
 bytes → key           decoding what the terminal sent          keys.go
@@ -71,44 +58,33 @@ state → lines         what it should look like                 views.go
 for {
     select {
     case chunk := <-in:      // keyboard
-    case <-escTimer:         // the Escape ambiguity, below
-    case <-t.resize:         // the window changed
+    case <-escTimer:         // Escape 的歧义，下面
+    case <-t.resize:         // 窗口改变了
     }
     c.draw(t)
 }
 ```
 
-That loop is thirty lines. Everything difficult lives in the three files around
-it — the terminal has to be given back, the keyboard speaks a language with an
-ambiguity in it, and a column is not a byte. A framework hides all three, which
-is fine right up until one of them misbehaves and you have no idea which.
+那个循环只有三十行。真正困难的东西，都在它周围那三个文件里——终端用完要还回去，键盘说的是一种带歧义的语言，一个列也不等于一个字节。框架把这三样都藏了起来，这样很好——直到其中一个出问题，你却完全不知道是哪个。
 
-Dependencies for the whole thing: the standard library, plus `golang.org/x/sys`
-for three ioctls on Unix and five console calls on Windows. Same as every other
-stage.
+整个项目的依赖：标准库，加上 `golang.org/x/sys`——Unix 上用三个 ioctl，Windows 上用五个控制台调用。和其他每个阶段一样。
 
 ---
 
-## The contract you take on in raw mode
+## 原始模式下你接纳的契约
 
-A TUI needs four things from the terminal, and every one of them is a **global
-mutation of a resource you do not own**:
+一个 TUI 需要向终端要来四样东西，而每一样，都是**对一份不属于你的资源做的全局性变异**：
 
-| | why |
+| | 为什么 |
 |---|---|
-| raw mode | keys arrive as bytes; Ctrl-C stops being a signal |
-| alternate screen | the user's scrollback is set aside and handed back intact |
-| mouse reporting | clicks and the wheel arrive as escape sequences |
-| bracketed paste | pasted text arrives wrapped, so it is not executed as keys |
+| 原始模式 | 按键以字节形式到达；Ctrl-C 不再是一个信号 |
+| 备用屏 | 用户的滚屏历史会被妥善搁置一旁，事后原样归还 |
+| 鼠标报告 | 点击和滚轮都会以转义序列的形式到达 |
+| 括号粘贴模式 | 粘贴的文本到达时外面裹着一层标记，因此不会被当作按键执行 |
 
-Turning them on is four `printf`s. Turning them off is the entire problem: the
-process that turned them on is the only thing in the world that knows how. If it
-dies without doing so, the user is left at a shell with no echo, no line
-editing, no cursor and broken mouse selection. They will type `reset` if they
-know to. Most people close the window.
+打开它们是四个 `printf`。关闭它们才是整个问题所在：打开它们的那个进程，是这世上唯一知道该怎么关掉它们的东西。如果它没来得及关掉就先死了，用户就会被撂在一个 shell 里——没有回显、没有行编辑、没有光标，连鼠标选择都是坏的。知道这招的人会输入 `reset`。大多数人直接关闭窗口。
 
-So this is stage 01's lesson pointed at a different resource. Four exits, and a
-real TUI meets all four:
+所以，这其实就是阶段 01 的教训，只是这次换了一个不同的资源。退出路径一共四条，一个真正的 TUI 得把这四条都处理好：
 
 ```go
 fn returns          the defer runs
@@ -121,35 +97,28 @@ SIGINT / SIGTERM    the handler restores, resets itself to the default, and
                     re-sends the signal to its own process
 ```
 
-That last one is deliberate rather than `os.Exit(130)`. A process killed by
-SIGTERM should *report* that it was killed by SIGTERM — its parent may be a
-shell, a supervisor, or a test harness that distinguishes signal death from a
-non-zero exit. Clean up without lying about how you died.
+那最后一个是刻意的，而不是 `os.Exit(130)`。一个被 SIGTERM 杀死的进程应该*报告*它被 SIGTERM 杀死——它的父进程可能是一个 shell、一个监督者，或者一个会区分"信号致死"和"非零退出"的测试宿主。清理可以，但别在自己是怎么死的这件事上撒谎。
 
-And one rule that quietly invalidates a habit which is correct everywhere else:
+还有一个规则，它静静地使一个在其他地方是正确的习惯无效：
 
-> **Once you have entered raw mode, `os.Exit` and `log.Fatal` are bugs.**
+> **一旦进入了原始模式，`os.Exit` 和 `log.Fatal` 就是 bug。**
 
-They skip deferred functions. A `log.Fatalf("bad config")` three layers down —
-the most ordinary line in Go — now leaves the terminal broken *and* prints its
-message onto an alternate screen the user will never see.
+它们会跳过延迟函数。藏在三层调用之下的一句 `log.Fatalf("bad config")`——Go 里最平常不过的一行——现在会让终端坏掉，*而且*把消息打印在用户永远看不到的备用屏上。
 
 ---
 
-## The Escape key is genuinely ambiguous
+## Escape 键真正存在歧义
 
-A lone `\x1b` at the end of the input buffer is either the Escape key, or the
-first byte of a sequence still arriving. **No decoder can tell from the bytes.**
+输入缓冲区末尾孤零零的一个 `\x1b`，要么是 Escape 键本身，要么是某个还在陆续抵达的序列的第一个字节。**没有任何解码器能单从字节上分辨是哪一种。**
 
-So the decoder does not try:
+所以解码器干脆不去下判断：
 
 ```go
 decodeKey(buf)        // lone ESC → ok=false: "I need more bytes"
 decodeKeyFinal(buf)   // called after a timeout produced nothing → keyEsc
 ```
 
-The policy — how long to wait — belongs to the event loop, which has a clock,
-and not to the decoder, which does not and should not:
+该等多久——这个策略属于事件循环，因为它有时钟；不属于解码器，因为解码器没有时钟，也不该有：
 
 ```go
 if len(buf) > 0 {
@@ -159,26 +128,15 @@ if len(buf) > 0 {
 }
 ```
 
-That one line arms and disarms the timer, and it is the whole mechanism.
+那一行启用和禁用计时器，它就是整个机制。
 
-Two things worth taking away. **This is why Escape feels very slightly late in
-every terminal application you have ever used** — including vim, and it is not a
-bug in any of them. And **the decoder is testable precisely because it has no
-clock**: a function that decided the timeout itself could only be tested by
-waiting.
+两点值得记住。**这就是为什么在你用过的每一个终端应用里，Escape 键都感觉慢半拍**——vim 也不例外，而这在其中任何一个里都不是 bug。而且**解码器正好因为它没有时钟，才是可测试的**：一个自己决定超时的函数，只能靠等待来测试。
 
-The same discipline covers the rest of the input language. Arrows arrive as
-`\x1b[A` *or* `\x1bOA` depending on whether the terminal is in application
-cursor mode — a decoder that only knows the first works until someone runs it
-inside `tmux`. Home and End arrive in **eight** different forms. A bracketed
-paste that is cut in half must report "incomplete", not deliver half a paste.
-Mouse coordinates use SGR encoding because the legacy one packs the column into
-`32 + n` and cannot name a column past 223 — which on a wide terminal is not an
-edge case, it is the right-hand half of the screen.
+同样一套严谨的做法，贯穿了输入语言的其余部分。箭头键到达时是 `\x1b[A` *或* `\x1bOA`，取决于终端是否处于应用光标模式——只认得前一种写法的解码器，能撑到有人在 `tmux` 里运行它为止。Home 和 End 键会以**八**种不同的形式到达。一次被切成两半的括号粘贴必须报告"不完整"，而不能只交付一半的粘贴内容。鼠标坐标用 SGR 编码，是因为旧式编码把列号塞进 `32 + n`，表示不了 223 之后的列——这在宽终端上根本不是什么边界情况，而是屏幕的整个右半边。
 
 ---
 
-## A column is not a byte, and it is not a rune either
+## 一列不是一个字节，它也不是一个 rune
 
 ```go
 len("你好世界")                    // 12   bytes
@@ -186,121 +144,75 @@ utf8.RuneCountInString("你好世界")  //  4   runes
 dispWidth("你好世界")               //  8   columns   ← the only one a terminal cares about
 ```
 
-`%-20s` aligns on bytes. Point it at a table of filenames and the first Chinese
-one shears the whole column. Then:
+`%-20s` 是按字节对齐的。把它用在一张文件名表格上，只要出现一个中文文件名，就会把整列拉得歪七扭八。接下来：
 
-- combining marks are **0** columns — `"é"` is 3 bytes, 2 runes, 1 column
-- fullwidth forms are **2** — `"ＡＢ"` is 4 columns
-- ANSI escapes are **0**, so `dispWidth("\x1b[31mred\x1b[0m")` is 3
+- 组合标记是**0**列——`"é"` 是 3 字节、2 rune、1 列
+- 全角形式是**2**——`"ＡＢ"` 是 4 列
+- ANSI 转义是**0**，所以 `dispWidth("\x1b[31mred\x1b[0m")` 是 3
 
-Three consequences the code has to handle, each of which is a corrupted frame if
-you get it wrong:
+代码必须处理三个后果，每一个只要搞错，出来的都是一帧破损的画面：
 
-**Truncation must not split a wide character.** With one column left and a
-2-column rune next, stop *before* it and pad the orphan column with a space. Half
-a CJK glyph is not a rendering artefact, it is a byte sequence the terminal
-cannot interpret.
+**截断不能切开宽字符。** 如果只剩一列空间，而接下来是个占 2 列的 rune，就要停在*它前面*，用一个空格把这个孤立的列补上。半个 CJK 字形不是什么渲染瑕疵，而是一段终端根本无法解析的字节序列。
 
-**Truncation must not split an escape sequence** — and if an SGR was still open
-at the cut, the result has to close it. Otherwise the colour leaks into
-everything drawn after it, for the rest of the session.
+**截断也不能切开转义序列**——要是切口处正好有个 SGR 还开着，就必须在结果里把它关上。不然颜色就会渗进它之后画的一切里，而且会渗到这个会话结束。
 
-**A line that overflows by one column wraps**, which pushes every line below it
-down by one and corrupts the entire frame. One cosmetic mistake, one broken
-screen. That is why `frameBytes` calls `truncCols` and not `s[:w]`.
+**溢出一列的行会自动换行**，把它下面的每一行都往下推一行，毁掉整个画面。一个外观上的小错误，一整个屏幕的崩坏。这就是为什么 `frameBytes` 调用的是 `truncCols`，而不是 `s[:w]`。
 
-Honestly stated, because pretending otherwise is worse than the limitation:
-`width.go` measures ZWJ emoji sequences too wide. `👨‍👩‍👧‍👦` measures 8 and draws 2.
-Fixing it properly needs grapheme-cluster segmentation (UAX #29), which is a
-real dependency, and the symptom without it — one user, ragged borders, a week
-later — is otherwise completely inscrutable.
+老实交代出来，因为假装没有这个限制，比这个限制本身更糟：`width.go` 测量 ZWJ emoji 序列时会量得太宽。`👨‍👩‍👧‍👦` 测量出 8，实际画出来却只占 2。
+要正确修复，需要字素群集分割（UAX #29），这是一个真正的依赖；没有它的话，症状——一个用户反馈，边框参差不齐，整整一周后才有人发现——会让人完全摸不着头脑。
 
 ---
 
-## Two platforms, and one asymmetry that changes the design
+## 两个平台，和一个改变设计的不对称
 
-The same shape as stage 01's `proc_unix.go` / `proc_windows.go`: identical
-contract, entirely different mechanism.
+这和阶段 01 的 `proc_unix.go` / `proc_windows.go` 是同一种形状：契约相同，机制完全不同。
 
 | | Unix | Windows |
 |---|---|---|
-| settings | one `termios` struct | two console-mode bit fields (in and out) |
-| raw mode | clear `ICANON`, `ECHO`, `ISIG`, `OPOST`, … | clear `ENABLE_LINE_INPUT`, `ENABLE_ECHO_INPUT`, `ENABLE_PROCESSED_INPUT` |
-| ANSI | assumed | opt-in on **both** handles |
-| size | `TIOCGWINSZ` | `GetConsoleScreenBufferInfo`, **window** rect not buffer |
-| resize | `SIGWINCH` | **nothing tells you** |
+| 设置 | 一个 `termios` 结构 | 两个控制台模式位字段（输入和输出） |
+| 原始模式 | 清除 `ICANON`、`ECHO`、`ISIG`、`OPOST`、… | 清除 `ENABLE_LINE_INPUT`、`ENABLE_ECHO_INPUT`、`ENABLE_PROCESSED_INPUT` |
+| ANSI | 假定 | **两个** handle 都选择加入 |
+| 大小 | `TIOCGWINSZ` | `GetConsoleScreenBufferInfo`，**window** rect 不是 buffer |
+| 调整大小 | `SIGWINCH` | **什么都不告诉你** |
 
-**There is no SIGWINCH on Windows**, so `watchResize` polls at 4Hz. That is not
-a shortcut; it is what is left after choosing the VT path. The Win32 way is to
-read `WINDOW_BUFFER_SIZE_EVENT` records off the console input queue — but
-`ENABLE_VIRTUAL_TERMINAL_INPUT` is exactly what turns that queue into a byte
-stream, and having asked for bytes you no longer get records. The trade is: a
-syscall every 250ms forever, in exchange for one key decoder instead of two.
+**Windows 上没有 SIGWINCH**，所以 `watchResize` 以 4Hz 轮询。这不是图省事的办法；这是选定了 VT 路径之后剩下的唯一选择。Win32 的方式是从控制台输入队列里读出 `WINDOW_BUFFER_SIZE_EVENT` 记录——但 `ENABLE_VIRTUAL_TERMINAL_INPUT` 恰恰会把那个队列变成一串字节流，一旦你要了字节，就再也拿不到记录了。代价是：每 250 毫秒一次、永远不停的系统调用，换来的是只用一个按键解码器，而不是两个。
 
-Both implementations return the same `<-chan struct{}`, capacity 1, dropping
-rather than blocking, so the event loop cannot tell which one it got. Coalescing
-is not an optimisation — dragging a window edge produces a notification per
-pixel row and every one of them means the same thing, "the size is different
-now, go and ask".
+两个实现都返回同一种 `<-chan struct{}`，容量为 1，只丢弃不阻塞，所以事件循环没法分辨自己收到的是哪一个。合并处理不是什么性能优化——拖动窗口边缘时，每一个像素行都会触发一次通知，而每一次的意思都一样："大小变了，去问一声"。
 
-Three more that cost an afternoon each if you meet them cold:
+还有三件事，你要是毫无准备地碰上，每一件都得花掉一个下午：
 
-- **`ENABLE_QUICK_EDIT_MODE` is on by default** and makes the mouse select text
-  instead of reaching your program. Clearing it requires also setting
-  `ENABLE_EXTENDED_FLAGS` in the same call — without that, the console ignores
-  you, silently. "My TUI gets no mouse events on Windows" is usually this.
-- **`ENABLE_VIRTUAL_TERMINAL_PROCESSING`** on the *output* handle is what makes
-  escape sequences be interpreted rather than printed. One API call, and the most
-  common "my Go TUI is broken on Windows" report.
-- **`TCGETS` vs `TIOCGETA`.** termios is POSIX and the struct is portable; the
-  ioctl numbers that read and write it are not. Linux and BSD chose different
-  names and different values, there is no portable spelling, and that is why
-  every terminal library in existence has a six-line file with a build tag on it.
-  This one has two: `term_ioctl_linux.go` and `term_ioctl_bsd.go`.
+- **`ENABLE_QUICK_EDIT_MODE` 默认是打开的**，会让鼠标去选取文本，而不是把事件送到你的程序里。要清除它，还得在同一次调用里设置 `ENABLE_EXTENDED_FLAGS`——不这么做，控制台会不声不响地无视你。"我的 TUI 在 Windows 上收不到鼠标事件"，通常就是这个原因。
+- **`ENABLE_VIRTUAL_TERMINAL_PROCESSING`** 设在*输出* handle 上，转义序列才会被解释，而不是被原样打印出来。只是一个 API 调用，却是"我的 Go TUI 在 Windows 上坏掉了"这条报告最常见的病因。
+- **`TCGETS` vs `TIOCGETA`。** termios 属于 POSIX 标准，这个结构体本身是可移植的；但读、写它的那些 ioctl 编号却不是。Linux 和 BSD 用的名字不同，值也不同，没有一种写法能通吃两边——这就是为什么世界上每一个终端库，都有一个带着构建标签的六行小文件。这个项目就有两个：`term_ioctl_linux.go` 和 `term_ioctl_bsd.go`。
 
 ---
 
-## Drawing without flicker
+## 无闪烁地绘制
 
-Two things `frameBytes` deliberately does not do.
+两件 `frameBytes` 刻意不做的事。
 
-**It never clears the screen.** A `\x1b[2J` before each frame is the classic
-cause of flicker, because for one refresh the terminal genuinely has nothing on
-it. Instead: home the cursor, and erase each line as you rewrite it
-(`\x1b[K`), so every cell is either overwritten or explicitly cleared and no
-frame is ever blank.
+**它从不清除屏幕。** 每帧之前来一次 `\x1b[2J` 是闪烁的经典成因——因为清屏之后、新一帧画出来之前的那一次刷新里，终端上真的什么都没有。于是换成这样：把光标归位，重写每一行时顺手擦掉这一行（`\x1b[K`），这样一来，每个字符格要么被直接覆写，要么被显式清空，没有一帧会是空白的。
 
-**It never writes line by line.** One buffer, one `Write`, wrapped in
-synchronised-output markers (`\x1b[?2026h` … `\x1b[?2026l`) which tell modern
-terminals not to paint until the frame is complete. Terminals that do not know
-the sequence ignore it, which is why it is safe to send unconditionally.
+**它从不逐行写。** 一个缓冲，一个 `Write`，用同步输出标记包裹（`\x1b[?2026h` … `\x1b[?2026l`），告诉现代终端：帧没画完之前不要动手绘制。不认得这个序列的终端会直接忽略它，所以无条件发送它是安全的。
 
-Streaming deltas get collapsed once, in `indexSession`, and every part of the
-God view reads the collapsed slice:
+流式 delta 会在 `indexSession` 里统一折叠一次，上帝视角的每个部分，读到的都是折叠后的切片：
 
 ```
   389   32.40s reasoning_delta ×11  The user wants me to continue compacting the transcript…
   400   32.98s text_delta ×165      1. GOAL⏎ The user instructed the agent to read `wire-notes.md`…
 ```
 
-A streamed response is a thousand four-character events, and one row per event
-is a view nobody can scroll. Collapsing happens in exactly one place because a
-line index that means one thing to the renderer and another to the click handler
-is a bug that only appears when someone uses the mouse. Both numbers are shown —
-frames and characters — because their ratio is the shape of the stream, and a
-provider that switches to one delta per token is visible here and nowhere else.
+一次流式响应就是一千个只有四个字符的事件；要是每个事件占一行，这个视角就没人滚得动了。折叠处理只放在一个地方，是因为同一个行索引，要是对渲染器是一个意思、对点击处理器又是另一个意思，那就成了一个只有用户动了鼠标才会暴露的 bug。两个数字都会显示——帧数和字符数——因为它们的比例就是这条流的形状；一旦有供应商改成每个 token 发一次 delta，也只有在这里才能看出来，别的地方都看不出。
 
 ---
 
-## A TUI you can grep
+## 一个你能 grep 的 TUI
 
 ```sh
 ./agent --composer-dump session.jsonl --view model --call 12 --width 96
 ```
 
-This is not a debug hatch. A TUI is a dead end for anything you want to diff,
-grep, paste into an issue, or assert on in CI — and *"what did the model see on
-call 12"* is exactly the kind of question whose answer you want to pipe:
+这不是一个调试舱口。一个 TUI，对任何你想拿去 diff、grep、粘贴进 issue 里，或者在 CI 里做断言的东西来说，都是一条死路——而*"模型在第 12 次调用时看到了什么"*，正好就是那种你想用管道解决的问题：
 
 ```sh
 # what changed in the model's view across a compaction?
@@ -308,16 +220,13 @@ diff <(agent --composer-dump t.jsonl --view model --call 11) \
      <(agent --composer-dump t.jsonl --view model --call 12)
 ```
 
-It cost eight lines, because rendering and drawing were already separate
-functions — `views.go` turns a session into `[]string`, `term.go` paints
-`[]string`. That is also how the TUI is tested: **a UI whose output can only be
-produced by pressing a key is a UI without tests.**
+只花了八行，因为渲染和绘制本来就是两个分开的函数——`views.go` 把一个会话变成 `[]string`，`term.go` 负责把 `[]string` 画出来。TUI 也正是这样被测试的：**一个只能靠按键才能产生输出的 UI，就是一个没有测试的 UI。**
 
 ---
 
-## From a real run
+## 来自一次真实运行
 
-The God view around a compaction, from the session in stage 05:
+一次压缩前后的上帝视角，来自阶段 05 那个会话：
 
 ```
   379   31.28s usage            prompt 5258 (full 138 · write 0 · read 5120) · out 47
@@ -340,96 +249,51 @@ The God view around a compaction, from the session in stage 05:
   570   38.39s request          openai · 5 messages · 0 cache marks · 10.2kB
 ```
 
-Everything stage 05 argued is on that screen. The summarising call is a real
-call (`prompt 3310 · out 506`) and it is entirely full price (`read 0`). The
-request before the compaction carried 15 messages and 5,258 prompt tokens; the
-one after carries 5 messages and 10.2kB. `TRUNCATED` on the `command_end` row says the model was
-given less than the command produced.
+阶段 05 主张的一切，都在这个屏幕上。负责生成摘要的那次调用是一次真实的调用（`prompt 3310 · out 506`），而且完全按全价计费（`read 0`）。压缩前的请求携带 15 条消息、5,258 个 prompt token；压缩后的请求只有 5 条消息、10.2kB。`command_end` 那一行上的 `TRUNCATED` 说明，模型拿到的比这条命令实际产生的要少。
 
-Press `m` on any of those rows and you get the messages that request contained.
-Press `w` and you get the bytes. That is the whole tool.
+在这些行里随便挑一行按下 `m`，就能看到那次请求包含的消息；按 `w` 则能看到字节内容。这就是这个工具的全部。
 
-### The Wire view was not telling the truth either
+### Wire 视角也没有说真话
 
-`WIRE` promises "those bytes, unmodified". Building the view is what proved it
-false — and the cause is a bug stage 03 already documented, sitting in a third
-place nobody had looked.
+`WIRE` 承诺的是"那些字节，未经修改"。而构建这个视角的过程，恰恰证明了这个承诺是假的——原因是一个阶段 03 早就记录过的 bug，这次它藏在了第三个、此前没人看过的地方。
 
-`json.Marshal` escapes `<`, `>` and `&`, and `encoding/json` applies that
-**inside a `json.RawMessage` too** while compacting it. `Event.Request` is a
-RawMessage holding exactly what the adapter posted, and both adapters go out of
-their way to encode with `SetEscapeHTML(false)` precisely because a shell
-agent's requests are mostly `2>&1`, `>/tmp/out` and `<<EOF`. The trace writer
-then used plain `json.Marshal`, and undid all of it one layer later:
+`json.Marshal` 会转义 `<`、`>` 和 `&`，而 `encoding/json` 在压缩时，**在 `json.RawMessage` 内部也一样会转义**。`Event.Request` 是一个 RawMessage，装的正是适配器发出去的东西，而两个适配器都特意用 `SetEscapeHTML(false)` 来编码，正是因为 shell Agent 的请求里大多是 `2>&1`、`>/tmp/out`、`<<EOF` 这样的内容。trace 写入器随后却用了朴素的 `json.Marshal`，在下一层就把这一切都撤销了：
 
 ```
 posted:  {"command":"ls 2>&1 <in"}
 traced:  {"command":"ls 2\u003e\u00261 \u003cin"}
 ```
 
-Nothing errors. Every consumer that decodes it gets the right string back. What
-breaks is the *claim*: `events.go` calls `Request` "the exact bytes about to be
-sent", and after a round trip through the file it is not. All 24 recorded
-requests in the session above carried the escapes.
+没有任何东西会报错。每一个解码它的消费者，拿回来的字符串都是对的。真正出问题的，是这个*声明*本身：`events.go` 把 `Request` 称作"马上要发送出去的确切字节"，可是在文件里走一趟往返之后，事实并非如此。前面那个会话里，录到的全部 24 个请求都带着转义。
 
-The fix is one encoder. The lesson is that **a defence applied at one layer has
-to be applied at every layer that re-encodes the same bytes** — and that the
-value of writing "byte for byte" on a view is that somebody eventually checks.
+修复是一个编码器。教训是：**防御措施只要用在一层，就必须用在每一个会重新编码这段字节的层上**——而**在视角上写"byte for byte"这句话的价值，就在于终究会有人去核实它**。
 
-### A note on what it is not
+### 它不是什么
 
-The composer reads a trace; it is not a chat window. That is not a compromise,
-it is the payoff of stage 02's decision to make the trace the source of truth:
+composer 读一个 trace；它不是一个聊天窗口。那不是一种妥协，而是阶段 02 那个决定换来的回报——那个决定就是：让 trace 成为真理的来源：
 
-- it needs **no key, no network and no provider**, so you can read a session on
-  a machine that has never been configured
-- it works on a session recorded **weeks ago**, or on one running in another
-  terminal right now — `r` re-reads the file, and the trace is appended live, so
-  a second terminal is a live monitor with no IPC at all
-- it is **deterministic**, which is why it can be tested
+- 它**不需要密钥、不需要网络，也不需要供应商**，所以你能在一台从未配置过的机器上读一个会话
+- 它既能用在**几周前**录好的会话上，也能用在此刻正在另一个终端里运行的会话上——`r` 会重新读取文件，而 trace 是实时追加写入的，所以第二个终端就是一个完全不需要 IPC 的实时监视器
+- 它是**确定性的**，这就是为什么它能被测试
 
-That first bullet was a lie for three stages, and finding out how is a better
-lesson than the bullet. Stage 03 introduced a providers file and put the
-config resolution above the replay branch, taking its `os.Exit(1)` with it.
-Every machine it was tested on had the environment variables set, so resolution
-succeeded and nothing looked wrong. On a machine with a trace file and nothing
-else — the machine the feature is *for* — `--replay` printed "no provider
-configured" and quit.
+那第一条项目符号，在长达三个阶段的时间里都是个谎言，而搞懂它是怎么回事，才是比这条项目符号本身更好的一课。阶段 03 引入了一个供应商配置文件，把配置解析这一步放在了重放分支判断之前——同时也把它自带的 `os.Exit(1)` 一起带了进来。每一台用来测试的机器上，环境变量都是配置好的，所以配置解析每次都成功，看起来一切正常。而在一台只有 trace 文件、别的什么都没有的机器上——也就是这个功能*本来是为*之设计的那台机器——`--replay` 打印出"no provider configured"，然后就退出了。
 
-The fix is three lines: carry the resolution error instead of raising it, and
-check it at the one place that needs a live provider. **A config error should be
-fatal to the code that depends on the config and to nothing else** — and a
-feature whose selling point is "works without X" needs a test that runs without
-X, or the claim decays into documentation.
+修复只用了三行：携带分辨率错误，而不是直接抛出它，只在真正需要一个可用供应商的那个地方，才去检查这个错误。**一个配置错误，应该只对依赖这个配置的代码是致命的，对其他任何代码都不该是**——一个卖点是"没有 X 也能正常工作"的功能，就需要一个真的不给它 X 的测试，不然这个声明就只会退化成一份文档。
 
-Wiring it to a live session in-process is one line — `bus.Subscribe(tui)` — for
-the same reason the JSONL writer and the plain renderer were one line each.
+把它接到一个进程内的活会话上，只需要一行——`bus.Subscribe(tui)`——原因跟 JSONL 写入器、朴素渲染器当初都只用一行实现是一样的。
 
 ---
 
-## Exercises
+## 练习
 
-1. **Open a trace from stage 04** and step through the calls in the Model view
-   watching the `cache breakpoint` markers move. That is the rolling breakpoint,
-   drawn.
-2. **Find a divergence.** Pick any call, read its God events and its Model
-   messages, and list everything present in one and absent from the other. There
-   will be more than you expect.
-3. **Break the terminal contract on purpose.** Put a `log.Fatal` inside the
-   event loop, run it, and see what your shell is like afterwards. Then put it
-   back.
-4. **Set the Escape timeout to 1ms** and use the arrow keys over a slow ssh
-   link. Then set it to 500ms and press Escape.
-5. **Delete `truncCols` from `frameBytes`** and replace it with `s[:w]`. Open a
-   trace whose working directory has a CJK name and watch one column of overflow
-   destroy the entire frame.
-6. **Add a diff view.** Two call indices, and the messages that changed between
-   them. Everything you need is already in `wireView`; the interesting part is
-   deciding what "changed" means when the whole prefix was rewritten.
-7. **Subscribe it live.** `bus.Subscribe` the composer and run the agent inside
-   it. The work is not the plumbing; it is deciding what a UI does when new
-   events arrive while the user is scrolled somewhere else.
+1. **打开一份阶段 04 的 trace**，在模型视角里逐个调用地往下翻，看 `cache breakpoint` 标记移动。那正是滚动断点被画出来的样子。
+2. **找一个分歧。** 挑一次调用，读它的上帝事件和它的模型消息，列出在一边出现、另一边却没有的一切。结果会比你预期的多得多。
+3. **故意破坏一次终端契约。** 把一句 `log.Fatal` 放进事件循环里，运行它，看看运行之后你的 shell 变成什么样。然后把它放回去。
+4. **把 Escape 超时设成 1ms**，在一条慢速 ssh 链路上试试箭头键。再把它设成 500ms，按一下 Escape。
+5. **从 `frameBytes` 里删掉 `truncCols`**，换成 `s[:w]`。打开一份工作目录名字带 CJK 字符的 trace，看着一列溢出把整个画面毁掉。
+6. **加一个 diff 视角。** 两个调用索引，加上它们之间发生变化的消息。你需要的一切都已经在 `wireView` 里了；有意思的地方在于，要弄清楚当整个前缀都被重写之后，"改变"到底意味着什么。
+7. **实时订阅它。** 对 composer 调用 `bus.Subscribe`，在它里面运行 Agent。真正的工作不是管道，而是要想清楚：当用户正翻到别处看东西时又来了新事件，UI 该怎么处理。
 
-→ Next: Stage 07 — Multiply *(planned)*
+→ 下一步：阶段 07 — 乘法 *(计划中)*
 
-→ Reference: [Stage 02 — See Everything](02-see-everything.md), [Stage 05 — Live Forever](05-live-forever.md)
+→ 参考：[阶段 02 — 看清一切](02-see-everything.md)、[阶段 05 — 永远活着](05-live-forever.md)

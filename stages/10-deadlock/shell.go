@@ -880,7 +880,7 @@ func (s *shellSession) runSet(_ context.Context, arg string, w io.Writer) error 
 		for _, k := range ks {
 			fmt.Fprintf(w, "  %-*s  %-12s  %s\n", width, k.name, k.get(), k.help)
 		}
-		fmt.Fprintf(w, "\n  /set <name> <value>. Everything else needs a restart, and /status shows it.\n")
+		fmt.Fprintf(w, "\n  /set <name> <value>. Everything not listed is fixed when the process starts.\n")
 		return nil
 	}
 	for _, k := range ks {

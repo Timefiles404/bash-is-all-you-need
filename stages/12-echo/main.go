@@ -422,10 +422,6 @@ func main() {
 	flag.BoolVar(&cfg.yolo, "yolo", false, "run every command without asking")
 	flag.Parse()
 
-	// Before anything else: the composer never needs a provider, and making it
-	// wait for one would mean you cannot read a trace on a machine that has no
-	// key configured — which is most of the machines you would want to read a
-	// trace on.
 	// Same argument as the composer below, and a stronger one: --cache-audit
 	// exists to be run before you decide whether to switch the cache on, which
 	// is a decision you should be able to make on a laptop with no key in it.
@@ -437,6 +433,10 @@ func main() {
 		return
 	}
 
+	// Before anything else: the composer never needs a provider, and making it
+	// wait for one would mean you cannot read a trace on a machine that has no
+	// key configured — which is most of the machines you would want to read a
+	// trace on.
 	if *dumpAt != "" {
 		if err := dumpComposer(*dumpAt, *dumpView, *dumpCall, *dumpW, os.Stdout); err != nil {
 			tui.Die(err)

@@ -195,7 +195,8 @@ func (s *shellSession) run(ctx context.Context) error {
 // Scanner on the same descriptor would steal keystrokes from the composer. The
 // question goes to the shell instead, and the shell's own reply is what comes
 // back. A false here means the shell is shutting down, which the gate already
-// handles — it is the same case as a closed stdin, and it denies.
+// handles the way it handles a closed stdin — and that is abort, not deny, so
+// the turn ends rather than one command being refused.
 func (s *shellSession) gateAsk() (string, bool) {
 	return s.app.Ask("[y/n/a/q] ")
 }
@@ -889,5 +890,5 @@ func lastAssistantText(msgs []Msg) string {
 }
 
 // Row is tui.Row under the name the rest of this file uses. An alias rather than
-// an import-and-qualify on every one of twenty-five literals.
+// an import-and-qualify at every use site.
 type Row = tui.Row

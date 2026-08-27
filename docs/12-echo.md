@@ -289,7 +289,7 @@ switch.
 ### The unit of the whitelist is not the program
 
 The obvious design is a list of read-only program names. It is wrong for two of
-the six programs that would be on it.
+the eleven programs that would be on it.
 
 `sed` reads, and `sed -i` edits the file in place. `sort` reads, and `sort -o`
 writes its output to a file. A name-based whitelist would have let both through
@@ -351,9 +351,17 @@ refused, by reason:
 
 Nine refusals, and **not one of them is about the program**. Every command the
 model ran in sixteen sessions was `sed`, `wc`, `cat`, `ls`, `find` or `grep` —
-six programs, all readers, all on the list. What the rule actually spends its
-refusals on is shell syntax: four globs, three `2>&1` redirections, and two
-`find ... -exec ... {} +`.
+six programs, all readers, five of them on the list. What the rule actually
+spends its refusals on is shell syntax: four globs, three `2>&1` redirections,
+and two `find ... -exec ... {} +`.
+
+The sixth is `find`, which is deliberately *not* on the list, and the reason it
+does not appear in the tally is a coincidence worth knowing about: all three of
+its appearances were refused by the tokenizer first, two for the `{}` in an
+`-exec` and one for a `2>/dev/null`. The program check never got to see it. Two
+independent refusals for the same command look like one rule doing its job, and
+the tally cannot tell you which of them fired — which is a limit of this report
+rather than of the rule.
 
 That is a useful thing to learn from a refusal tally, and it is why the audit
 prints one. A hit rate is a verdict; a refusal reason is a to-do list. It names
@@ -594,11 +602,13 @@ honestly reports six commands, which looks like four calls went missing. So the
 replay summary carries the hits as their own number:
 
 ```text
-trace · 214 events · 8 turns · 6 commands · 4 cached · 1m12s
+trace · 103 events · 2 turns · 1 command · 24.203s · 2 cached
 ```
 
 Two numbers instead of one, because there are two facts and no single number
-can carry both.
+can carry both. That header is from a real session: the model was asked to read
+a file and then check its own reading twice, so it issued three identical tool
+calls, and two of them never became a process.
 
 ---
 
@@ -816,7 +826,7 @@ the rule refuses everything it does not completely understand — every glob,
 redirection, substitution and subshell, plus any program or flag not explicitly
 listed. The whitelist is over flags rather than over program names because
 `sed` reads while `sed -i` writes and `sort` reads while `sort -o` writes: a
-name-based list would have been wrong for two of the six programs on it. On 107
+name-based list would have been wrong for two of the eleven on it. On 107
 real commands the rule refused nine, all for shell syntax and none for the
 program.
 

@@ -171,7 +171,7 @@ shell handed that string runs a program named `[echo,hi]`. Schema validation
 checks the *shape* of an argument and can say nothing about whether the value
 means anything.
 
-### Fragments, and three ways of counting them
+### Fragments, and three ways of joining them
 
 Arguments do not arrive whole. They arrive in fragments, and §B4 shows the
 splits landing mid-token — `" /srv"` and `"/app"` are two separate frames of one
@@ -225,11 +225,10 @@ did when run for real in a throwaway tree:
 | `… -exec grep -nH 'TODO(security)' {} + \|` | 2 | `bash: syntax error: unexpected end of file` |
 | `… -mtime -14 -exec grep -Hn 'TODO(security)'` | 1 | `find: missing argument to '-exec'` |
 
-Four of the five **failed loudly**, and saying so narrows the argument rather
-than weakening it. Bash and `find` are genuinely good at rejecting a
-half-written command: truncation usually lands somewhere that produces a syntax
-error, and a syntax error is a visible failure the model can read and respond
-to.
+Four of the five **failed loudly**, and that narrows the argument rather than
+weakening it. Bash and `find` are genuinely good at rejecting a half-written
+command: truncation usually lands somewhere that produces a syntax error, and a
+syntax error is a visible failure the model can read and respond to.
 
 So the danger is narrower than "repair runs garbage", and worse:
 
@@ -315,7 +314,7 @@ stricter than the one stage 07 happened to have.
 ### Where the boundary is deliberately lenient
 
 `additionalProperties: false` — the schema keyword that says "no properties
-beyond the ones I declared" — is honoured by **pruning, not refusing**. An
+beyond the ones declared here" — is honoured by **pruning, not refusing**. An
 undeclared property is dropped, the call runs, and a notice says which keys
 went.
 
@@ -348,10 +347,9 @@ back to the raw bytes.
 It also never returns blank, and that is the part people leave out.
 `{"raw_arguments":""}` is a real payload, and so is a `command` whose value is
 nothing but whitespace; extracting from either gives an empty string, and an
-empty string on a panel or
-in a compaction summary is a tool call that simply vanished. Falling back to the
-raw bytes keeps the record that the agent tried *something*, which is the whole
-reason a viewer parses leniently at all.
+empty string on a panel or in a compaction summary is a tool call that simply
+vanished. Falling back to the raw bytes keeps the record that the agent tried
+*something*, which is the whole reason a viewer parses leniently at all.
 
 ---
 
@@ -487,16 +485,17 @@ context that made it sensible has scrolled away — so the model re-issues a cal
 that was already handled, and the older the message gets, the more confidently
 it does so.
 
-Stage 10 shipped four:
+Stage 10 shipped five:
 
 ```
 "— send valid JSON"
 "the call was probably cut short; send it again"
+"— send an actual shell command"
 "Retry with a shorter command."
 "Do not retry it unchanged."
 ```
 
-All four are gone. `TestReplayedTextContainsNoInstructions` scans every string
+All five are gone. `TestReplayedTextContainsNoInstructions` scans every string
 this stage can put into a tool result for imperative openers — "send ", "retry",
 "do not ", "you should", "make sure", and the rest. It is a mechanical guard
 rather than a review rule because the natural way to write these strings is as
@@ -543,9 +542,9 @@ has no symptom until the day it matters.**
 ## What this stage does not fix
 
 - **A schema-valid, semantically wrong argument.** A `command` whose value is
-  the string `[\"echo\",\"hi\"]` passes every check here and is not a shell
-  command. Nothing short of running it finds out, which is why the permission
-  gate is still the last line.
+  the string `["echo","hi"]` passes every check here — it is a string, as
+  declared — and is not a shell command. Nothing short of running it finds out,
+  which is why the permission gate is still the last line.
 - **The provider that silently drops a long argument value.** A failure mode
   reported from production elsewhere: the value arrives at the server and does
   not arrive at the model, so what comes back is *valid JSON missing a required
@@ -581,8 +580,8 @@ has no symptom until the day it matters.**
    the shell.
 3. **Add the repair.** Implement the twenty-line brace-closer, run it on the
    `raw_arguments` payloads recorded verbatim in §A3c, and check each result
-   against what the model was trying to do. Then try it on the `git clean -fdx
-   -e .env` prefix.
+   against what the model was trying to do. Then try it on a truncated
+   `git clean -fdx -e .env`.
 4. **Break the accumulator.** Change `mergeArgs` back to unconditional append
    and feed it the re-send dialect. The error you get names a byte offset and
    nothing about the cause, which is what makes this class of bug expensive.
@@ -598,23 +597,24 @@ has no symptom until the day it matters.**
 ## What you can answer now
 
 **Why is a tool call the one model output that must be validated before anything
-else happens to it?** Because it is the only field that crosses into
-`exec.Command`. Every other field a model produces is text, and wrong text is a
-bad answer you read and move on from. Wrong arguments are a command that runs.
+else happens to it?**
+Because it is the only field that crosses into `exec.Command`. Every other field
+a model produces is text, and wrong text is a bad answer you read and move on
+from. Wrong arguments are a command that runs.
 
-**What does a truncated tool call look like on the wire?** Four shapes across
-two routes. OpenAI non-streaming: raw `<tool_call>` markup in `message.content`,
-with `tool_calls: []`. OpenAI streaming: genuinely partial argument JSON.
-Anthropic: either a synthetic `{"raw_arguments": …}` object or partial
-`input_json_delta`, depending on where the cut landed relative to the gateway's
-own parse.
+**What does a truncated tool call look like on the wire?**
+Four shapes across two routes. OpenAI non-streaming: raw `<tool_call>` markup in
+`message.content`, with `tool_calls: []`. OpenAI streaming: genuinely partial
+argument JSON. Anthropic: either a synthetic `{"raw_arguments": …}` object or
+partial `input_json_delta`, depending on where the cut landed relative to the
+gateway's own parse.
 
-**Why does the OpenAI truncation shape depend on whether you streamed?** Because
-the gateway parses the model's markup server-side. Not streaming, that parse
-runs once on finished text, fails, and falls back to dumping the raw markup.
-Streaming, it runs incrementally and has already forwarded what it parsed, so
-there is no fallback left. §A2 concluded you would never see partial argument
-JSON; §E15 corrects it for the mode every real agent runs in.
+**Why does the OpenAI truncation shape depend on whether you streamed?**
+Because the gateway parses the model's markup server-side. Not streaming, that
+parse runs once on finished text, fails, and falls back to dumping the raw
+markup. Streaming, it runs incrementally and has already forwarded what it
+parsed, so there is no fallback left. §A2 concluded you would never see partial
+argument JSON; §E15 corrects it for the mode every real agent runs in.
 
 **Does either endpoint check a returned tool call against the schema you sent?**
 No. §E13 got back an `enum` value the schema forbade and a property banned by
@@ -624,39 +624,40 @@ nothing, so if your client does not validate, nothing does.
 
 **If four of five repaired truncations fail loudly, why not repair them?**
 Because the fifth is the one that matters. Shell commands put their constraints
-last, so truncation strips the exclusions and leaves the verb: the intended `git
-clean -fdx -e .env -e vendor` repairs to `git clean -fdx`, which exits 0 and
-deletes the two things the command existed to protect.
+last, so truncation strips the exclusions and leaves the verb: an intended
+`git clean -fdx -e .env -e vendor` repairs to `git clean -fdx`, which exits 0
+and deletes the two things the command existed to protect.
 
-**Why three fault classes rather than one "invalid"?** Because they lead to
-different actions. `faultCut` and `faultSchema` disagree about whose mistake it
-was, and telling the model its JSON was invalid when it actually ran out of
-budget spends a round trip on a diagnosis it cannot act on.
+**Why three fault classes rather than one "invalid"?**
+Because they lead to different actions. `faultCut` and `faultSchema` disagree
+about whose mistake it was, and telling the model its JSON was invalid when it
+actually ran out of budget spends a round trip on a diagnosis it cannot act on.
 
-**What happens if an unparseable tool call reaches the message array?** On the
-OpenAI route, §E14 measured a 400 on every subsequent request — and a 400 is
-correctly fatal, so one unvalidated call is a permanently dead session. On the
-Anthropic route everything is accepted, including the gateway's own truncation
-shape, so the session degrades quietly instead.
+**What happens if an unparseable tool call reaches the message array?**
+On the OpenAI route, §E14 measured a 400 on every subsequent request — and a 400
+is correctly fatal, so one unvalidated call is a permanently dead session. On
+the Anthropic route everything is accepted, including the gateway's own
+truncation shape, so the session degrades quietly instead.
 
-**Why must a zero-argument call be rendered `{}` rather than `""`?** Because
-§E14 measured `arguments: ""` as a 400 while `{}` is accepted, and the empty
-string is not hypothetical: §E15 shows the first streamed `tool_calls` delta
-arriving as `"arguments":""`, so a stream that breaks before the first fragment
-accumulates exactly that.
+**Why must a zero-argument call be rendered `{}` rather than `""`?**
+Because §E14 measured `arguments: ""` as a 400 while `{}` is accepted, and the
+empty string is not hypothetical: §E15 shows the first streamed `tool_calls`
+delta arriving as `"arguments":""`, so a stream that breaks before the first
+fragment accumulates exactly that.
 
-**Why is refusing a truncated call correctly not enough?** Because the model
-cannot see `max_tokens`. Told only that it was cut off, it rewrites a command of
-the same length — measured at 16 model calls and 0 commands in one session. The
-fix is a fuse: three consecutive all-truncated turns end the loop and address
-the message to the human, who can change the number.
+**Why is refusing a truncated call correctly not enough?**
+Because the model cannot see `max_tokens`. Told only that it was cut off, it
+rewrites a command of the same length — measured at 16 model calls and 0
+commands in one session. The fix is a fuse: three consecutive all-truncated
+turns end the loop and address the message to the human, who can change the
+number.
 
-**Why can a tool result not contain an instruction?** Because it is not a
-message, it is a permanent addition to the prompt, re-sent on every subsequent
-request. An imperative reads as a fresh instruction several turns later once its
-context has scrolled away, so the model re-issues a call that was already
-handled. Four such strings from stage 10 were deleted, and a mechanical test
-keeps them out.
+**Why can a tool result not contain an instruction?**
+Because it is not a message, it is a permanent addition to the prompt, re-sent
+on every subsequent request. An imperative reads as a fresh instruction several
+turns later once its context has scrolled away, so the model re-issues a call
+that was already handled. Four such strings from stage 10 were deleted, and a
+mechanical test keeps them out.
 
 ---
 

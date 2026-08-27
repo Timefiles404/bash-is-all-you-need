@@ -398,9 +398,9 @@ func inEnum(v any, allowed []any) bool {
 // the session re-sends it. An imperative in there reads as a fresh instruction
 // several turns later, when its context is gone — so the model re-issues a call
 // that was already handled, and the older the message gets the more confidently
-// it does so. Stage 10 shipped four of these ("send valid JSON", "send it
-// again", "Retry with a shorter command", "Do not retry it unchanged") and they
-// are gone.
+// it does so. Stage 10 shipped five of these ("send valid JSON", "send it
+// again", "send an actual shell command", "Retry with a shorter command", "Do
+// not retry it unchanged") and they are gone.
 //
 // A statement of fact ages into a statement of fact.
 func faultText(t Tool, c argCheck) string {

@@ -46,6 +46,10 @@ Each stage introduces exactly one idea and ships a complete, runnable snapshot
 under `stages/`. Duplication between snapshots is intentional — a readable diff
 beats DRY in a teaching repo.
 
+Every chapter ends the same way: exercises you can actually run, then the
+questions that chapter has made answerable — with short answers, so you can
+check yourself — and then a few open questions that have no answer here.
+
 ### Phase 1 — the instrument panel (00–08)
 
 | Stage | Idea | Status |

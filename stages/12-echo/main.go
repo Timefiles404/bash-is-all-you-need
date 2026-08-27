@@ -1,35 +1,30 @@
-// 阶段 10——死锁：每一次等待都有期限，也有归属。
+// 阶段 12——回声：最便宜的工具调用，是你不去发的那一次。
 //
-// 只有一个想法，就写在 deadline.go 里：**流式的模型调用需要三个时钟，
-// 不是一个。** http.Client.Timeout 管着响应体读取，所以在一条流上，这
-// 一个数字同时被问了两个不相干的问题——健康的答案可以花多久，和死掉的
-// socket 可以装活多久——没有哪个值能同时回答两者。
+// 只有一个想法，就写在 echo.go 里：**如果模型要的这条命令我们已经跑过，而
+// 它读过的东西一样都没变，那就把答案递回去，别再起一个进程。**
 //
-// 跟阶段 09 的差别，是多一个新文件，加上一个 context.Context 穿到每一
-// 处会阻塞的地方。阶段 09 把这件事点名成了它跨不过去的那道墙：
+// 跟阶段 11 的差别是一个新文件、一种新事件、以及 runCommand 顶上的一次查
+// 询。打开它的那个 flag 默认是关的——在这个仓库里少见，而它不是出于谨慎，
+// 是这一章的诚实结论：拿这个仓库自己录下的十六份会话回放一遍，这个缓存会在
+// 107 条命令里命中 4 次，省下 401 毫秒；同一批会话里，模型花掉的是 864 秒。
 //
-//	"BuildRequest 返回的是不带 context 的 *http.Request，所以是这个
-//	 接口本身在挡路。阶段 10 就是它改掉的地方。"
+// 这不是跳过这一阶段的理由，而是 --cache-audit 存在的理由。它把任意一份
+// trace 里的命令拿出来，过一遍冷缓存，报告它本来会做什么——不用 key，什么也
+// 不跑。"值不值得建这个缓存"是一个可以测的量，而测它比建它便宜。
 //
 // # 名字是怎么来的
 //
-// 不是锁序死锁。这个阶段清掉的东西更平常，也常见得多：**一次没人能结
-// 束的等待。** 阶段 07 把子 Agent 扇出去，再用 wg.Wait() 汇合，而在此
-// 之前，那些等待每一层都是无界的——父 Agent 等子 Agent，每个子 Agent
-// 等一次模型调用，而模型调用等着 socket，那个 socket 有十分钟上限，又
-// 没法取消。一条安静的 TCP 连接，整棵树就卡住了，而 Ctrl-C 落到的那个
-// 父 Agent 没在听。
+// 重复的命令，以及重复是从哪来的。在这里录下的每一份会话里，重复都跟在一次
+// 压缩或者一条新的用户消息后面：模型不是在啰嗦，它是在找回丢掉的东西。这也
+// 正是命中不能用"你在回合 2 跑过这条"来作答的原因——它指向的那份结果，恰恰
+// 就是已经不在了的那个东西。
 //
-// 穿一个 context 下去，一次就把每一层都修好了，这就是它算一个想法而不
-// 是五个的原因：子 Agent 的调用变得可取消，于是子 Agent 返回，于是
-// wg.Wait() 返回，于是这个回合结束。dispatch() 里没有任何东西需要知道
-// "期限"这回事。
+// # 第一部分和阶段 09 到 11 还照旧做什么
 //
-// # 第一部分和阶段 09 还照旧做什么
-//
-// 没变。triage.go 里的分类器多了一个输入——时钟取消时带上的原因——回答
-// 的还是它本来就有的那三个裁决。它吸收了三种新的失败模式却不需要第四
-// 个裁决，这就是阶段 09 挑对了形状的最好证据。
+// 没变。缓存命中就是一条普通的工具结果，所以 triage 和那几个期限都看不见
+// 它；而它在查询之前就已经过了阶段 11 那道关卡，因为查询用的 key 是一条已
+// 经校验过的命令。别处唯一看得见的变化是：命中不发 command_start，也不发
+// command_end——因为没有命令开始，也没有命令结束。
 package main
 
 import (
@@ -115,9 +110,22 @@ type config struct {
 	shell     string
 	timeout   time.Duration
 	maxOutput int
+	maxTokens int
 	maxTurns  int
 	subTurns  int
 	yolo      bool
+
+	// wd 是命令实际运行的目录。阶段 12 需要它：缓存下来的结果只是"在某个目录
+	// 下"这条命令的答案，而命令行上的见证路径也是相对它算的。
+	//
+	// os.Getwd() 本来就拿得到。写在这里，是让缓存拿到的是别人给它的值，而不是
+	// 自己跑去找的值——区别在于，前者的 key 可以测，后者只有在测试进程恰好待
+	// 在对的目录里时才是对的。
+	wd string
+
+	// env 是 shell 会继承的那份环境，启动时抓一次。它进 key 的理由和 wd 一样，
+	// 见 keyOf。
+	env []string
 }
 
 // ---------------------------------------------------------------------------
@@ -235,6 +243,28 @@ type agent struct {
 	maxDepth int
 	subTurns int
 
+	// 阶段 11。这个 Agent 往自己历史里放过的每一个工具调用 id。
+	//
+	// 作用域是会话，不是回合，关键正在这里：网关每铸一个调用都复用同一个 id，
+	// 产出的重复分散在*不同的* assistant 消息里，按回合查什么都查不到，而协议
+	// 照样以 `Found duplicate tool_use id` 拒掉整个请求。见 uniqueIDs。
+	//
+	// 不跟子 Agent 共用。子 Agent 有自己的消息数组，它的 id 只要在里面唯一就
+	// 行；共用这张 map，两个并发的子 Agent 每次工具调用都得抢它。
+	seenIDs map[string]bool
+
+	// cutStreak 数的是连续多少个回合里，每一次工具调用都被判成截断而拒掉。见
+	// maxCutStreak。
+	cutStreak int
+
+	// 阶段 12。--cache 关着的时候它是 nil，而它身上每个方法都容得下 nil
+	// 接收者——所以"关掉"走的是同一条代码路径加一个分支，而不是 runCommand
+	// 的第二份实现。
+	//
+	// 按指针分给子 agent。为什么这是缓存唯一真正划算的场景，见 resultCache；
+	// 为什么这必须是一个决定而不是一次疏忽，见 newChild。
+	echo *resultCache
+
 	mu        sync.Mutex
 	children  int
 	spent     Usage // 这个 Agent 自己的 token 消耗，给子 Agent 报告用
@@ -304,14 +334,40 @@ func main() {
 		connectFor = flag.Duration("connect-timeout", 30*time.Second, "response headers must arrive within this")
 		idleFor    = flag.Duration("stall-timeout", 45*time.Second, "longest tolerated gap between bytes of a stream")
 		callFor    = flag.Duration("call-timeout", 15*time.Minute, "backstop on one whole model call, retries excluded")
+
+		// 阶段 12。默认关闭，而这一章基本上就是在论证为什么：拿这个仓库录下
+		// 的十六份会话回放，这个缓存会在 107 条命令里命中 4 次，省下 0.4 秒
+		// ——同一批会话里模型花了 864 秒。回报这么难看的功能，应该是你摸清了
+		// 自己的负载之后主动打开的，而不是读者什么都不知道就继承下来的。
+		useCache    = flag.Bool("cache", false, "serve a repeated read-only command from a result cache instead of running it")
+		cacheMax    = flag.Int("cache-entries", 256, "result cache: maximum entries")
+		cacheBytes  = flag.Int("cache-bytes", 8<<20, "result cache: maximum total bytes of stored output")
+		cacheTTL    = flag.Duration("cache-ttl", 0, "result cache: expire entries this old; 0 means never, and staleness is decided by content")
+		cacheAudit_ = flag.Bool("cache-audit", false, "replay the commands in the given traces through a cold cache and report what it would have done")
 	)
 	cfg := config{}
 	flag.DurationVar(&cfg.timeout, "timeout", 30*time.Second, "kill a command after this long")
+	// 阶段 11 的实验旋钮，跟阶段 04 的 --break-cache 是一路货：被截断的工具调
+	// 用不是干等就能等到的，想随叫随到地看一次，只能故意把预算调得太小。4096
+	// 是之前每个阶段都写死的那个值。
+	flag.IntVar(&cfg.maxTokens, "max-tokens", 4096, "output token budget per call; lower it to force a truncated tool call (stage 11)")
 	flag.IntVar(&cfg.maxOutput, "max-output", 8000, "bytes of command output the model may see")
 	flag.IntVar(&cfg.maxTurns, "max-turns", 25, "tool-call rounds per user message")
 	flag.IntVar(&cfg.subTurns, "sub-turns", 15, "tool-call rounds a subagent gets")
 	flag.BoolVar(&cfg.yolo, "yolo", false, "run every command without asking")
 	flag.Parse()
+
+	// 跟下面的 composer 一个道理，而且理由更硬：--cache-audit 存在的意义就是
+	// 让你在决定要不要开缓存之前先跑一遍，而这个决定应该在一台没插 key 的笔
+	// 记本上就能做。
+	if *cacheAudit_ {
+		wd, _ := os.Getwd()
+		if err := cacheAudit(flag.Args(), wd, os.Stdout); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
 
 	// 放在最前面：composer 从来不需要供应商，让它先等着供应商，就等于
 	// 没配 key 的机器上读不了 trace——而你想读 trace 的机器，多半正是这
@@ -433,7 +489,8 @@ func main() {
 	}
 
 	wd, _ := os.Getwd()
-	fmt.Printf("stage 10 · provider=%s (%s) · model=%s\ncwd=%s\n",
+	cfg.wd, cfg.env = wd, os.Environ()
+	fmt.Printf("stage 12 · provider=%s (%s) · model=%s\ncwd=%s\n",
 		pname, provider.Protocol(), provider.Model(), wd)
 
 	// ---- 系统提示词，一次装配好 -----------------------------------------
@@ -520,6 +577,10 @@ func main() {
 		g:   &gate{yolo: cfg.yolo, in: stdin, available: interactive, out: os.Stdout},
 		bus: bus, cfg: cfg, comp: comp, system: sys, memoryDir: wd,
 		stable: stable, maxDepth: *maxDepth,
+		seenIDs: map[string]bool{},
+	}
+	if *useCache {
+		a.echo = newResultCache(*cacheMax, *cacheBytes, *cacheTTL)
 	}
 
 	// --subagent：一个任务，一份报告，没有对话。
@@ -637,7 +698,7 @@ func (a *agent) prov() Provider {
 func (a *agent) callWithRetry(ctx context.Context, turn int, msgs []Msg) (*CallResult, error) {
 	return retryLoop(ctx, a.bus, turn, a.pol, a.lad, nil, nil,
 		func(ctx context.Context, p Provider) (*CallResult, error) {
-			return modelCall(ctx, p, a.httpc, a.bus, turn, a.system(), msgs, a.tools(), 4096, a.dl, nil)
+			return modelCall(ctx, p, a.httpc, a.bus, turn, a.system(), msgs, a.tools(), a.cfg.maxTokens, a.dl, nil)
 		})
 }
 
@@ -681,9 +742,55 @@ func (a *agent) runTurn(ctx context.Context, msgs []Msg) []Msg {
 		// 点：服务端刚刚告诉了我们，发出去的那些字符最后变成了多少 token。
 		a.comp.est.observe(sentChars, res.Usage.Prompt())
 
+		// 阶段 11——两处修补，都在消息被构造出来**之前**，因为消息一旦追加进
+		// 去，这个会话剩下的每一次请求都带着它（§E14）。
+		//
+		// 第一处：id。改名必须在这儿做，不能挪进 dispatch，因为 dispatch 要拿
+		// 这些 id 去建结果块；答案都已经存在了才给调用改名，得到的是孤立工具
+		// 结果——同一个被拒的请求，换了条更没用的报错。
+		if n := uniqueIDs(res.Calls, a.seenIDs); n > 0 {
+			a.bus.Notice("%d tool call id(s) in this turn collided with earlier ones and were renamed", n)
+		}
+
+		// 第二处：markup 泄漏，§A2——而这一处还附一句老实话，说明它什么时候
+		// 才可能触发。
+		//
+		// 模型在线上发的不是 JSON。它发的是一种类 XML 的宿主语法，
+		// `<tool_call><function=bash><parameter=command>…`，由网关在服务端解析
+		// 成工具调用。从语法中间截断，解析就失败，而 §A2 记下了那条兜底路径：
+		// 原始 markup 直接落进 `message.content`。留着它，代价要付两遍——人看
+		// 到的是网关内部的东西，却像是 assistant 说的；而历史则教会模型，在这
+		// 儿把这套语法当散文写出来是正常的。
+		//
+		// 那句老实话是 §E15，为阶段 11 实测的，它修正了 §A2：那条兜底路径只
+		// 在**不**流式的时候才有。走流式，解析是增量跑的，解析出多少就转发多
+		// 少，所以客户端拿到的是残缺的参数 JSON，一点 markup 都没有。而这个
+		// Agent 永远走流式。所以在这个端点上，下面这个分支根本触发不了；留着
+		// 它的两条理由都是冲着别的端点去的：非流式那条路会立刻撞上 §A2 描述
+		// 的形状，而一个糊涂到把工具调用语法当普通散文写的模型，在哪家供应商
+		// 那儿都产出同样的字节。
+		//
+		// 它挂在 StopMaxTokens 上，不是每回合都跑，而这道闸有实打实的代价：
+		// **没有**截断就泄漏出来的 markup 会被原样留着。这是笔有意为之的交
+		// 易。截断的那一回合，文本按定义就是不完整的，切掉它不会丢掉模型说完
+		// 了的任何东西；而在完整的一回合里，要是有个 Agent 被要求解释的正好
+		// 是这套线上格式，它的回答会在它引用的第一个 `<tool_call>` 处被无声截
+		// 断——而这个仓库自己的文档里，这玩意儿满地都是。
+		text := res.Text
+		if res.Stop == StopMaxTokens {
+			if stripped, found := stripHarnessMarkup(text); found {
+				a.bus.Emit(Event{
+					Kind: KindToolCallInvalid, Turn: turn,
+					Fault: string(faultNotJSON),
+					Text:  "the gateway's own tool-call markup arrived as assistant text",
+				})
+				text = stripped
+			}
+		}
+
 		am := Msg{Role: RoleAssistant}
-		if res.Text != "" {
-			am.Blocks = append(am.Blocks, Block{Kind: BlockText, Text: res.Text})
+		if text != "" {
+			am.Blocks = append(am.Blocks, Block{Kind: BlockText, Text: text})
 		}
 		am.Blocks = append(am.Blocks, res.Calls...)
 
@@ -705,7 +812,11 @@ func (a *agent) runTurn(ctx context.Context, msgs []Msg) []Msg {
 			}
 			msgs = append(msgs, a.resultsMsg(turn, res.Calls,
 				func(Block) string {
-					return "[not executed: your reply was cut off at max_tokens. Retry with a shorter command.]"
+					// 这里不再写"换条短点的命令重试"。这段字符
+					// 串会在之后的每一次请求里被重放，而历史里的
+					// 祈使句，等它的上下文滚远了，读起来就成了一
+					// 条新指令——见 faultText。
+					return "[not executed: the reply was cut off at max_tokens]"
 				}))
 			continue
 
@@ -725,14 +836,44 @@ func (a *agent) runTurn(ctx context.Context, msgs []Msg) []Msg {
 
 		// 一行，阶段 06 那里是四十行。dispatch() 跑掉这个回合里的每一次工具
 		// 调用——子 Agent 并发，其余按顺序——再按模型要求的顺序把结果交回来。
-		blocks, stop := a.dispatch(ctx, turn, res.Calls)
+		blocks, out := a.dispatch(ctx, turn, res.Calls)
 		results := Msg{Role: RoleUser, Blocks: blocks}
 		msgs = append(msgs, results)
-		if stop {
+		if out.stop {
+			return msgs
+		}
+
+		// 截断保险丝。一个回合里**每一次**调用都被截断，连击就加一；只要有一
+		// 次过了，就清零。
+		//
+		// 它存在，是因为"拒得对"最后被证明还不够。一次真实会话跑在
+		// --max-tokens 110 下，发起了十六次模型调用，跑了零条命令，最后只被回
+		// 合预算拦住：每一回合模型都被告知自己的调用被截断了，每一回合它又写
+		// 出一条同样长的命令。这不是它犟——它看不见 max_tokens，所以"你被截断
+		// 了"点的是一个它无从下手的原因，而换个说法是它唯一能做的动作。
+		//
+		// 所以这条消息改成说给人听，人能改那个数。定三，是因为连着两次还可能
+		// 是模型缩短了命令又运气不好，三次就是规律了。
+		if out.calls > 0 && out.cut == out.calls {
+			a.cutStreak++
+		} else {
+			a.cutStreak = 0
+		}
+		if a.cutStreak >= maxCutStreak {
+			a.bus.Error("%d turns in a row produced only truncated tool calls. The model cannot see the "+
+				"output budget, so it will keep re-sending calls of the same length; raise --max-tokens "+
+				"(currently %d)", a.cutStreak, a.cfg.maxTokens)
 			return msgs
 		}
 	}
 }
+
+// maxCutStreak 是连续多少个"全被截断"的回合会结束主循环。
+//
+// 一根保险丝，跟 maxTurns、maxDepth 是一家的：它不是修法，只是给一个已知修不好
+// 的循环划一条花费上限。maxTurns 最终也拦得住这件事，只不过是在 25 次调用之
+// 后，而不是 3 次。
+const maxCutStreak = 3
 
 func (a *agent) emitResult(turn int, callID, content string) Block {
 	a.bus.Emit(Event{Kind: KindToolResult, Turn: turn, ToolID: callID, Text: content})

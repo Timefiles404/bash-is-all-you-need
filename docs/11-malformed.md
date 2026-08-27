@@ -691,6 +691,6 @@ depends on what you are building.
    it possibly be keyed on, and what would you be willing to pay per call for
    it?
 
-→ Next: Stage 12 — Echo
+→ Next: [Stage 12 — Echo](12-echo.md)
 
 → Reference: [Wire notes](wire-notes.md), [Stage 01 — Don't Die](01-dont-die.md), [Stage 09 — Triage](09-triage.md), [Stage 10 — Deadlock](10-deadlock.md)

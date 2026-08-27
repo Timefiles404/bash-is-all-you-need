@@ -334,7 +334,11 @@ func (s *shellSession) segments() []string {
 	if s.view.prices.known() {
 		out = append(out, fmt.Sprintf("$%.4f", s.view.sessionCost))
 	}
-	out = append(out, fmt.Sprintf("%d msg", msgs))
+	// The message count is worth a field only once there are messages. On a bar
+	// that has to drop fields to fit, "0 msg" is one that answers nothing.
+	if msgs > 0 {
+		out = append(out, fmt.Sprintf("%d msg", msgs))
+	}
 	if p := s.trace.path(); p != "" {
 		out = append(out, "rec")
 	}

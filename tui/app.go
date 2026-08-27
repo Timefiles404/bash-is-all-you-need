@@ -335,9 +335,15 @@ func (a *App) dumpTranscript(w io.Writer) {
 		dropped += len(lines) - transcriptDump
 		lines = lines[len(lines)-transcriptDump:]
 	}
-	// The reprint is marked. Without a marker it is indistinguishable from new
-	// output: someone who has just watched a panel scroll past reads it a second
-	// time and starts looking for the bug that produced two of them.
+	// The reprint is marked, and the blank line above the marker is not
+	// decoration. What is on the terminal at this instant is whatever was there
+	// before the alternate screen went up, with the cursor part-way along a row,
+	// so writing straight into that puts the marker on somebody else's line.
+	//
+	// Without the marker the reprint is indistinguishable from new output, and
+	// someone who has just watched a panel scroll past reads it a second time and
+	// starts looking for the bug that produced two of them.
+	fmt.Fprintln(w)
 	fmt.Fprintf(w, "%s\n", a.st.dim("── the session above, reprinted so it outlives the alternate screen ──"))
 	if dropped > 0 {
 		fmt.Fprintf(w, "%s\n", a.st.dim(fmt.Sprintf("… %d earlier lines are not shown", dropped)))

@@ -186,7 +186,7 @@ func TestLeashIsShortForABare5xxAndFullForA503(t *testing.T) {
 	}
 	// The same rule under the one combination that would slip past the row
 	// above. Nothing in this stage sets a status on a stream error, so a
-	// stage-less `if Status >= 500` looks harmless — until stage 10's watchdog
+	// phase-less `if Status >= 500` looks harmless — until stage 10's watchdog
 	// starts carrying the status it got its 200 from, and mid-stream breaks
 	// silently inherit the short leash meant for a server error.
 	if got := (&CallError{Phase: phaseStream, Status: 500}).leash(); got != 0 {

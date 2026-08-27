@@ -14,6 +14,13 @@ stages/05-live-forever` and see exactly one idea arrive.
 **Do not refactor shared code into a common package.** That is the one change
 that would break the thing this repo is for.
 
+The course has two halves. **Phase 1 (00–08) is the instrument panel; phase 2
+(09 onward) is what fails in production.** Every phase 2 stage is copied from
+**stage 07**, not from the previous number: stage 08 is the only stage in the
+repo with a dependency and is advertised as optional, so carrying it down the
+trunk would make it mandatory. To add a stage,
+`cp -r stages/07-multiply stages/NN-name` and then add the one idea.
+
 ## Rules
 
 - **No dependencies** beyond the standard library and `golang.org/x/sys`, which

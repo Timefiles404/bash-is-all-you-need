@@ -380,15 +380,22 @@ people quote.
 
 ## What a fallback costs
 
-The same 963-token prompt, on the same endpoint, one turn apart:
+A prompt cache is per-provider, per-model and per-prefix, so a fallback starts
+cold **by construction**. The same 963-token prompt, on a provider's first sight
+of it and once it is warm:
 
 | | full | cache read | cost of the prompt |
 |---|---|---|---|
-| warm, same provider | 3 | 960 | **$0.0000297** |
-| first call after a fallback | 963 | 0 | **$0.000289** |
+| warm | 3 | 960 | **$0.0000297** |
+| first sight of this prefix | 963 | 0 | **$0.000289** |
 
-**9.7× for the identical bytes.** A prompt cache is per-provider, per-model, and
-per-prefix; moving to rung 1 discards all three. The turn you rescued cost you
+(Those two figures come from two different runs, not from adjacent turns of one
+session. The cold one is the first call after the fallback above; it is cold
+because that provider had not seen this prefix — which is exactly the state a
+fallback produces, every time.)
+
+**9.7× for the identical bytes.** Moving to rung 1 discards the provider, the
+model and the prefix at once. The turn you rescued cost you
 ten prompts' worth of cache discount, and it will keep costing that until the new
 provider's cache warms — which, on a session that only had a few turns left, may
 be never.

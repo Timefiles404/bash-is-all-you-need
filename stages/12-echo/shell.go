@@ -727,6 +727,10 @@ func (s *shellSession) commands() []tui.Command {
 						s.bus.Emit(Event{Kind: KindProvider, Provider: &info})
 					}
 					fmt.Fprintf(w, "  recording to %s\n", s.trace.path())
+					// Where to read it back. A trace nobody opens is a file, and the
+					// command that opens it is the one thing a reader who has just
+					// switched recording on does not know yet.
+					fmt.Fprintf(w, "  read it back with --composer %s, which needs no key\n", s.trace.path())
 				}
 				return nil
 			},

@@ -70,11 +70,13 @@ type shellSession struct {
 	pcfg  providerConfig
 	msgs  []Msg
 
-	// wd 是命令跑起来的地方，它住在这里，是因为 /open 要挪它。
+	// wd 是命令跑起来的地方。
 	//
-	// config 里没有工作目录这个字段：runBash 不设 cmd.Dir，所以决定一条命令
-	// 在哪里跑的是进程自己的目录，而改变它的是 os.Chdir。横幅和 /status 报的
-	// 就是这个字段，而 open() 是唯一写它的地方。
+	// config 里没有工作目录这个字段，也不需要有：runBash 不设 cmd.Dir，所以对
+	// 一条普通命令来说，决定它在哪里跑的是进程自己的目录，而挪动它的是 open()
+	// 里那句 os.Chdir。沙箱里的命令是那个例外，也正是 open() 多出一行的理由：
+	// 它跑在 interp.Dir 底下，而 os.Chdir 碰不到那个。这个字段是所有*报告*目录
+	// 的地方读的那份拷贝。
 	wd string
 }
 

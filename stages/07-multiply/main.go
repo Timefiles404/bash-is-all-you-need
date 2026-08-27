@@ -466,9 +466,9 @@ func main() {
 	// 它里面的一切在整个会话里都是稳定的，这才让它有资格待在缓存断点之前；会
 	// 动的东西一律进消息流——见 memory.go 的放置规则。
 	//
-	// 在外壳出现之前，它就是在这里当场拼好，只拼一次。现在它是个函数，只为
-	// 一个理由：/open 会换掉工作目录，而记忆文件和技能索引都是从那个目录里
-	// 读的。依赖这个目录的东西一共四样，挪三样比一样都不挪更糟。
+	// 在 tui/ 里那个外壳出现之前，它就是在这里当场拼好，只拼一次。现在这套装
+	// 配是个函数，只为一个理由：/open 会换掉工作目录，而记忆文件和技能索引都
+	// 是从那个目录里读的。依赖这个目录的东西一共四样，挪三样比一样都不挪更糟。
 	sys, stable := sh.assemble(shell, wd)
 	if *breakCache && !shellMode {
 		fmt.Println("--break-cache: a fresh timestamp goes into the system prompt on every request")

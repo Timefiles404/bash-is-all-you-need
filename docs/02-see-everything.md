@@ -300,7 +300,7 @@ stage exists to eliminate.
    has 1239ms. Explain the difference, then check the cache column and see
    whether it agrees with you.
 
-→ Next: Stage 03 — Babel *(planned)*
+→ Next: [Stage 03 — Babel](03-babel.md)
 
 → Reference: [Wire notes](wire-notes.md) — the observed behaviour every claim in
 this chapter rests on

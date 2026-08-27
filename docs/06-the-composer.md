@@ -430,6 +430,6 @@ the same reason the JSONL writer and the plain renderer were one line each.
    it. The work is not the plumbing; it is deciding what a UI does when new
    events arrive while the user is scrolled somewhere else.
 
-→ Next: Stage 07 — Multiply *(planned)*
+→ Next: [Stage 07 — Multiply](07-multiply.md)
 
 → Reference: [Stage 02 — See Everything](02-see-everything.md), [Stage 05 — Live Forever](05-live-forever.md)

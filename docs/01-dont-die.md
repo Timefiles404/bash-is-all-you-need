@@ -449,6 +449,6 @@ Still missing after this chapter, on purpose:
 5. **Run it with stdin piped** and no `--yolo`. Confirm you get a clear message
    rather than a silent wall of denials.
 
-→ Next: Stage 02 — See Everything *(in progress)*
+→ Next: [Stage 02 — See Everything](02-see-everything.md)
 
 → Reference: [Wire notes](wire-notes.md) — the observed behaviour every claim in this chapter rests on

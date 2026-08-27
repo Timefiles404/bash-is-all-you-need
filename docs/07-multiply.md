@@ -331,6 +331,6 @@ what it cost.**
    number is where a shell stops being enough and a real sandbox starts being
    the answer — which is stage 08.
 
-→ Next: Stage 08 — Sandbox
+→ Next: [Stage 08 — Sandbox](08-sandbox.md)
 
 → Reference: [Stage 04 — The Cache](04-the-cache.md), [Stage 05 — Live Forever](05-live-forever.md), [Stage 06 — The Composer](06-the-composer.md)

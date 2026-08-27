@@ -310,6 +310,6 @@ do not link any of this.
    writable mount, and this chapter's layer inside it. Then compare what each of
    the two stops, and notice they are almost disjoint.
 
-→ That is the end of the course. Back to the [README](../README.md).
+→ Next: [Stage 09 — Triage](09-triage.md) — phase 2 branches from stage 07, so the sandbox stays a side road.
 
 → Reference: [Stage 01 — Don't Die](01-dont-die.md), [Stage 07 — Multiply](07-multiply.md)

@@ -460,6 +460,6 @@ default threshold in most tutorials is set for the wrong objective.**
    between them. Then read `MEMORY.md` and ask whether any line would have saved
    a tool call. That question is the whole design brief for a memory system.
 
-→ Next: Stage 06 — The Composer
+→ Next: [Stage 06 — The Composer](06-the-composer.md)
 
 → Reference: [Wire notes](wire-notes.md), [Stage 04 — The Cache](04-the-cache.md)

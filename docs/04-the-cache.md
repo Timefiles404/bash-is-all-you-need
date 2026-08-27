@@ -268,6 +268,6 @@ show you a problem.**
    winning on your provider. That number is worth more than any advice in this
    chapter.
 
-→ Next: Stage 05 — Live Forever *(planned)*
+→ Next: [Stage 05 — Live Forever](05-live-forever.md)
 
 → Reference: [Wire notes](wire-notes.md) §C8–C10

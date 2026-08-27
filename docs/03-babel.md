@@ -287,6 +287,6 @@ chapter about normalising away exactly that kind of difference.
 5. **Break the raw-bytes rule.** Decode `Args` into a map and re-encode it, then
    watch the cache-read column in stage 04 collapse.
 
-→ Next: Stage 04 — The Cache
+→ Next: [Stage 04 — The Cache](04-the-cache.md)
 
 → Reference: [Wire notes](wire-notes.md)

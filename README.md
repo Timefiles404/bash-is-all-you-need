@@ -82,7 +82,7 @@ sandbox in a later stage.
 | [09 Triage](docs/09-triage.md) | an error is a decision, not a string: one taxonomy over two protocols, `Retry-After`, a retry budget, the fallback ladder | ✅ built |
 | [10 Deadlock](docs/10-deadlock.md) | the tool that never returns and the stream that stalls: every wait gets a deadline and an owner | ✅ built |
 | [11 Malformed](docs/11-malformed.md) | the tool call is not valid JSON — what each protocol hands you, why repairing it is the trap, and one validation boundary | ✅ built |
-| 12 Echo | the cheapest tool call is the one you do not make: content-addressed results, an LRU, staleness by `mtime` | 🚧 planned |
+| [12 Echo](docs/12-echo.md) | the cheapest tool call is the one you do not make — and an audit, on traces you already have, of what that is worth before you build it | ✅ built |
 | 13 Rewind | the session and the workspace are both state, and both need a rewind — resume from the trace, checkpoint before mutation | 🚧 planned |
 | 14 Amnesia | compaction is lossy, so measure the loss: a probe set, a recall number, protected regions | 🚧 planned |
 | 15 Rot | a memory needs an expiry and a witness: stale versus wrong, supersede versus contradict, self-evolving skills that disagree | 🚧 planned |
@@ -137,6 +137,14 @@ rather than on protocol documentation, because the two do not agree.
   Measured: the worst silence in 14 calls was **5.0s** against a 45s default —
   and the chapter shows why the two obvious ways to measure that number both
   report something else.
+- A result cache for tool calls that ships **switched off**, because the chapter
+  that builds it also measures it: replayed against sixteen recorded sessions it
+  would have hit **4 times in 107 commands** and saved **401 ms** — against
+  864 s of model time in those same sessions. The audit runs on traces you
+  already have, with no API key, which is the point: you can find out what a
+  cache is worth to *your* workload before writing one. Where it does pay is
+  measured too — four agents reading one file at once, 21% hits — and so is the
+  cache that was quietly doing the real work all along, at **83.9%**.
 - No vendor lock: any OpenAI- or Anthropic-compatible endpoint, including local
   models, configured by URL + key + protocol.
 

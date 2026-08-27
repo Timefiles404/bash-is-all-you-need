@@ -482,7 +482,7 @@ func main() {
 		opts: shellOpts{
 			provider: *providerName, cacheBP: !*noCache,
 			window: *window, noMemory: *noMemory, noSkills: *noSkills,
-			breakCache: *breakCache, tracePath: *tracePath,
+			breakCache: *breakCache,
 		},
 	}
 

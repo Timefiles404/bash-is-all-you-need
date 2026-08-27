@@ -404,7 +404,7 @@ func main() {
 		opts: shellOpts{
 			provider: *providerName, cacheBP: !*noCache,
 			window: *window, noMemory: *noMemory,
-			breakCache: *breakCache, tracePath: *tracePath,
+			breakCache: *breakCache,
 		},
 	}
 

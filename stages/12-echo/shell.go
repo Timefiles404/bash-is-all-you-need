@@ -50,7 +50,6 @@ type shellOpts struct {
 	noMemory   bool
 	noSkills   bool
 	breakCache bool
-	tracePath  string
 
 	cacheOn      bool
 	cacheEntries int
@@ -82,7 +81,6 @@ type shellSession struct {
 	pname string
 	pcfg  providerConfig
 	msgs  []Msg
-	turns int
 }
 
 // ---------------------------------------------------------------------------
@@ -280,7 +278,6 @@ func (s *shellSession) submit(ctx context.Context, line string) error {
 	a := s.a
 	s.msgs = append(s.msgs, userTurn(line, volatileContext(a.cfg.shell, time.Now())))
 	msgs := s.msgs
-	s.turns++
 	s.mu.Unlock()
 
 	s.bus.Emit(Event{Kind: KindUserMessage, Text: line})

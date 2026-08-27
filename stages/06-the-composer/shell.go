@@ -57,7 +57,6 @@ type shellOpts struct {
 	window     int
 	noMemory   bool
 	breakCache bool
-	tracePath  string
 }
 
 // shellSession is one interactive session.
@@ -84,7 +83,6 @@ type shellSession struct {
 	pname string
 	pcfg  providerConfig
 	msgs  []Msg
-	turns int
 
 	// wd is where commands run.
 	//
@@ -300,7 +298,6 @@ func (s *shellSession) submit(_ context.Context, line string) error {
 	a := s.a
 	s.msgs = append(s.msgs, userTurn(line, volatileContext(a.cfg.shell, time.Now())))
 	msgs := s.msgs
-	s.turns++
 	s.mu.Unlock()
 
 	s.bus.Emit(Event{Kind: KindUserMessage, Text: line})

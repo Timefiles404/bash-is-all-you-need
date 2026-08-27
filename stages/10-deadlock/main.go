@@ -455,7 +455,7 @@ func main() {
 	}
 
 	wd, _ := os.Getwd()
-	fmt.Printf("stage 09 · provider=%s (%s) · model=%s\ncwd=%s\n",
+	fmt.Printf("stage 10 · provider=%s (%s) · model=%s\ncwd=%s\n",
 		pname, provider.Protocol(), provider.Model(), wd)
 
 	// ---- the system prompt, assembled once ------------------------------

@@ -1,39 +1,35 @@
-// Stage 10 — Deadlock: every wait gets a deadline and an owner.
+// Stage 11 — Malformed: one boundary between a model's output and exec.Command.
 //
-// One idea, and it lives in deadline.go: **a streamed model call needs three
-// clocks, not one.** http.Client.Timeout covers the body read, so on a stream
-// that single number is being asked two unrelated questions at once — how long
-// a healthy answer may take, and how long a dead socket may look alive — and no
-// value answers both.
+// One idea, and it lives in toolcall.go: **every tool call crosses one check,
+// and it crosses it before it can run AND before it can be remembered.**
 //
-// The diff against stage 09 is one new file and a context.Context threaded to
-// everything that can block. Stage 09 named that as the barrier it could not
-// cross:
+// Every other field a model produces is text, and wrong text is just a bad
+// answer. Arguments are different, because they end up in a process. A tool
+// call is therefore the one place in this loop where "the model said something
+// odd" and "the machine did something" are the same event, and the whole stage
+// is about keeping those two apart.
 //
-//	"BuildRequest returns a context-free *http.Request, so the interface is
-//	 the barrier. Stage 10 is where that changes."
+// The diff against stage 10 is one new file and a change everywhere a tool call
+// is created, replayed or displayed. checkCall replaces the per-tool hand-parsers
+// stage 10 used; faultText says what was refused in a form that carries no
+// instruction the model will still be reading forty turns later; uniqueIDs
+// repairs a gateway that mints one id for every call it ever makes.
 //
 // # Where the name comes from
 //
-// Not a lock-ordering deadlock. The thing this stage removes is plainer and
-// much more common: **a wait nobody can end.** Stage 07 fans subagents out and
-// joins them with wg.Wait(), and until now every one of those waits was
-// unbounded all the way down — the parent waits on the children, each child
-// waits on a model call, and the model call waits on a socket with a ten-minute
-// cap and no way to be cancelled. One quiet TCP connection and the whole tree
-// is stuck, with Ctrl-C landing on a parent that is not listening.
+// Not "invalid JSON", which is only the loudest case. A call is malformed when
+// its arguments are not the arguments: truncated mid-string, valid JSON of the
+// wrong shape, a schema-satisfying value that means nothing, or the same call
+// arriving twice under one id. docs/11-malformed.md has what each protocol
+// actually sends for each of those, probed byte by byte.
 //
-// Threading one context fixes every level of that at once, which is the reason
-// it is one idea and not five: the child's call becomes cancellable, so the
-// child returns, so wg.Wait() returns, so the turn ends. Nothing in dispatch()
-// had to learn about deadlines.
+// # What phase 1 and stages 09-10 still do
 //
-// # What phase 1 and stage 09 still do
-//
-// Unchanged. The classifier in triage.go gains one input — the cause the clock
-// cancelled with — and answers with the same three verdicts it already had.
-// That it absorbs three new failure modes without a fourth verdict is the best
-// evidence stage 09 picked the right shape.
+// Unchanged. A refused call is a tool result like any other, so triage never
+// sees it and no deadline is involved. The one place stage 11 reaches back is
+// the truncation fuse: a model that cannot produce a complete call inside
+// max_tokens will not produce one on the next attempt either, so the loop has
+// to stop rather than retry, and that decision is the human's to act on.
 package main
 
 import (
@@ -478,7 +474,7 @@ func main() {
 	}
 
 	wd, _ := os.Getwd()
-	fmt.Printf("stage 09 · provider=%s (%s) · model=%s\ncwd=%s\n",
+	fmt.Printf("stage 11 · provider=%s (%s) · model=%s\ncwd=%s\n",
 		pname, provider.Protocol(), provider.Model(), wd)
 
 	// ---- the system prompt, assembled once ------------------------------

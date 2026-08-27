@@ -67,9 +67,15 @@ someone else use it: the call that fails, the tool that never returns, the JSON
 that is not JSON, the note that went stale, the P95 nobody measured. Same rules
 — one idea per stage, and no claim without a number behind it.
 
+Phase 2 continues from **stage 07**, not stage 08. Stage 08 is the one place in
+the repo that takes a dependency, and it is advertised as optional; carrying it
+down the trunk would make it mandatory in practice. It stays a side road —
+`diff stages/07-multiply stages/08-sandbox` is the patch, if you want the
+sandbox in a later stage.
+
 | Stage | Idea | Status |
 |---|---|---|
-| 09 Triage | an error is a decision, not a string: one taxonomy over two protocols, `Retry-After`, a retry budget, the fallback ladder | 🚧 planned |
+| [09 Triage](docs/09-triage.md) | an error is a decision, not a string: one taxonomy over two protocols, `Retry-After`, a retry budget, the fallback ladder | ✅ built |
 | 10 Deadlock | the tool that never returns and the stream that stalls: every wait gets a deadline and an owner | 🚧 planned |
 | 11 Malformed | the tool call is not valid JSON — what each protocol actually hands you, and what to do with it | 🚧 planned |
 | 12 Echo | the cheapest tool call is the one you do not make: content-addressed results, an LRU, staleness by `mtime` | 🚧 planned |
@@ -115,6 +121,11 @@ rather than on protocol documentation, because the two do not agree.
   you can see the tax you are paying on every request forever.
 - An embedded shell that sees every command *after* expansion, and a measured
   table of the fourteen ways a regexp and a parser both lose.
+- A failure taxonomy where two protocols' errors become one of three decisions —
+  retry, fall back, stop — grounded in the recorded bytes that make the two
+  obvious rules wrong: a nonexistent model returns **401**, and a malformed body
+  returns **500**. Plus the number nobody reports, because the API cannot be
+  asked for it: **what the failed attempts cost**.
 - No vendor lock: any OpenAI- or Anthropic-compatible endpoint, including local
   models, configured by URL + key + protocol.
 
@@ -163,8 +174,9 @@ stops is part of the teaching:
   bullet.
 - **No agent framework, and no TUI framework.** No LangChain, no vector
   database, no orchestration layer, no vendor SDK, no Bubble Tea. Stages 00-07
-  are the standard library plus `golang.org/x/sys` — for Windows Job Objects in
-  stage 01 and terminal control in stage 06 — and that is all. Stage 08 is the
+  and every phase 2 stage are the standard library plus `golang.org/x/sys` — for
+  Windows Job Objects in stage 01 and terminal control in stage 06 — and that is
+  all. Stage 08 is the
   single exception: it embeds `mvdan.cc/sh/v3`, and its chapter is largely an
   argument about when a dependency earns its place, with a measured account of
   what that one cost (it moved the Go floor twice before being pinned back).

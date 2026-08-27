@@ -161,4 +161,108 @@ Things the real API did that the types in `main.go` had to accommodate:
    including a local Ollama. Small models produce malformed tool calls — that is
    not your code failing, and it is worth seeing early.
 
+---
+
+## What you can answer now
+
+**Why is a working coding agent only about two hundred lines?**
+Because the loop is genuinely small: send the conversation, run whatever
+commands come back, append the results, repeat. There is no SDK underneath —
+`callModel()` is one HTTP POST — and one tool covers exploring, editing and
+verifying. The hard parts of this repo are all in the stages after this one, and
+none of them are about making the agent smarter.
+
+**Why does a command that exits non-zero not return an error?**
+Because a failed command has not broken your program, it has produced
+information, and the model is the component that should react to it. In the run
+in this chapter `python stats.py` exited 1 with a `ZeroDivisionError` traceback,
+the traceback went back verbatim, and the model used it to locate the bug.
+Returning a Go error there would have stopped the agent at the exact moment it
+became useful.
+
+**Why must every tool call get a result?**
+Because the protocol pairs them: if the model asks for three commands and you
+answer two, the next request is malformed. This holds for commands that failed
+as much as for ones that worked, because the failure is the result. Exercise 1
+exists to make you break the pairing on purpose and read what the API says
+about it.
+
+**Why is the message array only allowed to grow?**
+Because the conversation is the agent's entire memory. Nothing is edited or
+removed, so every request re-sends all of it, and that array is the only place
+the agent knows what it has already seen and done. Stage 05 is the first time
+this rule is broken, and breaking it costs something.
+
+**Where did 4982 billed tokens come from in a session whose conversation ended
+at 1192?**
+From the prompt column of the six turns, added together. Each turn re-sends
+everything before it, so the early turns are paid for again on every later turn
+— 4.2× the size of the thing that was built. The final conversation is what you
+have at the end; the sum of the column is what you were billed for.
+
+**Why does that cost grow faster than the conversation does?**
+Because the number of re-sends grows with the number of turns: a forty-turn
+session pays for its first turn forty times. Six turns at 4.2× is mild, and the
+ratio keeps climbing for as long as the session does. Every serious agent has an
+answer to this, and this repo's arrives in stage 04.
+
+**Why is `maxTurns` the one survival feature that made it in this early?**
+Because without it a model stuck in a retry loop keeps calling the API for as
+long as you leave the process running. Truncation, a timeout and a permission
+gate each protect you from one bad command; `maxTurns` protects you from an
+agent that is working exactly as written and going nowhere, which is the failure
+most likely to find you while you are still reading the code.
+
+**Why must `tool_calls[].function.arguments` be parsed rather than matched as
+text?**
+Because the field is a JSON *string* whose contents are themselves JSON, so the
+value you want sits behind a second layer of encoding, with its own escaping.
+Unmarshalling it a second time gives you a typed struct. Matching the raw string
+gives you something that works on the examples you happened to try and depends
+on how the model happened to format its arguments.
+
+**Why does `content` coming back as `null` not break anything here?**
+Because on a tool-calling turn the API sends `null` rather than `""`, and Go's
+`json.Unmarshal` treats null as a no-op, leaving a plain `string` field at its
+zero value. That is luck rather than design, and it is written down for that
+reason: a language with stricter null handling crashes on exactly that field.
+
+**Why does a response cut off at `max_tokens` look like a finished turn?**
+Because the loop asks a response only one question — were there tool calls — and
+a response truncated mid-thought usually has none. `finish_reason` is never
+read, so `length` is indistinguishable from a model that had finished talking.
+That is the bug stage 01 fixes.
+
+---
+
+## Questions to think about
+
+These have no answer in the repo. They are the decisions that go differently
+depending on what you are building.
+
+1. The turn ends when the model stops asking for tools, which makes "finished"
+   and "gave up" the same event. What else could end a turn, and what would the
+   agent have to look at to tell those two apart?
+
+2. Most of what makes this agent behave well lives in the system prompt rather
+   than in the code. For some behaviour you wanted — say, always running the
+   tests before claiming a fix works — how would you decide whether it belongs
+   in that string or in the harness, and how would you find out you had chosen
+   wrong?
+
+3. `maxTurns` fuses the number of turns, but the thing you are spending is
+   tokens, and one turn can cost anything. What would you fuse instead, and
+   where would that fuse have to sit to stop a run before the money is gone
+   rather than after?
+
+4. The history only grows, and stages 04 and 05 answer that in two different
+   ways. Before reading either: what would you drop first from a fifty-turn
+   history, and how would you discover that you had dropped something the model
+   still needed?
+
+5. Nothing here restricts what the agent may run, and the advice is to use a
+   scratch directory — which does not survive contact with real work. What would
+   you actually restrict, and would you enforce it in the prompt, in the tool,
+   or in the process the tool runs?
+
 → Next: [Stage 01 — Don't Die](01-dont-die.md)

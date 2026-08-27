@@ -430,6 +430,112 @@ the same reason the JSONL writer and the plain renderer were one line each.
    it. The work is not the plumbing; it is deciding what a UI does when new
    events arrive while the user is scrolled somewhere else.
 
+---
+
+## What you can answer now
+
+**Why can a chat log not show you the most common agent bug?**
+Because a chat log renders the God view and calls it the conversation. Nearly
+every "it forgot what I told it" report is the same fault — the thing you are
+asking about is not in the model's context — and seeing that means comparing
+what happened against what was sent. In the run above, 629 events had happened
+and the model could see eleven messages.
+
+**Why is `os.Exit` a bug once the program has entered raw mode?**
+Because it skips deferred functions, and the deferred function is the only thing
+in the world that knows how to give the terminal back. The user is left with no
+echo, no line editing and no cursor, and the message explaining why was printed
+onto an alternate screen that is already gone. `log.Fatal` is the same bug
+wearing the most ordinary line in Go.
+
+**Why does the signal handler re-send the signal to itself instead of calling
+`os.Exit(130)`?**
+Because a process killed by SIGTERM should report that it was killed by SIGTERM.
+Its parent may be a shell, a supervisor or a test harness that distinguishes
+signal death from a non-zero exit code. Restore the terminal, reset the handler
+to the default, then die honestly.
+
+**Why does the key decoder refuse to decide what a lone Escape byte means?**
+Because it cannot: a trailing `\x1b` is either the Escape key or the first byte
+of a sequence still arriving, and nothing in the bytes tells them apart. Only
+elapsed time does, so the decoder says "I need more bytes" and the event loop,
+which owns a clock, applies the 50ms policy. That is why Escape feels slightly
+late in every terminal application you have used, and why the decoder is
+testable at all — a function that timed itself could only be tested by waiting.
+
+**Why does the renderer measure columns rather than bytes or runes?**
+Because the terminal is laid out in columns and neither of the others predicts
+them: `"你好世界"` is 12 bytes, 4 runes and 8 columns. Combining marks take
+zero columns, fullwidth forms take two, and ANSI escapes take none, so `%-20s`
+— which aligns on bytes — shears any column holding text it did not expect.
+
+**Why is truncating with `s[:w]` a corrupted frame rather than a cosmetic
+mistake?**
+Because it can cut a wide character in half, leaving the terminal a byte
+sequence it cannot interpret, and it can cut an escape sequence in half, leaking
+an unclosed colour into everything drawn after it. Worse, a line that ends up
+one column too wide wraps, which pushes every line below it down by one and
+destroys the whole frame. That is why `frameBytes` calls `truncCols`.
+
+**Why does Windows poll for the window size instead of waiting to be told?**
+Because there is no SIGWINCH, and the Win32 alternative is unavailable by
+construction: a resize arrives as a record on the console input queue, and
+`ENABLE_VIRTUAL_TERMINAL_INPUT` — the flag that lets one key decoder serve both
+platforms — is exactly what turns that queue into a byte stream. The trade is a
+syscall every 250ms forever against a second decoder to write and maintain.
+
+**Why did the Wire view's promise of unmodified bytes turn out to be false?**
+Because `encoding/json` escapes `<`, `>` and `&` inside a `json.RawMessage` too,
+so the trace writer's plain `json.Marshal` undid the `SetEscapeHTML(false)` both
+adapters had gone out of their way to use. Nothing errored and every consumer
+decoded the right string back; what broke was the claim, on all 24 recorded
+requests. A defence applied at one layer has to be applied at every layer that
+re-encodes the same bytes.
+
+**Why was `--replay` broken on exactly the machines it was built for?**
+Because stage 03 put provider resolution, and its `os.Exit(1)`, above the replay
+branch. Every machine it was tested on had the environment variables set, so
+nothing ever looked wrong; on a machine with a trace file and nothing else it
+printed "no provider configured" and quit. A config error should be fatal to the
+code that depends on the config and to nothing else, and a feature that
+advertises "works without X" needs a test that runs without X.
+
+**Why does a TUI need a dump mode?**
+Because a TUI is a dead end for anything you want to diff, grep, paste into an
+issue or assert on in CI, and "what did the model see on call 12" is exactly the
+kind of question whose answer you want to pipe. It cost eight lines here only
+because rendering and drawing were already separate functions. A UI whose output
+can only be produced by pressing a key is a UI without tests.
+
+---
+
+## Questions to think about
+
+These do not have answers in the repo. They are the ones where the answer
+depends on what you are building.
+
+1. The Model view shows what was sent, not what the model attended to. If a
+   session goes wrong and the right information was in the context, what
+   evidence could separate "it never had it" from "it had it and ignored it",
+   and where would that evidence have to come from?
+
+2. Every view here is assembled from events that something chose to emit, so a
+   bug in code that emits nothing is invisible. How would you notice a missing
+   event, and what would a test for a trace's completeness actually assert?
+
+3. This session produced 629 events. Work out what breaks first at sixty
+   thousand, and whether the answer is a filter, an index, a different storage
+   format, or a different idea of what one session is.
+
+4. Three views was the answer here: what happened, what the model saw, and the
+   bytes. Is there a fourth — a story the trace holds that none of the three
+   tells? Decide what it would show, and which of the existing three it would be
+   competing with for the reader's attention.
+
+5. The Wire bug was found because a view made a promise that somebody eventually
+   checked. Which claims in your own agent are enforced only by prose, and what
+   would it take to make one of them fail a test instead of failing a reader?
+
 → Next: [Stage 07 — Multiply](07-multiply.md)
 
 → Reference: [Stage 02 — See Everything](02-see-everything.md), [Stage 05 — Live Forever](05-live-forever.md)

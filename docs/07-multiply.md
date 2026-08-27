@@ -331,6 +331,121 @@ what it cost.**
    number is where a shell stops being enough and a real sandbox starts being
    the answer — which is stage 08.
 
+---
+
+## What you can answer now
+
+**Why does a subagent cost more than doing the same work inline?**
+Because a child is a whole agent: its own system prompt, its own turns, and a
+report the parent then pays to read. Over the same three files the delegating
+arm made nine model calls to the inline arm's three, and spent 25,782 prompt
+tokens against 19,715 — about 20% more once cache reads are priced in, with 2.9×
+the output tokens and 2.2× the wall clock.
+
+**If delegation costs more, what is it buying?**
+Context. The delegating run ended with a parent holding 1,893 tokens where the
+inline run held 18,160 — 9.6× smaller — because everything the children read
+lives in message arrays that were discarded. 21,781 prompt tokens went in across
+the three children and 2,484 bytes came back, and that ratio is the product. The
+rule that follows is to delegate work that reads a lot and concludes a little,
+and never work whose intermediate output you will need.
+
+**Why is a subagent told, in its system prompt, that everything but its final
+message is discarded?**
+Because otherwise it writes a summary of its process — "I looked at several
+files and found some things" — since that is what a chat turn normally is. A
+child told plainly that its last message is the only thing that survives writes
+a report instead. One paragraph changes what comes back.
+
+**Why is there one trace for the whole tree rather than one per agent?**
+Because the question you actually have is what the parent was doing while the
+child ran, and a file per agent turns that into a merge on timestamps, which is
+what timestamps are worst at. Stage 02's synchronous bus under one lock already
+gives every event a `Seq` that orders it against every other event in the tree,
+and `Fork` copies nothing. An async per-subscriber bus would hand each
+subscriber a different story about exactly the session you cannot reason about
+without one.
+
+**Why does `dispatch` return subagent results in the order they were asked for
+rather than as they finish?**
+Because completion order is not reproducible and the message array is the
+prompt. The same session replayed twice would produce two different message
+arrays, two different prompt prefixes and, per stage 04, a cache that never
+hits. Concurrency is allowed to change how long things take; it is not allowed
+to change what the conversation says.
+
+**Why does the permission gate hold a lock it should never need?**
+Because what it prevents is not a garbled prompt: two goroutines writing to one
+terminal produce a single interleaved line and then read one answer for both
+questions, so the user approves one command and a different one runs. `dispatch`
+asks every question on one goroutine before any concurrency starts, so the lock
+should never contend. "Should never" is not a property you want a permission
+gate to rest on.
+
+**Why is the depth limit enforced by removing the `task` tool rather than
+refusing the call?**
+Because a runtime refusal costs a full round trip, carries the tokens of a tool
+definition on every request that can never use it, and is visibly arbitrary —
+and models argue with arbitrary rules by rephrasing them. A tool that is not in
+the list is not a rule: there is nothing to work around, and the model plans
+within what it has.
+
+**Why does a skills index cost something even though the bodies stay on disk?**
+Because the index sits in the prefix of every request for the life of the
+session — 738 bytes for three skills, against 6.1kB of bodies left on disk.
+Stage 04's cache makes that a tenth of the price and never zero, so forty skills
+is a couple of thousand tokens of permanent overhead on every call the agent
+ever makes. Nobody notices unless something prints the number.
+
+**What does Programmatic Tool Calling add that a shell pipeline does not?**
+Not its headline benefit. Keeping intermediate results out of the context is
+what `sort | head` has done since 1973: the pipeline arm put 157 bytes into the
+context where the file-at-a-time arm put 1,255, using 32× fewer prompt tokens
+and a tenth of the wall clock for the same answer. What PTC adds is a language
+where the shell has only composition — typed tool APIs instead of text streams,
+branches and loops over structured results, error handling that is not `$?`, and
+tools that are not programs on a PATH.
+
+**Why not implement subagents by having the agent run the agent?**
+You can — `agent --subagent "…"` is a complete subagent mechanism built from the
+tool the agent already has. What it costs is the instrument panel: a separate
+process has its own bus, so its events are not in your trace, its tokens are not
+in your ledger, its permission prompts fight yours for the terminal, and its
+failure is an exit code rather than a stop reason. The shell is a perfectly good
+orchestrator right up until you want to know what it cost.
+
+---
+
+## Questions to think about
+
+These do not have answers in the repo. They are the ones where the answer
+depends on what you are building.
+
+1. A child gets a fresh message array but the same working directory, so
+   anything it writes to disk outlives it. Is a file the child leaves behind a
+   legitimate return channel or a hole in "only text comes back"? Decide what
+   you would allow, and how the parent would come to know it happened.
+
+2. The child sees its prompt and nothing else — not the user's original request,
+   not the summary a compaction produced. Which of those, if any, should it
+   inherit? Work out what a child does badly when it does not know the goal, and
+   what it does badly when it does.
+
+3. The depth fuse works by making a constraint invisible. Some limits are better
+   stated out loud: a model that knows it may not delegate can plan around that,
+   while a model that simply lacks a tool cannot tell whether it was never
+   offered one or has run out. Which of your own limits belong in the tool list,
+   and which belong in the prompt?
+
+4. The chapter's claim is that a pipeline is PTC when your tools are programs on
+   a PATH and your control flow is filter, sort, take. Name the first tool in
+   your own system that is not a program on a PATH. What would it take to make
+   it one, and what would you lose by doing that?
+
+5. One lock orders the whole tree, and three concurrent children never contend
+   for it. Decide what you would give up first if that number were three
+   hundred: the total ordering, the synchronous emit, or one process.
+
 → Next: [Stage 08 — Sandbox](08-sandbox.md)
 
 → Reference: [Stage 04 — The Cache](04-the-cache.md), [Stage 05 — Live Forever](05-live-forever.md), [Stage 06 — The Composer](06-the-composer.md)

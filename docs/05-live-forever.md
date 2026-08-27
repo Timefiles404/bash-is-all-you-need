@@ -460,6 +460,119 @@ default threshold in most tutorials is set for the wrong objective.**
    between them. Then read `MEMORY.md` and ask whether any line would have saved
    a tool call. That question is the whole design brief for a memory system.
 
+---
+
+## What you can answer now
+
+**Why is long-term memory a file rather than a store with embeddings and a
+retrieval step?**
+Because a file is greppable, diffable, reviewable, versionable and editable by
+hand, and what you give up for those five properties is a similarity search this
+agent did not need. It also needs no new tool: the agent appends to `MEMORY.md`
+with the shell it already has.
+
+**Why is a memory file more dangerous than a set of notes?**
+Because injected context is believed — it is an assertion the model will act on
+before it looks. Started in a sandbox with a copy of the repository's
+`AGENTS.md`, the agent was asked to count the lines in `wire-notes.md`, which
+was sitting in the working directory, and ran `wc -l` against the `docs/` path
+the memory file mentioned. Nothing malfunctioned: the model trusted a statement
+in its system prompt over the directory it was standing in.
+
+**Why does memory need an explicit trigger rather than the model's judgement?**
+Because nothing in the current turn rewards writing one, so left to discretion
+memory gets written approximately never. Every agent that accumulates useful
+memory has a trigger; this one has `/remember`. The rule carried in the system
+prompt — record what you learned, not what you did — is what decides whether the
+file is still worth reading in six months.
+
+**Why does volatile context go into a message instead of the system prompt?**
+Because the system prompt is the cached prefix, and a value that changes between
+requests invalidates it; that is stage 04's arm C, at 3.4x. Frozen into a
+message at the moment the message is created, the same information becomes a
+different permanent line each turn rather than one line with a moving value. The
+model gets fresh context every turn and the cache survives.
+
+**Why is a measured character-count estimate good enough without a tokenizer?**
+Because the estimate does not need to be accurate, it needs to be consistent. It
+is only ever asked whether the prompt is near the wall, and it is calibrated
+against the same character count it is later asked to convert, so systematic
+bias from JSON envelopes and tool schemas is absorbed into the ratio instead of
+accumulating as error. Against a synthetic provider it predicted 21,708 tokens
+against 21,389 billed — 1.5% out — having been told neither the divisor nor the
+700-token overhead.
+
+**Why can a conversation only be cut immediately before an assistant turn?**
+Because two separate protocol rules collapse into that one. A tool result whose
+matching call is in the message about to be deleted is an orphan, and both
+protocols reject it. And the summary is injected as a user message, so cutting
+before another user message puts two user messages in a row, which some
+endpoints reject and the ones that merge them do differently from each other.
+
+**Why is the cut rule guarded by an invariant rather than a test case?**
+Because the symptom is a hundred lines away from the cause and one turn late.
+Compaction happens at turn 14, the malformed request goes out on turn 15, the
+error names the request builder, and the conversation that would reproduce it
+has already been compacted away. `validConversation` is written from the
+protocol's rules and deliberately not from the cutting logic, because a check
+written from the same assumptions as the code will always agree with the code.
+
+**Why does the summariser have to be told which part of the session it is
+reading?**
+Because a component that sees part of the system will describe the whole system,
+and will sound equally confident either way. The first version wrote that chunks
+2–8 had never been run, directly above the evidence that chunk 2 had — those
+messages were being kept verbatim, and the summariser never saw them. One
+sentence naming what it was looking at fixed the whole class.
+
+**Why did compaction cost 25% more rather than saving anything?**
+Because it is a two-call cache outage: the summarising call is cold by
+construction, and the call after it is cold because the prefix was just
+rewritten. Against an identical run with no compaction — the same eight
+commands, no confound — the compacting arm sent fewer tokens and paid for more,
+plus 132% in output tokens because summaries are output, plus 19% in wall clock.
+Compaction is a survival mechanism, not an optimisation.
+
+**Why is the threshold not the number that decides how often you compact?**
+Because what governs the interval is the headroom: the gap between the threshold
+and the keep ratio, measured in turns of your actual tool output. At 0.5 and
+0.25 on a 12,000-token window that gap is 3,000 tokens, and one tool result at
+`--max-output 8000` is roughly 2,200 — room for a single turn between
+compactions. The roomy arm's gap was twice as wide and it compacted once instead
+of three times.
+
+---
+
+## Questions to think about
+
+These do not have answers in the repo. They are the ones where the answer
+depends on what you are building.
+
+1. Compaction here summarises the oldest messages and keeps the newest verbatim.
+   What else could you throw away instead — old tool output, a whole call and
+   its result, the reasoning blocks — and how would you choose, given that
+   anything dropped is something the model may ask for again?
+
+2. The measurement says compact as late and as rarely as possible; the
+   counter-argument is that none of these sessions came near the real 131k
+   window. Design the run that would settle it. What has to be held constant,
+   and what would you accept as evidence either way?
+
+3. Memory is read at startup and frozen for the session — a turn of latency
+   traded for a session of cache hits. What kind of agent makes that trade
+   wrong, and what would you be prepared to spend to have memory that is current
+   instead?
+
+4. Dating each line and scoping it to where it is true are cheap mitigations for
+   a memory that has gone stale. What would an expensive one look like — some
+   way for the agent to discover that a memory is no longer true — and what
+   would it cost on every turn that did not need it?
+
+5. The summary silently becomes the conversation's history, and nothing checks
+   it. What would a wrong summary look like from outside the agent, how far into
+   the session would you get before noticing, and what could you keep that would
+   let you tell?
+
 → Next: [Stage 06 — The Composer](06-the-composer.md)
 
 → Reference: [Wire notes](wire-notes.md), [Stage 04 — The Cache](04-the-cache.md)

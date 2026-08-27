@@ -268,6 +268,118 @@ show you a problem.**
    winning on your provider. That number is worth more than any advice in this
    chapter.
 
+---
+
+## What you can answer now
+
+**Why does the order of content in the prompt matter more than where the markers
+go?**
+Because caching is a prefix match. A marker only helps if everything before it
+is byte-identical next time, and a byte that changes early invalidates every
+marker after it. You get four markers per request and you get the whole ordering
+for free, so arranging content from stable to volatile is what makes any marker
+placement worth having.
+
+**Why is the rolling marker, and not the frozen one, the marker that matters in
+an agent?**
+Because an agent re-sends the entire conversation on every turn. The frozen
+marker over `tools` and `system` pays for itself on every request after the
+first, but it covers a fixed prefix; without a second marker that moves up to
+the newest turn, each turn re-reads the whole history at full price. That is the
+4.2x re-send ratio stage 00 measured and could not explain.
+
+**Why can you not tell from your configuration whether caching is working?**
+Because below the minimum cacheable prefix — model dependent, commonly 1,024 to
+4,096 tokens — a marker is not rejected, it is ignored, with a zero in
+`cache_creation_input_tokens` and a 200 OK. The first run of this chapter's
+experiment had `cache_control` on and cached nothing, with no error and no
+warning. The usage numbers are the only evidence there is.
+
+**Why is a broken cache worse than no cache at all?**
+Because a prefix that changes every request writes a fresh entry every turn that
+nobody will ever read, and a write costs more than full price. Arm C billed
+about 67,700 full-price-equivalent tokens against arm A's 20,000 and arm B's
+15,300 — 3.4x and 4.4x worse. Nothing errors; the only symptom is the bill.
+
+**What did the explicit markers buy when the implicit cache was already hitting
+75–93%?**
+Determinism. The implicit cache matches on 64-token block boundaries and
+re-decides every request, so arm B's read column went 8448, 8704, 8448, 8704 —
+down as well as up, while the conversation only grew. With `cache_control` the
+reads were monotonic and each one was exactly the previous turn's prompt, which
+is what lets you tell a regression from noise.
+
+**Why did arm B beat arm A, and when does that stop being true?**
+Because the rolling marker writes a new entry every turn and the first of those
+writes is the whole 10K-token prefix at the write premium, while the implicit
+cache costs nothing to write and was already collecting most of the benefit. Six
+calls is not enough reads to amortise the difference. The write premium needs
+volume, so the arithmetic flips on a long session where the same prefix is read
+dozens of times.
+
+**Why is a timestamp computed at startup harmless when the same timestamp
+computed per request costs 3.4x?**
+Because a value that is constant for a session is a constant prefix for that
+session, which is why `--break-cache` did not work the first time. The audit
+question is therefore not "is there a timestamp in my prompt" but "is there
+anything in my prefix whose value can differ between two consecutive requests" —
+and that is a question about where the code runs, not about what it says.
+
+**Why does swapping the tool set for a "mode" cost more than it looks like it
+should?**
+Because tools render at position zero, ahead of system and messages, so adding,
+removing or reordering one invalidates everything after it, markers included. A
+mode passed in a message is appended at the end and invalidates nothing before
+it. Serialising the tool list deterministically is the same rule seen from the
+other side.
+
+**Why does an agent that fires many tools in one turn need a marker that the
+one-tool-per-turn case does not?**
+Because a breakpoint searches backwards a limited number of content blocks — on
+the order of twenty — looking for an existing entry. A single fan-out turn can
+add more blocks than that in one go, after which the next marker finds nothing
+and you silently pay full price. Two of the four marker slots are still free for
+exactly this.
+
+**Why is the usage bar drawn with three glyphs rather than three colours?**
+Because the first version, one glyph in three colours, looked fine in a terminal
+and became a featureless block the moment the output went through `grep`, into a
+file, or into a CI log. That is precisely how people look at agent output when
+something is wrong, so a chart that needs colour is blank exactly when someone
+is trying to show you a problem.
+
+---
+
+## Questions to think about
+
+These do not have answers in the repo. They are the ones where the answer
+depends on what you are building.
+
+1. The crossover between explicit and implicit caching here came out of one
+   six-call session, on one gateway, priced with assumed multipliers. What would
+   you have to measure on your own provider to know which side of it you are on,
+   and what would you do if the honest answer were "it depends on the task"?
+
+2. This adapter spends two of its four marker slots. Where would you spend the
+   other two in an agent that fans out, and how would you tell afterwards
+   whether the extra markers helped rather than split the prefix into pieces too
+   small to be worth caching?
+
+3. Caching has no success signal, so the read column is the instrument. What
+   would it take to notice a cache regression in a deployed agent that nobody is
+   watching a terminal for, given that every session's prefix is different and
+   there is no baseline run to compare against?
+
+4. Some context is genuinely both dynamic and needed early — a tenant id that
+   changes what the tools may do, or a permission set that changes what the
+   system prompt is allowed to say. The first discipline says it belongs after
+   the last breakpoint. What do you do when it cannot go there?
+
+5. This chapter treats caching as something a provider offers and you arrange
+   your bytes for. If you were serving the model yourself, which of the five
+   disciplines would still be true, and which are artefacts of somebody else's
+   implementation?
+
 → Next: [Stage 05 — Live Forever](05-live-forever.md)
 
 → Reference: [Wire notes](wire-notes.md) §C8–C10

@@ -287,6 +287,116 @@ chapter about normalising away exactly that kind of difference.
 5. **Break the raw-bytes rule.** Decode `Args` into a map and re-encode it, then
    watch the cache-read column in stage 04 collapse.
 
+---
+
+## What you can answer now
+
+**Why is "did the agent loop change?" the test of the abstraction, rather than
+whether it compiles?**
+Because a design that compiles can still carry a vendor's vocabulary inside it,
+and the leak only becomes visible when the second protocol arrives — which is
+when it is most expensive to fix. Stage 03's loop is stage 02's loop with its
+vocabulary replaced and nothing else. The first `if` on a protocol name inside
+the loop is the beginning of a hundred of them.
+
+**Why is there no `RoleTool` in the neutral language?**
+Because the two protocols carry tool results in incompatible shapes: one sends a
+separate message per call, the other gathers every result into a single `user`
+message. No neutral role means both, so the neutral form has neither — a tool
+result is a Block, and each adapter decides what message shape carries it. That
+is also the reason `Msg` holds blocks rather than a flat string.
+
+**Why does `Block.Args` hold a raw JSON string instead of a decoded map?**
+Because one protocol wants a JSON string and the other a JSON object, and raw
+bytes are the only form that reaches both without re-serialising. Go's map
+iteration order is not stable, so a decode-then-encode round trip can produce
+different bytes for the same value. Different bytes move the prompt prefix,
+which invalidates the cache the next chapter is entirely about.
+
+**Why keep `RawStop` when `Stop` is already normalised?**
+Because the envelope lies: on this gateway a tool call truncated at `max_tokens`
+comes back with `stop_reason: "tool_use"` and an unusable body. `Stop` records
+what the agent believed and `RawStop` records what it was told, and the gap
+between them is the bug. Normalising away the only evidence leaves nothing to
+diagnose from.
+
+**Why does an unrecognised stop reason map to `StopUnknown` rather than
+`StopEndTurn`?**
+Because a state machine that maps anything unfamiliar to "probably fine" will
+eventually map a refusal, a quota event or a new safety stop to "probably fine".
+`StopUnknown` costs you a branch to handle; the alternative costs you a wrong
+answer that nothing reports.
+
+**Why did `Usage` survive the second protocol without a single change?**
+Because its fields were named for what the number means rather than for what one
+API called it — `Input` is "billed at full price", not `prompt_tokens`. It was
+designed in stage 02, one chapter before the second protocol existed, and that
+was not foresight. Names that describe meaning survive a second implementation;
+names copied off a vendor's JSON do not.
+
+**Why is copying `prompt_tokens` straight into `Input` a bug that testing does
+not catch?**
+Because one protocol's `prompt_tokens` is the total with `cached_tokens` nested
+inside it, while the other's `input_tokens` is already the uncached remainder.
+The error is exactly the size of the cache hit, so it is zero on a cold request
+and looks perfect in testing. It reported 698 for a 506-token prompt, and it
+gets steadily worse the better your caching works.
+
+**Why does the config file hold `api_key_env` rather than `api_key`?**
+Because config files get committed eventually — every one of them does — and the
+only reliable defence is a format where the secret has nowhere to sit at all.
+The env-var path still works with no config file present, so the simple case
+never has to acquire one.
+
+**Why is SSE framing shared between the adapters while payload parsing is not?**
+Because the cut is exactly where mechanism ends and opinion begins. One protocol
+sends only `data:` lines with a `[DONE]` sentinel and a frame after it; the
+other sends `event:` plus `data:` with no sentinel and `ping` frames on both
+sides of the message. Reading lines off the wire is the same job either way;
+deciding what those lines mean is not.
+
+**Why turn off Go's HTML escaping when the model reads the same string either
+way?**
+Because the server decodes it, so what changes is not the model's input but what
+a human sees — and a shell agent's commands are full of `2>&1`, `>/tmp/out` and
+`<<EOF`, which the escaped form makes unreadable in the request inspector. It is
+also unknown whether a provider's cache key hashes raw bytes or decoded content,
+which is a reason to be consistent rather than to guess. The two adapters
+originally disagreed, and that is the wart those four lines remove.
+
+---
+
+## Questions to think about
+
+These do not have answers in the repo. They are the ones where the answer
+depends on what you are building.
+
+1. Both protocols here stream, carry text and tool calls, and share a turn
+   structure, which is why one neutral `Msg` covers them. Suppose a third
+   arrives with a concept neither has — tools executed on the server, say, or a
+   response that comes back as more than one stream. How would you decide,
+   before writing any of it, whether that concept belongs in the neutral
+   language or stays private to the adapter?
+
+2. "Never normalise away your only evidence" taken literally means keeping the
+   raw form of everything, which is a second copy of every response. Where do
+   you stop? What makes a field worth storing twice, and how would you find out
+   you had guessed wrong?
+
+3. The rule that the loop may not contain a vendor's word has a price. Find a
+   capability one provider has and the other does not, and decide whether you
+   would expose it — knowing that the answer cannot be an `if` in the loop.
+
+4. Every row of the differences table came from watching the wire rather than
+   reading a specification, which works because somebody ran the requests. What
+   happens the day a provider changes one of those behaviours quietly, and how
+   would you find out before your users do?
+
+5. An adapter absorbs differences of shape. At what point does a difference stop
+   being a matter of shape — a provider with no streaming, or no tool calls, or
+   a context window an order of magnitude smaller — and start meaning you need a
+   different agent rather than a third adapter?
+
 → Next: [Stage 04 — The Cache](04-the-cache.md)
 
 → Reference: [Wire notes](wire-notes.md)

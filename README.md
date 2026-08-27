@@ -130,9 +130,9 @@ rather than on protocol documentation, because the two do not agree.
   covers the body read and so cannot tell a slow answer from a dead socket — and
   the widest silence each stream actually had, **printed on the panel** next to
   TTFT, so the timeout is a measured margin rather than a number someone liked.
-  Measured: the worst silence in 14 calls was **5.0s** against a 45s default,
-  and finding that took three attempts because the first two measured the wrong
-  thing.
+  Measured: the worst silence in 14 calls was **5.0s** against a 45s default —
+  and the chapter shows why the two obvious ways to measure that number both
+  report something else.
 - No vendor lock: any OpenAI- or Anthropic-compatible endpoint, including local
   models, configured by URL + key + protocol.
 

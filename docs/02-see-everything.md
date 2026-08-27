@@ -300,6 +300,118 @@ stage exists to eliminate.
    has 1239ms. Explain the difference, then check the cache column and see
    whether it agrees with you.
 
+---
+
+## What you can answer now
+
+**Why does the agent core print nothing at all?**
+Because a `fmt.Printf` makes the terminal the only record of a fact, and the
+moment that line scrolls away the fact is gone — you cannot replay it, diff it,
+total it, or hand it to anyone. Emitting an event instead means the terminal,
+the trace file, the tests and the later full-screen interface are all
+subscribers to one sequence. That is why `--plain` versus a TUI is a choice of
+subscriber rather than a fork of the code.
+
+**Why is the bus deliberately synchronous and under a lock?**
+Because it makes the ordering total and identical for everyone, so the trace
+file and your terminal can never disagree about what happened first. A channel
+per subscriber would be faster and would let the two drift apart under exactly
+the load you most want recorded. A trace that can disagree with what you saw is
+not evidence, and evidence is what this stage is for.
+
+**Why can no single API field tell you how big your prompt was?**
+Because the two protocols count in opposite directions. On an Anthropic-style
+protocol `input_tokens` is only the uncached remainder, so a session that has
+been running for an hour can honestly report 18 while sending 18,000, and the
+real figure is `input + cache_write + cache_read`. On an OpenAI-style protocol
+`prompt_tokens` is already the whole number with `cached_tokens` nested inside
+it, so normalising means subtracting rather than adding.
+
+**Why is getting that normalisation wrong so hard to notice?**
+Because the error is exactly the size of the cache hit. It is zero on a cold
+request, so the code looks perfect in testing, and it grows as caching starts
+working — the number is most wrong when the agent is running best. The recorded
+version of the bug reports 698 tokens for a 506-token prompt.
+
+**Why does the cost line print a dash instead of zero?**
+Because the agent does not know your rates unless you pass `--price-in` and
+`--price-out`, and a made-up zero is worse than no number: zero is the number
+people quote. The line reads `cost — (set --price-* to price this run)` instead,
+which names the absence and says what to do about it.
+
+**Why is the trace JSONL rather than a JSON array?**
+Because an array needs a closing bracket that a killed process never writes, so
+the file documenting the crash would be unparseable because of the crash. With
+one object per line, every completed line is independently valid and a
+half-written final line costs you one event instead of all of them. `ReadTrace`
+therefore treats a truncated tail as the normal shape of a killed session and
+reports it as an event in the stream, rather than as an error that would tempt a
+caller to discard the 195 events explaining the crash.
+
+**Why flush every line and deliberately not `fsync`?**
+Because the two defend different failures at very different prices. An
+unbuffered write costs microseconds into the page cache and already survives
+SIGKILL, a panic and `os.Exit`; `fsync` additionally survives a power cut, at
+0.1 to 10ms — on every text delta, inside the bus lock. Three orders of
+magnitude for a much rarer failure is the trade being declined, and knowing
+where the line was drawn is more useful than being told that the writer flushes.
+
+**Why is there no goroutine in `trace.go`?**
+Because the obvious async writer needs a queue, and a full queue has exactly two
+behaviours: block the producer, which is the thing the goroutine was added to
+avoid, or drop events, which produces a trace that lies by omission under
+precisely the load you most wanted recorded. The rule that actually matters is
+not "never do I/O" but "never wait without a bound" — no fsync, no network, no
+lock held across a channel send.
+
+**Why keep reading the stream after `data: [DONE]`?**
+Because stopping at the sentinel is what the specification says and it is wrong
+here, for three separate reasons. A frame was observed arriving after it with
+real data in it; abandoning a body with bytes left in it stops the HTTP
+transport reusing the connection, quietly adding a TLS handshake to every turn;
+and if usage ever moves behind the sentinel, a client that stopped early reports
+zero tokens and is confidently wrong.
+
+**Why did the first working version print two panels for every call?**
+Because the stream parser emitted `KindResponseEnd`, knowing when the response
+ended, and the agent loop emitted its own, knowing the usage — two components
+each believing they owned one event. The fix has two halves, and both
+generalise: one owner per event, with the parser keeping this one because it is
+the component that knows whether the response ended cleanly; and a renderer that
+latches the last usage it saw instead of reading usage off one particular event.
+
+---
+
+## Questions to think about
+
+These have no answer in the repo. Each is a decision an event bus makes easy to
+postpone and eventually forces.
+
+1. The bus is synchronous, so a slow subscriber slows the agent, and nothing in
+   this stage is slow. The first genuinely slow one you want — a network sink, a
+   database, a live web view — has to go somewhere, and the two obvious places
+   are the two this chapter rejected. Where would you put it?
+
+2. Replay is exact because every number the renderer prints arrived in an event,
+   which also means anything not in an event is gone for good. How would you
+   decide what deserves one, given that a wrong answer surfaces months later,
+   when somebody asks a question of an old trace?
+
+3. A trace holds every command, every output and the full request body, which is
+   what makes it worth sending to a colleague and what makes sending it
+   dangerous. What would you redact, and would you do it when the event is
+   emitted, when it is written, or when it is read — and what does each of those
+   choices make impossible?
+
+4. Not validating `kind` keeps old readers working as new kinds appear, which
+   covers additions. What is your plan for the first time a field inside an
+   existing kind has to change meaning, with a directory of old traces still on
+   disk and still worth reading?
+
+5. The panel is built for a human watching one session go past. What would you
+   show for a hundred sessions a day, and which of these numbers still means
+   anything once it has been averaged across all of them?
+
 → Next: [Stage 03 — Babel](03-babel.md)
 
 → Reference: [Wire notes](wire-notes.md) — the observed behaviour every claim in

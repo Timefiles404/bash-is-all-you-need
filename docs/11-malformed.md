@@ -379,10 +379,12 @@ stage: **one unparseable tool call in the history is a permanently dead
 session.** Every subsequent request replays it and gets the same 400. Not the
 next call — every call, for the rest of the session.
 
-The same probe on the Anthropic route returns 200 for all five bodies, including
-`{}`, a wrong-typed property, and the gateway's own `{"raw_arguments": …}`
-object. That route never compares `input` against `input_schema` in either
-direction: not on the way out (§E13) and not on the way back. The failure is
+The Anthropic route takes five of those six — `arguments: ""` has no analogue
+there, because `input` is a JSON object rather than a string — and returns 200
+for all five, including `{}`, a wrong-typed property, and the gateway's own
+`{"raw_arguments": …}` object. That route never compares `input` against
+`input_schema` in either direction: not on the way out (§E13) and not on the way
+back. The failure is
 quieter and it is not better — the model is asked to go on with a conversation
 in which it appears to have called a tool with arguments it never wrote, and
 nothing reports the divergence.
@@ -656,7 +658,7 @@ number.
 Because it is not a message, it is a permanent addition to the prompt, re-sent
 on every subsequent request. An imperative reads as a fresh instruction several
 turns later once its context has scrolled away, so the model re-issues a call
-that was already handled. Four such strings from stage 10 were deleted, and a
+that was already handled. Five such strings from stage 10 were deleted, and a
 mechanical test keeps them out.
 
 ---

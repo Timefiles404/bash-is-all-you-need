@@ -166,6 +166,35 @@ set -a && . ../.env && set +a
 > find the bug in this directory, fix it, and verify the fix
 ```
 
+That is stage 00: a prompt, a loop, and nothing else. **From stage 06 on the
+same binary opens an interactive shell instead** — a scrollback pane, a status
+bar showing the provider, the model, the directory and the running bill, Escape
+to interrupt a turn, and slash commands:
+
+```sh
+go build -o agent ./stages/12-echo
+cd sandbox && ../agent
+```
+
+`/help` lists them, `/keys` is the keyboard, `/status` prints everything the
+session is currently configured to do. It starts even with nothing configured:
+`/provider-url`, `/provider-protocol`, `/provider-model` and `/provider-apikey`
+set an endpoint up and save it outside the repo, which is what makes the binary
+usable when it was started by double-clicking it rather than from a shell that
+had sourced `.env`. `/open <dir>` moves the agent to another directory.
+
+Nothing that worked before it stopped working:
+
+```sh
+../agent -p "explain what this directory is"    # one turn, no UI, then exit
+echo "same thing" | ../agent                    # a pipe, as in stage 00
+../agent --no-tui                               # the plain prompt of the chapters
+```
+
+The shell lives in `tui/` and **no chapter explains it**, deliberately — see
+the note in [AGENTS.md](AGENTS.md) on the one package that is allowed to exist
+outside `stages/`.
+
 Then look at what it did — no key required, and it works on somebody else's
 trace just as well as your own:
 
@@ -202,7 +231,10 @@ stops is part of the teaching:
   Stage 06 is where the no-framework rule stops being an aesthetic: a TUI
   framework hides raw-mode
   restoration, the Escape-key ambiguity, and display width versus byte length,
-  which are the three things that chapter is about.
+  which are the three things that chapter is about. The interactive shell in
+  `tui/` is held to the same rule — it is the standard library and `x/sys`, and
+  it is a package rather than a stage file precisely because it is *not* part of
+  the course.
 - **Not a benchmark chaser.** If you want SWE-bench numbers from a minimal
   agent, see `mini-swe-agent` below.
 

@@ -405,6 +405,34 @@ X, or the claim decays into documentation.
 Wiring it to a live session in-process is one line — `bus.Subscribe(tui)` — for
 the same reason the JSONL writer and the plain renderer were one line each.
 
+### The other terminal UI in this directory
+
+From this stage on the directory also holds a `shell.go`, and the repo holds a
+`tui/` package. That is a second terminal UI, and it is not this one.
+
+The composer is a reader: it opens a file and shows you what happened in a
+session. The shell is a front end for the agent itself — a pane the panel
+prints into, a status bar carrying the provider and the running bill, a line
+editor, Escape to interrupt a turn, and slash commands for the things you would
+otherwise restart the process to change.
+
+It exists because running the agent and reading this chapter want different
+programs. The UI in this chapter has to be small enough to hold in your head,
+because that is the whole of its value; every feature added to it costs the
+chapter something. Somebody using the agent to poke at stage 09's error triage
+wants the opposite — a window that does not close when a config value is
+missing, a key that stops a turn that has gone wrong, and a way to set an
+endpoint without editing a file. Those are not lessons. They are the difference
+between a repo you read and a repo you can work in.
+
+So no chapter explains the shell, including this one. It is a tool and it is
+allowed to be boring. Nothing here was deleted to make room for it: `tui/term`
+is a copy of `term.go`, `keys.go` and `width.go` with the essays taken out, not
+a replacement for them, and a behaviour change in one has to be mirrored in
+the other or the paragraphs above stop being true. If you want to know what a
+terminal UI is, read the four files in this directory. If you want to use the
+agent, run it with no arguments.
+
 ---
 
 ## Exercises

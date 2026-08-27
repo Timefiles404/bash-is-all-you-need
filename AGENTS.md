@@ -14,6 +14,28 @@ stages/05-live-forever` and see exactly one idea arrive.
 **Do not refactor shared code into a common package.** That is the one change
 that would break the thing this repo is for.
 
+There is exactly one package outside `stages/`, and the test that let it exist
+is worth stating because it is what stops the next one:
+
+> **A chapter explains it, or it is not in a stage.**
+
+`tui/` is the interactive shell — a scrollback pane, a status bar, a line
+editor, slash commands, a settings file. No chapter explains any of it, and
+none should. It is there so that *using* the repo does not require the lesson
+to grow: stage 06 builds a terminal UI out of three functions and a select, and
+that chapter's whole value is that you can hold all of it in your head, so it
+must stay small. Somebody debugging stage 09's triage wants the opposite — a
+window that does not close when a config value is missing, a key that stops a
+runaway turn, and a way to fix an endpoint without editing a file.
+
+Two different programs, so two different places. Nothing was deleted from
+`stages/` to make room for it, and `stages/NN/shell.go` — the file that wires
+one up — is duplicated per stage like everything else.
+
+The rule remains absolute for anything a chapter teaches. If you are about to
+move something that a chapter walks through into a package because it appears in
+seven stages: that duplication is the feature.
+
 The course has two halves. **Phase 1 (00–08) is the instrument panel; phase 2
 (09 onward) is what fails in production.** Phase 2 *branches* from **stage 07**,
 not stage 08: stage 08 is the only stage in the repo with a dependency and is
@@ -55,8 +77,8 @@ that.
 
 ```sh
 go build ./stages/06-the-composer      # or any stage
-go test ./...                          # all stages
-gofmt -l stages/                       # must be empty
+go test ./...                          # all stages, and tui/
+gofmt -l stages/ tui/                  # must be empty
 go vet ./...                           # must be clean
 GOOS=linux go build ./stages/06-the-composer    # the platform files are real
 GOOS=darwin go build ./stages/06-the-composer
@@ -71,3 +93,11 @@ gitignored and never committed:
 ```sh
 set -a && . ./.env && set +a
 ```
+
+From stage 06 on, running the binary with no arguments opens the interactive
+shell in `tui/`; `--no-tui` gives the plain line prompt the chapters describe,
+`-p "prompt"` runs one turn and exits, and a piped stdin still behaves exactly
+as it did in stage 00. When there is no `.env` — which is what happens if you
+start the binary by double-clicking it — the shell starts anyway and
+`/provider-url`, `/provider-protocol`, `/provider-model` and `/provider-apikey`
+configure it and save outside the repo. `/help` lists the rest.

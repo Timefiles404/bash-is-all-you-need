@@ -75,7 +75,7 @@ type shellSession struct {
 	pcfg  providerConfig
 	msgs  []Msg
 
-	// wd is where commands run, and it lives here because /open moves it.
+	// wd is where commands run.
 	//
 	// config has no working-directory field: nothing in this stage sets
 	// cmd.Dir, so the process's own directory is what decides where a command

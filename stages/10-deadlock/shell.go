@@ -77,11 +77,13 @@ type shellSession struct {
 	pcfg  providerConfig
 	msgs  []Msg
 
-	// wd is the directory commands run in, and it is here rather than on config
-	// because /open changes it. Nothing sets cmd.Dir, so the process-wide
-	// os.Chdir in open() is what actually moves where a command runs; this field
-	// is the copy everything that reports the directory reads, and the two are
-	// only ever set together.
+	// wd is where commands run.
+	//
+	// config has no working-directory field and does not need one: nothing
+	// sets cmd.Dir, so the process's own directory decides where a command
+	// runs and the os.Chdir in open() is what moves it. This field is the copy
+	// everything that *reports* the directory reads, and open() is the only
+	// writer of both.
 	wd string
 }
 
@@ -767,8 +769,8 @@ func (s *shellSession) commands() []tui.Command {
 // A table rather than one command each, because there are fourteen of them and
 // they are all the same shape: read a number, write a number. The ones that are
 // NOT here are the ones that cannot be changed after startup — the shell it
-// found, the trace format, the output token budget — and /set says so by not
-// listing them rather than by accepting the change and ignoring it.
+// found, the trace format — and /set says so by not listing them rather than
+// by accepting the change and ignoring it.
 type knob struct {
 	name string
 	help string

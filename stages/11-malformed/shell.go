@@ -77,11 +77,13 @@ type shellSession struct {
 	pcfg  providerConfig
 	msgs  []Msg
 
-	// wd is the directory commands run in, and it is here rather than on config
-	// because /open changes it. Nothing sets cmd.Dir, so the process-wide
-	// os.Chdir in open() is what actually moves where a command runs; this field
-	// is the copy everything that reports the directory reads, and the two are
-	// only ever set together.
+	// wd is where commands run.
+	//
+	// config has no working-directory field and does not need one: nothing
+	// sets cmd.Dir, so the process's own directory decides where a command
+	// runs and the os.Chdir in open() is what moves it. This field is the copy
+	// everything that *reports* the directory reads, and open() is the only
+	// writer of both.
 	wd string
 }
 

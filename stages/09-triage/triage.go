@@ -178,7 +178,7 @@ func (e *CallError) triage() Triage {
 		// another attempt.
 		//
 		// A named type came from the provider deliberately, mid-response, and
-		// only two of them mean "ask again". The rest arrived because of what
+		// only these four mean "ask again". The rest arrived because of what
 		// we sent, and sending it again produces the same event — this is the
 		// phaseStream twin of the 5xx trap.
 		if e.Type == "" {

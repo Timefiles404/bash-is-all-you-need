@@ -281,7 +281,7 @@ func (p *anthropicProvider) BuildRequest(system string, msgs []Msg, tools []Tool
 // mostly those three characters: `2>&1`, `>/tmp/out`, `<<EOF`. Escaped, they
 // are semantically identical and byte-wise different, which means:
 //
-//   - the request inspector shows the user `ls > /tmp/out`, and
+//   - the request inspector shows the user `ls \u003e /tmp/out`, and
 //   - the cached prefix changes the moment a redirect appears in a replayed
 //     tool call, for no reason at all.
 //

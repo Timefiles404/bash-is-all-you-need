@@ -34,7 +34,7 @@ import (
 // therefore be the one thing the two wire formats legitimately disagree about,
 // and this file is about everything else. `2>&1` is in there on purpose: both
 // adapters marshal with SetEscapeHTML(false), so a shell redirect has to
-// survive as itself rather than as >&.
+// survive as itself rather than as \u003e\u0026.
 const cspArgs = `{"command":"ls -la /srv/app 2>&1"}`
 
 const (
@@ -1820,9 +1820,9 @@ func TestDumpComposerRejectsBadInput(t *testing.T) {
 // the json.RawMessage holding the request body, which both adapters
 // deliberately encoded with SetEscapeHTML(false). Strings survive (they decode
 // back), but the Anthropic view reads a tool call's arguments as the RAW bytes
-// of `input`, so a recorded `2>&1` comes back as `2>&1`. The trace is
-// therefore not byte-identical to what was POSTed, and the Wire view — whose
-// entire promise is "byte for byte" — shows the escaped form.
+// of `input`, so a recorded `2>&1` comes back as `2\u003e\u00261`. The
+// trace is therefore not byte-identical to what was POSTed, and the Wire
+// view — whose entire promise is "byte for byte" — shows the escaped form.
 //
 // Canonicalising here keeps this test about the round trip it is testing rather
 // than about that bug; it does not hide it, and it will keep passing unchanged

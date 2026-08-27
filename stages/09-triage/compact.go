@@ -97,10 +97,10 @@ func (e *estimator) tokens(chars int) int {
 // msgChars counts the characters a message contributes to the prompt.
 //
 // It counts text, tool-call arguments and tool results — everything that is
-// re-sent — and ignores structural JSON. Thinking blocks are counted because
-// this repo drops them before sending, which is exactly the kind of asymmetry
-// that would poison the calibration if it were counted here and not there. It
-// is not. See runTurn: thinking never enters the history.
+// re-sent — and ignores structural JSON. Thinking blocks are not counted,
+// because this repo drops them before sending: counting them here while not
+// sending them there is exactly the asymmetry that would poison the
+// calibration. See runTurn: thinking never enters the history.
 func msgChars(m Msg) int {
 	n := 0
 	for _, b := range m.Blocks {

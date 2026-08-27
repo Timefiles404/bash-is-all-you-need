@@ -398,8 +398,9 @@ test only asserted "it was refused". Deleting `uniqueIDs` from the loop survived
 Turning the fuse off survived. Reverting the accumulator to a blind append
 survived.
 
-The other six were tests that passed without exercising what they named — the
-id-length cap tested with an id short enough that the cap never fired, and four
+Five of the other six were tests that passed without exercising what they named:
+the id-length cap, tested with an id short enough that the cap could never fire;
+an `integer` schema property, which no tool in this repo declares; and three
 `jsonIsOpen` cases where the bracket depth had already decided the answer before
 the clause under test was reached.
 
@@ -407,7 +408,7 @@ A unit test on a function proves the function works. Only a test that runs the
 loop proves the loop uses it. `wiring_test.go` drives `runTurn` against a
 scripted provider — no network — and asserts on the trace.
 
-One survivor was not a missing test. `jsonIsOpen` also checked for a trailing
+The sixth was not a missing test at all. `jsonIsOpen` also checked for a trailing
 comma or colon, and removing that changed nothing, because no input can reach
 it: a cut immediately after `{"a":` leaves the object open, so `depth > 0` has
 already decided. Two lines and a variable that could never change an answer, so
@@ -474,7 +475,7 @@ the correct resolution of the same race, reached from the other side.
 
 ---
 
-## Try it yourself
+## Exercises
 
 1. **Watch the fuse fire.** `--max-tokens 110` against the Anthropic route with a
    prompt that needs a long command. Then raise it to 4096 and watch the same

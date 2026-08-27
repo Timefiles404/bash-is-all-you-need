@@ -619,7 +619,7 @@ func main() {
 	// place before the cache breakpoint; anything that moves goes into the
 	// message stream instead — see memory.go's placement rule.
 	//
-	// It was assembled inline here, once, until stage 12's shell. It is a
+	// It was assembled inline here, once, until the shell in tui/ arrived. It is a
 	// function now for one reason: /open changes the working directory, and the
 	// memory files and the skills index are read out of that directory. Moving
 	// three of the four things that depend on the directory is worse than moving

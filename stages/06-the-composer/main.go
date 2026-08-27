@@ -414,11 +414,10 @@ func main() {
 	// place before the cache breakpoint; anything that moves goes into the
 	// message stream instead — see memory.go's placement rule.
 	//
-	// It was assembled inline here, once, until the shell in tui/ arrived. The
-	// assembly is a function now for one reason: /open changes the working
-	// directory, and the memory files are read out of that directory. Moving two
-	// of the three things that depend on the directory is worse than moving none
-	// of them.
+	// It was assembled inline here, once, until the shell in tui/ arrived. It is
+	// a function now for one reason: /open changes the working directory, and
+	// the memory files are read out of that directory. Moving two of the three
+	// things that depend on the directory is worse than moving none of them.
 	sys := sh.assemble(shell, wd)
 	if *breakCache && !shellMode {
 		fmt.Println("--break-cache: a fresh timestamp goes into the system prompt on every request")

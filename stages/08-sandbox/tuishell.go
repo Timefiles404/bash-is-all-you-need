@@ -79,12 +79,14 @@ type shellSession struct {
 	pcfg  providerConfig
 	msgs  []Msg
 
-	// wd is where commands run, and it lives here because /open moves it.
+	// wd is where commands run.
 	//
-	// config has no working-directory field: runBash sets no cmd.Dir, so the
-	// process's own directory is what decides where a command runs, and
-	// os.Chdir is what changes it. This field is the copy the banner and
-	// /status report, and open() is the only writer.
+	// config has no working-directory field and does not need one: runBash sets
+	// no cmd.Dir, so for an ordinary command the process's own directory decides
+	// and the os.Chdir in open() is what moves it. A sandboxed command is the
+	// exception and the reason open() has an extra line: it runs under
+	// interp.Dir, which os.Chdir does not touch. This field is the copy
+	// everything that *reports* the directory reads.
 	wd string
 }
 

@@ -289,10 +289,11 @@ func (s *shellSession) ready() (bool, string) {
 
 // submit runs one user turn.
 //
-// The context is the shell's, and nothing under this line reads one: runTurn
-// grows a ctx parameter in stage 10, together with the deadlines that need it.
-// So Ctrl-C mid-turn cancels a context no model call is listening to and the
-// turn finishes anyway. Named _ so that is visible here rather than discovered.
+// The context is accepted and not used, because nothing below this line takes
+// one: runTurn grows a ctx parameter in stage 10, along with the deadlines that
+// need it. That is what Uninterruptible above is declaring, and it is the whole
+// of the behaviour: Escape and Ctrl-C during a turn say so and change nothing,
+// and the turn runs to the end.
 func (s *shellSession) submit(_ context.Context, line string) error {
 	s.mu.Lock()
 	a := s.a

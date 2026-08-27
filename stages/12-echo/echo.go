@@ -700,6 +700,20 @@ func (r readerRule) check(args []string) ([]string, error) {
 			if isNumericFlag(a) && (r.valueFlags["-n"] || r.valueFlags["-c"]) {
 				continue
 			}
+			// Bundled short flags: `grep -oE` is -o and -E, and models write
+			// them constantly. Accepted only when EVERY letter is a boolean
+			// flag this rule already permits, so `grep -oP` is still refused
+			// for the -P, and a bundle ending in a flag that takes a value is
+			// refused rather than guessed at.
+			//
+			// This case is here because a refusal tally asked for it. Three
+			// commands in one recorded session were refused as `unknown flag
+			// -oE`, `-oP` and `-noiE`, which named a whole class rather than
+			// three accidents — and that is the difference between a reason
+			// worth acting on and one worth living with.
+			if bundleOK(a, r) {
+				continue
+			}
 			return nil, fmt.Errorf("unknown flag %s", a)
 		case scriptsLeft > 0:
 			scriptsLeft--
@@ -713,6 +727,19 @@ func (r readerRule) check(args []string) ([]string, error) {
 		}
 	}
 	return paths, nil
+}
+
+// bundleOK reports whether `-abc` is three boolean flags this rule permits.
+func bundleOK(a string, r readerRule) bool {
+	if len(a) < 3 || a[0] != '-' || a[1] == '-' {
+		return false
+	}
+	for _, c := range a[1:] {
+		if c > 127 || !r.boolFlags["-"+string(c)] {
+			return false
+		}
+	}
+	return true
 }
 
 func isNumericFlag(a string) bool {

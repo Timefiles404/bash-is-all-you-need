@@ -112,11 +112,28 @@ time not re-run
 Hold that number. Everything after this is either an argument for why it is so
 small, or an argument for building the thing anyway.
 
-The audit has one limit worth naming: a trace records what the agent ran, not
-what the disk did underneath it, so it cannot know whether a file changed
-mid-session and would have invalidated an entry. Its hit count is therefore an
-upper bound. On this sample that makes no difference — nothing wrote to
-anything — but on a session that edits files it would.
+The audit has two limits, and both are worth naming because neither announces
+itself.
+
+A trace records what the agent ran, not what the disk did underneath it, so the
+audit cannot know whether a file changed mid-session and would have invalidated
+an entry. Its hit count is therefore an upper bound. On this sample that makes
+no difference — nothing wrote to anything — but on a session that edits files it
+would.
+
+The second one bit this tool almost immediately. **Auditing a trace that was
+recorded with the cache already switched on reports zero hits.** A hit emits no
+`command_end`, for reasons argued later in this chapter, so the audit sees only
+the commands that ran, and those are all distinct by definition. Measured on
+one pair of runs of the same task: the arm recorded without the cache audits at
+9 hits in 47 commands, and the arm recorded *with* it — which really did serve
+12 results — audits at 0 in 44.
+
+Nothing is wrong in either case. Both numbers are correct answers to the
+question the audit actually asks, which is "what would a cold cache have done to
+these commands", and in the second case the answer is *not much, because the
+interesting ones are already gone*. Audit an uncached trace, or you are
+measuring a session that has had its repeats removed.
 
 ---
 
@@ -366,8 +383,19 @@ rather than of the rule.
 That is a useful thing to learn from a refusal tally, and it is why the audit
 prints one. A hit rate is a verdict; a refusal reason is a to-do list. It names
 the rule that would have to grow, and lets you decide whether growing it would
-be worth anything. Here it would buy four commands out of 107, so it is not
-worth anything, and the rule stays small.
+be worth anything. Here, supporting globs would buy four commands out of 107,
+so it is not worth anything and the rule stays small.
+
+One entry on that list did get acted on, and the difference between the two is
+the whole reason to read a tally rather than a rate. Auditing the sessions run
+for this chapter produced three refusals reading `grep: unknown flag -oE`,
+`-oP` and `-noiE`. Those are not three accidents; they are one thing the rule
+did not know — that `-oE` is `-o` and `-E`, bundled, which is how models write
+short flags. Splitting a bundle is eight lines, and it is allowed only when
+every letter is a boolean flag already on the program's list, so `grep -oP` is
+still refused for the `-P` and `grep -om` is still refused rather than guessing
+where `-m`'s value went. Four globs are an accident; three bundled flags are a
+class.
 
 One caveat on that sample: those sessions were given reading tasks, so a
 whitelist of readers covering 100% of them is not the general figure. A session

@@ -102,6 +102,45 @@ func TestEligibleRefusesEverythingItDoesNotUnderstand(t *testing.T) {
 	}
 }
 
+// Bundled short flags, which models write constantly: `grep -oE`, `grep -noiE`.
+//
+// Accepted only when every letter is a boolean flag the rule already permits,
+// so a bundle carrying one unknown letter is still refused for that letter, and
+// a bundle ending in a flag that takes a value is refused rather than guessed
+// at. This case exists because an audit's refusal tally named it three times in
+// one session, which is what a class of misses looks like next to an accident.
+func TestBundledShortFlagsAreSplit(t *testing.T) {
+	dir := echoDir(t)
+	echoWrite(t, dir, "notes.md", "hello\n")
+
+	for _, cmd := range []string{
+		"grep -oE pattern notes.md",
+		"grep -noiE pattern notes.md",
+		"ls -lah",
+	} {
+		if _, ok, why := eligible(cmd, dir); !ok {
+			t.Errorf("eligible(%q) refused: %s", cmd, why)
+		}
+	}
+	for _, tc := range []struct{ cmd, contains string }{
+		// -P is not on grep's list, so the bundle carrying it is refused.
+		{"grep -oP pattern notes.md", "unknown flag -oP"},
+		// -m takes a value; bundling it would mean guessing where the value is.
+		{"grep -om pattern notes.md", "unknown flag -om"},
+		// -r is absent on purpose: a recursive grep's witness set is a tree.
+		{"grep -rn pattern .", "unknown flag -rn"},
+	} {
+		_, ok, why := eligible(tc.cmd, dir)
+		if ok {
+			t.Errorf("eligible(%q) accepted it", tc.cmd)
+			continue
+		}
+		if !strings.Contains(why, tc.contains) {
+			t.Errorf("eligible(%q) refused with %q, want %q", tc.cmd, why, tc.contains)
+		}
+	}
+}
+
 // This refusal is wrong and is meant to be.
 //
 // `sed -n '/word/p'` reads a file and writes nothing. The rule refuses it

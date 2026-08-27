@@ -251,8 +251,8 @@ func guardBody(ctx context.Context, rc io.ReadCloser, idle time.Duration,
 	g.mark(time.Now())
 
 	// A quarter of the window: frequent enough that detection is not much
-	// later than the deadline, rare enough that a 45s idle costs four
-	// wakeups a minute rather than a spin.
+	// later than the deadline, rare enough that a 45s idle costs four wakeups
+	// per window — a little over five a minute — rather than a spin.
 	t := time.NewTicker(idle / 4)
 	done := make(chan struct{})
 	go func() {

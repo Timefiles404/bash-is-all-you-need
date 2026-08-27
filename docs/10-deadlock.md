@@ -403,10 +403,11 @@ never reaches EOF at all.
 
 ## What the guard costs
 
-One goroutine and one ticker per in-flight call, waking four times a minute at
-the 45-second default. That is the reason for the quarter-window tick:
-frequent enough that detection is not much later than the deadline, rare enough
-that a long call is not a spin loop. Detection late by up to a quarter of the
+One goroutine and one ticker per in-flight call. The tick is a quarter of the
+idle window — four wakeups per window, so a little over five a minute at the
+45-second default. That is the reason for the quarter: frequent enough that
+detection is not much later than the deadline, rare enough that a long call is
+not a spin loop. Detection late by up to a quarter of the
 window. One more event kind on the bus, emitted only when a new maximum is set,
 which on a healthy stream happens a few times near the start and then stops.
 

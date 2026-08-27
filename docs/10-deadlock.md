@@ -342,6 +342,6 @@ reports a margin rather than a hope.
    is the exercise that improves the repo's evidence rather than its code, and
    it is the one thing this chapter asserts without proof.
 
-→ Next: Stage 11 — Malformed
+→ Next: [Stage 11 — Malformed](11-malformed.md)
 
 → Reference: [Wire notes](wire-notes.md), [Stage 01 — Don't Die](01-dont-die.md), [Stage 09 — Triage](09-triage.md)

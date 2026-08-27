@@ -77,7 +77,7 @@ sandbox in a later stage.
 |---|---|---|
 | [09 Triage](docs/09-triage.md) | an error is a decision, not a string: one taxonomy over two protocols, `Retry-After`, a retry budget, the fallback ladder | ✅ built |
 | [10 Deadlock](docs/10-deadlock.md) | the tool that never returns and the stream that stalls: every wait gets a deadline and an owner | ✅ built |
-| 11 Malformed | the tool call is not valid JSON — what each protocol actually hands you, and what to do with it | 🚧 planned |
+| [11 Malformed](docs/11-malformed.md) | the tool call is not valid JSON — what each protocol hands you, why repairing it is the trap, and one validation boundary | ✅ built |
 | 12 Echo | the cheapest tool call is the one you do not make: content-addressed results, an LRU, staleness by `mtime` | 🚧 planned |
 | 13 Rewind | the session and the workspace are both state, and both need a rewind — resume from the trace, checkpoint before mutation | 🚧 planned |
 | 14 Amnesia | compaction is lossy, so measure the loss: a probe set, a recall number, protected regions | 🚧 planned |

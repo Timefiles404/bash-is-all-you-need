@@ -25,7 +25,7 @@ spec-reading would predict.
 
 | # | Deviation | Section |
 |---|---|---|
-| 1 | Truncated OpenAI tool call returns `tool_calls: []` and dumps raw `<tool_call><function=…>` harness markup into `message.content` — `arguments` is never partial | A2 |
+| 1 | Truncated OpenAI tool call, **not streaming**, returns `tool_calls: []` and dumps raw `<tool_call><function=…>` harness markup into `message.content` | A2 |
 | 2 | Truncated Anthropic `tool_use` replaces `input` with a non-spec `{"raw_arguments": "<invalid JSON>"}` — and `stop_reason` still says `"tool_use"` | A3c |
 | 3 | Anthropic `max_tokens` bounds only visible text; thinking is generated and billed outside it (`max_tokens:10` returned `output_tokens:4403`) | A3a |
 | 4 | The gateway leaks a bare `</think>` closing tag as a user-visible `text` content block | A3b, B6 |
@@ -43,6 +43,12 @@ spec-reading would predict.
 | 16 | A 400 for a missing required field returns no error envelope at all, just `{"model":"qwen3.7-plus"}` | D11 |
 | 17 | `anthropic-version` is not required; the call succeeds without it | D11 |
 | 18 | `parallel_tool_calls:false` is accepted and ignored; so is any invented parameter. Nothing is validated | D12 |
+| 19 | Neither side validates a returned tool call against the `input_schema`/`parameters` it was given: an `enum` violation and a property forbidden by `additionalProperties:false` both came back untouched | E13 |
+| 20 | A value of the wrong declared type is silently *serialised into* the declared type — an array asked for as `command` arrives as the string `"[\"echo\",\"hi\"]"`, which is schema-valid and semantically wrong | E13 |
+| 21 | On replay, the OpenAI route requires `arguments` to be **parseable JSON and nothing more**: `{}` and an unknown-key object are accepted, while `""` — the natural rendering of a zero-argument call — is a **400** | E14 |
+| 22 | That 400 arrives as `error.type: "server_error"`. The status is telling the truth and `error.type` is not | E14 |
+| 23 | The Anthropic route accepts every replayed `input` object put to it, including `{}`, a wrong-typed property, and the gateway's own `{"raw_arguments":…}` — it never checks `input` against `input_schema` either | E14 |
+| 24 | The SAME truncation **streamed** hands you genuinely partial `arguments` — an unterminated string — with no markup anywhere. A2's "`arguments` is never partial" holds only for `stream:false`, and every real agent streams | E15 |
 
 Confirmed working as documented: `finish_reason:"length"` / `stop_reason:"max_tokens"` on text
 truncation (A1, A3a), Anthropic explicit prompt caching (C8), OpenAI implicit prompt caching
@@ -138,6 +144,12 @@ inside the argument value.
 
 Also note `tool_calls` is `[]` (empty array) when tools were supplied and `null` when they
 were not — two different empty values for the same idea.
+
+> **Correction, from §E15.** The sentence below — "you will never have to repair half-written
+> argument JSON" — is true of `"stream": false` and false of `"stream": true`, which is the mode
+> every real agent runs in. Streamed, the same truncation delivers the argument fragments parsed
+> before the cut and nothing else, so the client is left holding an unterminated string. The
+> rest of this takeaway stands; read it alongside E15.
 
 Takeaway: on this endpoint you will never have to repair half-written argument JSON — but you
 must handle a far nastier case. `finish_reason:"length"` with `tool_calls` empty and
@@ -715,6 +727,200 @@ a batch of tool calls no matter what you request**. More generally, a 200 here d
 parameter took effect — this gateway never validates request parameters, so the only way to know
 whether something works is to observe the response, which is the whole premise of these notes.
 
+## E13. Does either side validate a tool call against the schema it was given?
+
+A1–A3 covered what a *truncated* tool call looks like. This asks the prior question: when the
+call arrives whole, is it guaranteed to match the schema in the request? The tool declared
+one required string `command`, and each probe added one constraint the prompt then asked the
+model to break.
+
+### `enum` — a value outside the allowed set
+
+Schema: `{"command":{"type":"string"},"shell":{"type":"string","enum":["bash","sh"]}}`, both
+required. Prompt: *"Call bash with command 'echo hi' and shell set to 'powershell'. Use
+exactly that shell value."*
+
+```
+OpenAI     finish_reason:"tool_calls"   arguments: {"command": "echo hi", "shell": "powershell"}
+Anthropic  stop_reason:"tool_use"       input:     {"command": "echo hi", "shell": "sh"}
+```
+
+The OpenAI route returned `"powershell"` — a value the schema forbids — with a 200 and a
+normal `finish_reason`. The Anthropic route happened to return `"sh"`, but that is the *model*
+choosing to comply, not the gateway enforcing anything; §E14 shows the same route accepting a
+schema-invalid `input` when the client supplies one.
+
+### `additionalProperties: false` — a property the schema forbids
+
+Schema as above plus `"additionalProperties": false`. Prompt asks for an extra `timeout_ms`
+field set to the number 5000.
+
+```
+OpenAI     arguments: {"command": "echo hi", "timeout_ms": "5000"}
+Anthropic  input:     {"command": "echo hi"}      (twice — two near-duplicate tool_use blocks)
+```
+
+`additionalProperties:false` bought nothing on the OpenAI route. Note the type as well: 5000
+was asked for as a number and arrived as the string `"5000"`.
+
+### A wrong declared type
+
+`command` is declared `"type":"string"`. Prompt: *"The command field must be the JSON array
+`["echo","hi"]` — an array, not a string. Do it exactly."*
+
+```
+OpenAI     arguments: "{\"command\": \"[\\\"echo\\\",\\\"hi\\\"]\"}"
+Anthropic  input:     {"command": "[\"echo\",\"hi\"]"}
+```
+
+Both sides **serialised the array into the declared type** rather than violating it. The
+result is schema-valid: `command` is a string. It is also semantically wrong — the string is
+`["echo","hi"]`, and a shell handed that runs a command named `[echo,hi]`.
+
+**ANSWER: no. The schema you send is advisory.** It shapes what the model tends to produce and
+constrains nothing. Two consequences, and the second is the one that costs you:
+
+1. Validation has to happen in your client, because nothing upstream is doing it.
+2. Validation is not sufficient. The wrong-type probe passes any JSON Schema check you write —
+   it is a string where a string was required. Schema validation catches the shape of an
+   argument and can say nothing about whether the value means anything. A `command` that is a
+   valid string and a nonsense shell command is indistinguishable from a good one until it runs.
+
+---
+## E14. What does each route accept when a tool call is REPLAYED in the history?
+
+The question §A3c leaves open. A truncated call arrives; the agent has to put *something* in
+its message array before it can ask the model to try again, and whatever it puts there gets
+re-sent on every subsequent turn of the session. So: which renderings does the endpoint take?
+
+Six bodies on the OpenAI route, identical but for `arguments`, each a three-message history
+(user → assistant with one `tool_calls` entry → `role:"tool"` result):
+
+| `arguments` | HTTP |
+|---|---|
+| `{"command": "echo hi"}` | 200 |
+| `""` | **400** |
+| `{}` | 200 |
+| `{"raw_arguments": "{\"command\": \"find"}` | 200 |
+| `{"command": "find /srv/app -name ` (unterminated) | **400** |
+| `I will run: echo hi` (prose, not JSON) | **400** |
+
+**The rule is exactly "parseable JSON", and nothing beyond it.** `{}` is accepted despite
+`command` being required. An object whose only key is unknown to the schema is accepted. Only
+the three bodies that are not JSON at all are refused.
+
+The refusal, verbatim, identical for all three:
+
+```json
+{"error":{"param":"","type":"server_error","message":"Error from provider (Console Go): Upstream request failed: [400] Invalid request parameters"}}
+```
+
+Two traps in that one body. **`error.type` says `server_error` for what is unambiguously a
+client mistake** — the second instance of the §D11 pattern, and this time the HTTP status is
+the field telling the truth while `error.type` lies. And **`arguments: ""` is a 400**, which
+matters because the empty string is the natural rendering of a zero-argument tool call: §B4
+shows the first streamed `tool_calls` delta arriving as `"arguments":""`, so an agent that
+accumulates fragments and replays what it accumulated will send `""` for any tool the model
+invoked with no arguments. `{}` is the rendering that works.
+
+The same five-way probe on the Anthropic route, where `input` is a JSON object and therefore
+cannot be syntactically invalid — only schema-invalid:
+
+| `input` | HTTP |
+|---|---|
+| `{"command": "echo hi"}` | 200 |
+| `{}` | 200 |
+| `{"raw_arguments": "{\"command\": \"find"}` | 200 |
+| `{"command": ["echo","hi"]}` | 200 |
+| `{"timeout_ms": 5000}` | 200 |
+
+**Everything is accepted, including the gateway's own truncation shape and an `input` with no
+schema-declared property in it at all.** This route never compares `input` against
+`input_schema` in either direction — not on the way out (§E13) and not on the way back.
+
+### What this means for an agent that keeps a bad call
+
+The two routes fail in opposite directions, from the same cause:
+
+- **Anthropic**: the bad call is accepted forever. The model is asked to continue a
+  conversation in which it appears to have called a tool with arguments it never wrote. The
+  session degrades and nothing reports it.
+- **OpenAI**: if the bad call is not parseable JSON, **every subsequent request in the session
+  is a 400** — and a 400 is correctly triaged as fatal (retrying it is how a client bug becomes
+  an outage, §D11). One unvalidated tool call in the history is a permanently dead session.
+
+Both point at the same rule, which is stage 11's: whatever goes into the message array has to
+be something you would be willing to send a thousand more times, because you will.
+
+## E15. The same truncation, streamed — and the correction it forces on A2
+
+§A2 swept `max_tokens` on a **non-streaming** tool call and concluded:
+
+> **No. `tool_calls[].function.arguments` is never returned truncated, because on a truncated
+> tool call `tool_calls` is not populated at all.**
+
+That is true, and it is true only of `"stream": false`. The same request with `"stream": true`
+produces the opposite shape.
+
+Request: the A2 body exactly, plus `"stream": true`, `"reasoning_effort": "none"`,
+`"tool_choice": "required"`, `max_tokens: 40`.
+
+26 `data:` frames. Frame 0 is the usual empty opener. Frame 1 announces the call:
+
+```json
+{"index":0,"finish_reason":null,"delta":{"role":null,"content":null,"reasoning_content":null,
+ "tool_calls":[{"index":0,"id":"call_b410bbd862194a9a9ac8c2a4","type":"function",
+                "function":{"name":"bash","arguments":""}}]}}
+```
+
+Frames 2–21 carry `arguments` fragments and nothing else. Their values, in order and verbatim:
+
+```
+""  "{\""  "\""  "find"  " /srv/app -"  "type"  " f -name "  "\\\""  "*."  "go"  "\\\""
+" -not"  " -path "  "\\\""  "*/"  "vendor/*"  "\\\""  " -"  "not -path "  "\\\""  "*/testdata"
+```
+
+Frame 22 ends it:
+
+```json
+{"index":0,"finish_reason":"length","delta":{"role":null,"content":null,"reasoning_content":null,"tool_calls":null}}
+```
+
+Then the usage frame, `[DONE]`, and the post-sentinel `cost` frame (§B4, §B5 — unchanged).
+
+Concatenating the fragments gives what the client is left holding:
+
+```
+{"command": "find /srv/app -type f -name \"*.go\" -not -path \"*/vendor/*\" -not -path \"*/testdata
+```
+
+**Unterminated string, invalid JSON.** No `<tool_call>` markup anywhere in the stream, and
+`content` is `null` throughout.
+
+**ANSWER: on the streaming endpoint a truncated tool call DOES hand you half-written argument
+JSON.** The two shapes come from where the gateway's server-side parse of the model's harness
+markup happens relative to the response:
+
+- Not streaming: the parse runs on the finished text, fails on the bisected markup, and the
+  gateway falls back to putting the raw markup in `content` with `tool_calls: []` (§A2).
+- Streaming: the parse runs incrementally and forwards each piece as it goes, so everything
+  parsed before the cut has already been sent. There is no fallback to fall back to.
+
+This matters more than a footnote, because **every real agent streams**. §A2's takeaway — that
+you will never have to handle partial argument JSON on this route — is exactly backwards for the
+mode an agent actually runs in, and an agent that trusted it would concatenate those twenty
+fragments and hand the result to `json.Unmarshal`.
+
+Two further details in the same capture:
+
+- **The opener's `arguments` is `""`.** A stream that breaks between frame 1 and frame 2 leaves
+  the accumulator holding the empty string — which §E14 measured as an HTTP **400** when
+  replayed. The two findings meet here: the shape that is most natural to accumulate is the one
+  the endpoint refuses.
+- `finish_reason: "length"` does arrive, on frame 22, so on this route the envelope tells the
+  truth about truncation. The Anthropic route does not (§A3c: `stop_reason` still says
+  `"tool_use"`). Same event, and only one of the two protocols admits to it.
+
 ---
 ## Provenance
 
@@ -729,3 +935,18 @@ verbatim, with three deliberate exceptions, each marked where it occurs:
 
 Reproduce any section by rebuilding the request body shown and re-POSTing it. The key used was
 temporary and is expected to be revoked.
+
+One transport note, learned the hard way while capturing E13 and E14: the gateway sits behind
+Cloudflare, which answers a plain Python `urllib` request with **HTTP 403 and a 17-byte body
+reading `error code: 1010`** — a banned-client-signature refusal, on a request `curl` serves
+happily from the same machine with the same headers. Nothing about it says "your HTTP library",
+and E13's first run looked for twenty minutes like an authentication problem. Every capture here
+is `curl`.
+
+A2 and A3c were re-run in the same session as E13/E14 and both reproduced, with fresh numbers
+consistent with the originals: the Anthropic `max_tokens` overrun measured
+`30 → 110`, `60 → 141`, `120 → 158` output tokens against the earlier
+`30 → 113`, `60 → 140`, `100 → 157`. A2 reproduces only with `reasoning_effort:"none"`; left at
+its default the entire budget goes to `reasoning_content` (§A1) and generation never reaches the
+tool call, which returns `tool_calls: null` and an empty `content` — a *third* shape, and the
+one you get if you sweep `max_tokens` without thinking about where the budget goes.

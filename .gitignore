@@ -21,4 +21,7 @@ providers.json
 .work/
 
 # stray stage binaries from `go build ./stages/...`
+# *.exe covers Windows; a cross-compiled one has no extension at all,
+# and the GOOS=linux/darwin builds in AGENTS.md produce exactly that.
 *.exe
+/[0-9][0-9]-*

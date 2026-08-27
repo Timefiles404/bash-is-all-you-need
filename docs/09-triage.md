@@ -117,8 +117,10 @@ between this file and `fmt.Errorf`.
 
 ## What a failure actually consists of
 
-Before you can decide, you need to know four things. Only one of them is the
-status code.
+Before you can decide, you need to know four things, and the status code is not
+any of them. It is recorded as well — it is in the struct at the end of this
+section — but the previous section is the reason it cannot be the thing you
+branch on.
 
 **Where it broke.** A model call has four places it can fail, and they are not
 interchangeable:
@@ -611,7 +613,7 @@ is visible without doing any arithmetic.
   halfway through is gone, and half a tool call is worse than none. The partial
   is kept for the accounting, not for the conversation.
 - **The provider list never climbs back**, so a long session can finish on the
-  third rung without anyone noticing except through the event.
+  last rung of its ladder without anyone noticing except through the event.
 - **The success test is `!= http.StatusOK`, not a 2xx range.** A 202 would be
   classified as a failure. No endpoint in this repo's evidence returns one, so
   it stays a latent row in the table rather than a fixed bug.

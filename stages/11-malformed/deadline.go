@@ -231,7 +231,7 @@ func guardBody(ctx context.Context, rc io.ReadCloser, idle time.Duration,
 	g.mark(time.Now())
 
 	// 取窗口的四分之一：够密，发现的时刻不会比期限晚太多；也够稀，45 秒
-	// 的空闲窗口一分钟只醒四次，不是空转。
+	// 的空闲窗口一个窗口只醒四次，一分钟五次出头，不是空转。
 	t := time.NewTicker(idle / 4)
 	done := make(chan struct{})
 	go func() {

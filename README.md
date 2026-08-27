@@ -1,142 +1,194 @@
 # bash is all you need
 
-**一个只有一个工具、配一套玻璃座舱的 coding agent。**
+**A coding agent with one tool and a glass cockpit.**
 
-许多教程会教你怎么写一个 Agent 主循环。在 2026 年，那是一个下午的工作，这个仓库在第 00 阶段用一个文件把它做完，没有任何依赖。然后它用剩下的阶段讲没人教的那部分：
+教你写 Agent 主循环的教程有一大把。在 2026 年那是一下午的活，这个仓库在
+阶段 00 就做完了——一个文件，零依赖。剩下的阶段全花在没人教的那部分上：
 
-> **看清楚每一个 token、每一毫秒、每一分钱实际去了哪里。**
+> **盯住每一个 token、每一毫秒、每一分钱，看它到底去了哪里。**
 
-从"我写了个 Agent 主循环"到"我能在生产环境跑一个 Agent"之间的差距，不是智能。是因为大多数人解释不了自己的账单，不知道为什么缓存命中率突然崩了，也说不出他们的模型在第 30 个回合实际看到了什么。这个仓库就是为了把这三件事都搞清楚。
+从"我写了个 Agent 主循环"到"我能让 Agent 上生产"，差的不是智能。差的是
+大多数人讲不清自己的账单，不知道缓存命中率为什么突然崩了，也说不出模型在
+第 30 个回合到底看见了什么。这个仓库要做的，就是把这三件事都摆到明面上。
 
-这个 Agent 正好有一个工具 —— `bash` —— 这样引擎够小，一口气能读完，而且仪表才是主角。
+Agent 只有一个工具，就是 `bash`。这样引擎才小到能一口气读完，仪表也才有
+资格当主角。
 
 ---
 
-## 为什么只要一个工具
+## 为什么只给一个工具
 
-三个理由，第三个是人们经常忽略的：
+三条理由，第三条才是大家最容易漏掉的那条：
 
-- **可组合。** 你没法列举用户会需要的每一个动作，但管道把现有的工具组合起来：`grep -rl foo src | xargs wc -l | sort -n | tail -5` 是四个工具调用压缩成一次往返，中间的数据从不进上下文窗口。
-- **可发现。** 模型不需要你描述环境。`ls`、`--help`、`which` 就是发现机制。
-- **它继承了整个生态。** `ffmpeg`、`jq`、`rg`、`git`、`psql`、`kubectl` —— 四十年的 CLI 工具，立即可用。你不是在给 Agent 赋予工具；你是把它接到已经存在的每一个工具上。
+- **可组合。** 用户会需要哪些动作，你列不完；但管道能把手上现有的拼起来：
+  `grep -rl foo src | xargs wc -l | sort -n | tail -5` 把四次工具调用压成
+  一次往返，中间数据一次都没碰上下文窗口。
+- **可发现。** 环境长什么样，不用你告诉模型。`ls`、`--help`、`which` 本身
+  就是发现机制。
+- **它白捡一整个生态。** `ffmpeg`、`jq`、`rg`、`git`、`psql`、`kubectl`——
+  四十年的命令行积累，现成就能用。你不是在给 Agent 配工具，你是把它插进
+  世上已经有的每一件工具里。
 
-诚实的警告，先说清楚：**"bash is all you need" 是一个关于充分性而非最优性的声明。** 真实的产品发布专用的读/编辑/搜索工具，因为它们买到了 token 效率、结构化的错误、新鲜度检查和权限细度。Bash 是阻止 Agent 被死死卡在作者能想到的东西上的办法。`docs/` 在重要的地方列举了双方的论证。
+有句实话得先说在前头：**"bash is all you need" 讲的是够用，不是最优。**
+真实产品都会另配专门的读、改、搜工具，因为那能换来 token 效率、结构化的
+错误、过期检查和更细的权限粒度。bash 的作用，是不让 Agent 的上限卡死在
+作者当初想得到的那点东西上。该争的地方，`docs/` 把两边的话都说了。
 
 ---
 
 ## 阶段
 
-每个阶段引入恰好一个想法，并在 `stages/` 下发布一个完整的、可运行的快照。快照之间的重复是有意的 —— 在教学仓库里，可读的 diff 比 DRY 更重要。
+每个阶段只引入一个想法，并在 `stages/` 下留一份完整、能跑的快照。快照之间
+大量重复，这是故意的：在教学仓库里，一份读得懂的 diff 比 DRY 值钱。
 
-### 第一阶段 —— 仪表盘（00–08）
+### 第一部分：仪表盘（00–08）
 
-| Stage | Idea | Status |
+| 阶段 | 想法 | 状态 |
 |---|---|---|
-| [00 The Loop](docs/00-loop.md) | request → tool call → execute → repeat。一个文件，没有 SDK。 | ✅ built |
-| [01 Don't Die](docs/01-dont-die.md) | 截断、超时、进程树杀死、`finish_reason`、权限闸 | ✅ built |
-| [02 See Everything](docs/02-see-everything.md) | 事件总线、流式、完整仪表、JSONL trace、重放 | ✅ built |
-| [03 Babel](docs/03-babel.md) | 一个 Agent，多个协议：OpenAI + Anthropic 背后是一个中立内核 | ✅ built |
-| [04 The Cache](docs/04-the-cache.md) | prompt 缓存作为**纪律**，以及它值多少钱 | ✅ built |
-| [05 Live Forever](docs/05-live-forever.md) | 上下文压缩、上下文注入、记忆 —— 还有上下文压缩真正的代价 | ✅ built |
-| [06 The Composer](docs/06-the-composer.md) | 标准库里的 TUI：上帝视角 vs 模型视角看同一个会话 | ✅ built |
-| [07 Multiply](docs/07-multiply.md) | 子 Agent（递归）、技能、什么叫真正的 PTC | ✅ built |
-| [08 Sandbox](docs/08-sandbox.md) *(optional)* | 嵌入式 shell 解释器，以及为什么你没法通过读命令来保护 shell | ✅ built |
+| [00 The Loop](docs/00-loop.md) | 请求 → 工具调用 → 执行 → 再来一遍。一个文件，没有 SDK。 | ✅ built |
+| [01 Don't Die](docs/01-dont-die.md) | 截断、超时、整棵进程树一起杀、`finish_reason`、权限闸 | ✅ built |
+| [02 See Everything](docs/02-see-everything.md) | 事件总线、流式、全套仪表、JSONL trace、重放 | ✅ built |
+| [03 Babel](docs/03-babel.md) | 一个 Agent，多套协议：OpenAI 和 Anthropic 都藏在中立内核后面 | ✅ built |
+| [04 The Cache](docs/04-the-cache.md) | prompt 缓存是一种*纪律*，以及它折成钱值多少 | ✅ built |
+| [05 Live Forever](docs/05-live-forever.md) | 上下文压缩、上下文注入、记忆——以及压缩真正的代价 | ✅ built |
+| [06 The Composer](docs/06-the-composer.md) | 标准库里写一个 TUI：同一个会话的上帝视角和模型视角 | ✅ built |
+| [07 Multiply](docs/07-multiply.md) | 靠递归得到子 Agent、技能，还有 PTC 究竟是什么 | ✅ built |
+| [08 Sandbox](docs/08-sandbox.md) *(可选)* | 内嵌 shell 解释器，以及为什么读命令字符串守不住 shell | ✅ built |
 
-### 第二阶段 —— 生产（09–19）
+### 第二部分：生产环境（09–19）
 
-第一阶段做出一个你**看得见**的 Agent。第二阶段讲的是你把它交给别人用之后的那一周：
-失败的那次调用、永远不返回的那个工具、不是 JSON 的那段 JSON、已经过时的那条笔记、
-没人量过的那个 P95。规矩不变 —— 一个阶段一个想法，一个说法背后一个数字。
+第一部分做出来的 Agent 是*看得见*的。第二部分讲的是你把它交给别人用之后的那
+一周：失败的那次调用、再也不返回的那个工具、不是 JSON 的那段 JSON、已经
+过时的那条笔记、没人量过的那个 P95。规矩不变——一个阶段一个想法，没有数
+字就不下结论。
 
-第二阶段接的是**第 07 阶段**，不是第 08 阶段。第 08 阶段是整个仓库唯一带依赖的地方，
-而且它明说是可选的；把它一路带下去等于让它事实上变成必需。它留在旁路上 ——
-`diff stages/07-multiply stages/08-sandbox` 就是那个补丁，如果你想在后面的阶段里
-带上沙箱。
+第二部分接的是**阶段 07**，不是阶段 08。阶段 08 是整个仓库唯一引入依赖的
+地方，而且它明说是可选的；把它带进主干，等于事实上让它变成必需。它留在
+岔路上——想在后面的阶段里带上沙箱，那个补丁就是
+`diff stages/07-multiply stages/08-sandbox`。
 
-| Stage | Idea | Status |
+| 阶段 | 想法 | 状态 |
 |---|---|---|
-| [09 Triage](docs/09-triage.md) | 一个错误是一个**决策**，不是一个字符串：两套协议一张分类表、`Retry-After`、重试预算、降级梯子 | ✅ built |
-| 10 Deadlock | 不返回的工具和卡住的流：每一次等待都要有截止时间和归属 | 🚧 planned |
-| 11 Malformed | 工具调用不是合法 JSON —— 两套协议**实际**给你什么，以及拿它怎么办 | 🚧 planned |
-| 12 Echo | 最便宜的工具调用是你不发生的那次：内容寻址的结果、一个 LRU、按 `mtime` 判定过期 | 🚧 planned |
-| 13 Rewind | 会话和工作区都是状态，都需要能倒带 —— 从 trace 恢复，改动前打快照 | 🚧 planned |
-| 14 Amnesia | 上下文压缩必然有损，所以把损失量出来：探针集、一个召回率、保护区 | 🚧 planned |
-| 15 Rot | 一条记忆需要有效期和见证：过时 vs 错误、覆盖 vs 矛盾、自进化技能互相冲突 | 🚧 planned |
-| 16 The Briefing | 上下文共享是预算，不是布尔值 —— 以及子 Agent 有权反问什么 | 🚧 planned |
-| 17 Two Seconds | 优化 P95，不是均值：并发调用、prompt 瘦身、缓存对齐、语义缓存、模型分层调度 | 🚧 planned |
-| 18 The Scoreboard | 从 trace 算四个指标，还有一个 bad case 怎么变成一条回归测试 | 🚧 planned |
-| 19 Borrowed Tools | 从零手写 MCP（stdio 上的 JSON-RPC），并把 schema 税用 token 量出来 | 🚧 planned |
+| [09 Triage](docs/09-triage.md) | 错误是决策，不是字符串：两套协议共用一张分类表、`Retry-After`、重试预算、降级梯子 | ✅ built |
+| 10 Deadlock | 不返回的工具和卡住的流：每一次等待都要有截止时间，也要有主人 | 🚧 planned |
+| 11 Malformed | 工具调用不是合法 JSON——每套协议实际递给你的是什么，拿到之后怎么办 | 🚧 planned |
+| 12 Echo | 最便宜的工具调用是没发出去的那次：结果按内容寻址、LRU 淘汰、用 `mtime` 判过期 | 🚧 planned |
+| 13 Rewind | 会话和工作区都是状态，都得能倒回去——从 trace 续跑，改动前先打检查点 | 🚧 planned |
+| 14 Amnesia | 压缩必然有损，那就把损失量出来：探针集、召回率、保护区 | 🚧 planned |
+| 15 Rot | 记忆要有有效期，也要有见证人：过时不等于错、覆盖不等于矛盾、自进化的技能互相打架 | 🚧 planned |
+| 16 The Briefing | 上下文共享是预算，不是布尔值——以及子 Agent 有权反问哪一句 | 🚧 planned |
+| 17 Two Seconds | 盯 P95，不是盯均值：并发调用、prompt 瘦身、缓存对齐、语义缓存、模型分层 | 🚧 planned |
+| 18 The Scoreboard | 从 trace 里算出四个指标，再把一个坏 case 变成回归测试 | 🚧 planned |
+| 19 Borrowed Tools | 在 stdio JSON-RPC 上从零手写 MCP，并把 schema 税按 token 算出来 | 🚧 planned |
 
-**附录：[Wire notes](docs/wire-notes.md)** —— 一个真实网关实际发出的东西，逐字节探测：每个协议怎样报告被截断的工具调用（不好，而且不一样）、流式使用数据在哪里说谎、无法识别的模型会得到什么错误码（401，不是 404）、prompt 缓存确实能工作的证明。每个声明都带上它的原始证据。`docs/` 里的教材是建立在这个文件基础上的，而不是协议文档，因为两者不一致。
+**附录：[线上记录](docs/wire-notes.md)**——一个真实网关到底发出了什么，
+逐字节探过一遍：每套协议怎么报告被截断的工具调用（都报得不好，而且各报
+一套）、流式返回的用量数字在哪里撒谎、模型名不存在时你会拿到哪个错误码
+（401，不是 404）、prompt 缓存确实生效的证明。每条说法都带着自己的原始
+证据。`docs/` 里的教材是照这份文件写的，不是照协议文档写的——因为两者
+对不上。
 
-## 到最后你会得到什么
+## 走到最后你手上有什么
 
-- 按回合的 token 记账，能分清楚**全价 / 缓存写 / 缓存读**，还有一本用你自己货币记录的成本账目。
-- 每个模型调用的 TTFT 和每秒 token；每个命令的墙钟时间。
-- 一个**请求检查器** —— 按一个按键就能转储即将发送的确切字节。
-- 一个 JSONL trace 记录每个会话，还有 `replay` 来单步走一个会话，**不需要 API 密钥**（这也是你怎样研究一个你从没付过钱的会话的）。
-- 一个对话视图，把上下文压缩作为一流事件展示：什么被总结了、为什么、它在 token **和**缓存失效上实际花了你多少 —— 在**相同工作上的全价 token +25%** 下测量，这就是为什么第 05 阶段论证上下文压缩是一个生存机制而不是优化。
-- 一个三视角 TUI，覆盖任何 trace —— **发生了什么**、**模型看到了什么**、**原始字节** —— 用标准库写的，因为 TUI 有趣的部分（原始模式恢复、Escape 歧义、显示宽度 vs 字节长度）正是框架隐藏的那些。
-- 长期记忆，是 Agent 用 `>>` 追加写入的一个文件，还有一个规则来控制注入的上下文能在哪里活，这样知道时间就不会花掉你的缓存。
-- 子 Agent，是同样的主循环再调用一次，并发运行进一个单一有序的 trace —— 一个重要的测量：**父 Agent 上下文小 9.6 倍却多了 20% 的 token。** 子 Agent 不省 token，它省上下文，知道你缺的是哪一个就是全部决定。
-- 技能，是一个目录和一段话，索引成本就印在那儿，这样你能看到你在每个请求上永久地付的税。
-- 一个嵌入式 shell，能看到每个命令**展开以后**的样子，还有一个测量表，列出 regexp 和 parser 两个都会输的十四个方式。
-- 一张失败分类表，把两套协议的错误变成三种决策 —— 重试、降级、停 —— 依据是那些让两条显而易见的规则失效的实测字节：一个不存在的模型返回 **401**，一个格式错误的请求体返回 **500**。还有一个没人报的数字，因为 API 问不出来：**失败的那些尝试花了多少钱**。
-- 没有供应商锁定：任何 OpenAI 或 Anthropic 兼容的端点，包括本地模型，由 URL + 密钥 + 协议配置。
+- 按回合的 token 记账，**全价 / 缓存写 / 缓存读**分得清清楚楚；还有一本
+  成本账，用你自己的货币实时结算。
+- 每一次模型调用都带 TTFT 和每秒 token 数；每一条命令都带墙钟耗时。
+- **请求检查器**——按一个键，就把马上要发出去的字节原样倒出来。
+- 每个会话一份 JSONL trace，配上 `replay` 就能单步走完，**不需要 API
+  key**（这也是你研究一段自己没付过钱的会话的办法）。
+- 对话视图把上下文压缩当成一等事件摊开：什么被总结了、为什么、它在 token
+  *和*缓存失效两头各花了你多少——实测是**同样的活，全价 token 多 25%**，
+  所以阶段 05 的结论是：压缩是保命手段，不是优化。
+- 任何一份 trace 都能开出三个视角的 TUI——**发生了什么**、**模型看到了
+  什么**、**原始字节**——用标准库写的，因为终端 UI 里真正有意思的那几处
+  （原始模式怎么恢复、Escape 键的歧义、显示宽度不等于字节长度）恰好就是
+  框架替你藏起来的东西。
+- 长期记忆就是一个文件，Agent 用 `>>` 往后追加；再加一条规矩，管住注入
+  的上下文能放在哪儿——好让"知道现在几点"不至于赔掉整个缓存。
+- 子 Agent 就是同一个主循环再调一次，并发跑，汇进同一条有序的 trace——
+  还有那个真正要紧的数：**多花 20% 的 token，换来小 9.6 倍的父上下文。**
+  子 Agent 不省 token，它省的是上下文；你缺的到底是哪一样，决定就在这儿。
+- 技能就是一个目录加一段话，索引成本直接印出来，让你看见这笔税要在往后
+  每一个请求上一直交下去。
+- 内嵌的 shell 看到的是每条命令*展开之后*的样子，还有一张实测表，列齐了
+  正则和解析器双双翻车的十四种方式。
+- 一张失败分类表，把两套协议的错误收成三种决策——重试、降级、停下——依据
+  是实录的字节，而那些字节正好把两条看上去最显然的规则推翻了：模型名不
+  存在返回 **401**，请求体格式不对返回 **500**。还有那个没人报的数字，
+  因为 API 根本问不出来：**失败的那些尝试花了多少钱**。
+- 不锁供应商：任何 OpenAI 或 Anthropic 兼容的端点都行，本地模型也算，用
+  URL + key + 协议三样配出来。
 
 ---
 
 ## 快速开始
 
-需要 Go 1.24+ 和一个 POSIX shell（在 Windows 上：Git Bash，Git for Windows 附带的 —— Agent 会自动找到）。
+需要 Go 1.24+ 和 POSIX shell（Windows 上就用 Git for Windows 自带的 Git
+Bash，Agent 会自己找到它）。
 
 ```sh
 git clone <this repo> && cd bash-is-all-you-need
-cp .env.example .env      # fill in your endpoint, key and model
+cp .env.example .env      # 填上你的端点、key 和模型
 go build -o agent ./stages/00-loop
 
-mkdir sandbox && cd sandbox    # it runs what the model says. use a scratch dir.
+mkdir sandbox && cd sandbox    # 它会执行模型说的话。用一个临时目录。
 set -a && . ../.env && set +a
 ../agent --trace session.jsonl
-> find the bug in this directory, fix it, and verify the fix
+> 在这个目录里找出 bug，修掉它，然后验证修好了
 ```
 
-然后看看它干了什么 —— 不需要密钥，用别人的 trace 也能工作得一样好：
+然后回头看它干了什么——不需要 key，看别人的 trace 和看自己的一样顺手：
 
 ```sh
 go build -o composer ./stages/06-the-composer
-./composer --composer session.jsonl                  # TUI: g / m / w switch views
-./composer --composer-dump session.jsonl --view model --call 12   # the same, greppable
+./composer --composer session.jsonl                  # TUI：g / m / w 切换视角
+./composer --composer-dump session.jsonl --view model --call 12   # 同样的内容，可以 grep
 ```
 
-任何 OpenAI 兼容的端点都能工作 —— OpenRouter、DeepSeek、Kimi、GLM、或本地的 Ollama / vLLM / LM Studio。第 03 阶段把 Anthropic 协议也加上。
+任何 OpenAI 兼容的端点都能跑——OpenRouter、DeepSeek、Kimi、GLM，或者本地
+的 Ollama / vLLM / LM Studio。阶段 03 会把 Anthropic 协议并排加上来。
 
 ---
 
 ## 非目标
 
-讲清楚边界，因为知道一个教学项目在哪儿停止本身就是教学的一部分：
+把边界说出来——教学项目在哪里收手，本身也是教学的一部分：
 
-- **不是 Claude Code 的替代品。** 用 Claude Code。这个仓库讲的是原理。
-- **没有计划模式。** 每个文档都标注了你该在哪一层加上它。MCP 和多模型路由在第 08 阶段之前是非目标，它们在第二阶段到来 —— 第 19 和第 17 阶段 —— 而且各自带着自己的账单，不是当成一条功能亮点。
-- **没有 Agent 框架，没有 TUI 框架。** 没有 LangChain、没有向量数据库、没有编排层、没有供应商 SDK、没有 Bubble Tea。第 00-07 阶段和第二阶段的每一个阶段都只有标准库加 `golang.org/x/sys` —— 第 01 阶段的 Windows Job Objects 和第 06 阶段的终端控制 —— 就这样。第 08 阶段是唯一的例外：它嵌入了 `mvdan.cc/sh/v3`，它的章节基本上就是一篇关于一个依赖到什么时候才配得上自己位置的论证，用一个测量好的账单讲那一个花了什么（它在被钉死回去之前把 Go 的底线移动过两次）。第 06 阶段是"不用框架"这条规则不再只是审美偏好的地方：TUI 框架隐藏了原始模式恢复、Escape 键歧义、显示宽度 vs 字节长度，那三件事就是这一章讲的东西。
-- **不是基准追赶。** 如果你想要一个最小 Agent 的 SWE-bench 数字，看下面的 `mini-swe-agent`。
+- **不是 Claude Code 的替代品。** 要用就用 Claude Code，这个仓库只负责把
+  它讲明白。
+- **没有计划模式。** 每篇文档都标出了它该加在哪一层。MCP 和多模型路由在
+  阶段 08 之前一直是非目标，到第二部分才来——阶段 19 和阶段 17——而且各自
+  带着自己的账单来，不是当成一条功能亮点写上去。
+- **不用 Agent 框架，也不用 TUI 框架。** 没有 LangChain、没有向量数据库、
+  没有编排层、没有厂商 SDK、没有 Bubble Tea。阶段 00-07 和第二部分的每一个
+  阶段都只有标准库，外加 `golang.org/x/sys`——阶段 01 拿它做 Windows Job
+  Objects，阶段 06 拿它做终端控制——就这些。阶段 08 是唯一的例外：它内嵌
+  了 `mvdan.cc/sh/v3`，那一章基本上就是在辩一个依赖凭什么配得上自己的
+  位置，并附上一笔实测的账：就这一个依赖，花掉了多少（在被钉回去之前，
+  它把 Go 的版本底线抬高过两次）。到了阶段 06，"不用框架"就不再只是审美
+  偏好：TUI 框架会替你藏掉原始模式恢复、Escape 键的歧义、显示宽度和字节
+  长度的区别，而这一章讲的正好就是这三件事。
+- **不追榜。** 想看最小 Agent 能跑出什么 SWE-bench 分数，看下面的
+  `mini-swe-agent`。
 
 ---
 
 ## 相关工作
 
-这是个竞争激烈的领域，诚实的框架是**主循环**教得很好已经许多次了。别处缺的是仪表。
+这条赛道上人不少，公道地讲：*主循环*这件事已经有很多人讲得很好了。别处
+缺的是仪表。
 
-| Project | Shape | What it does not cover |
+| 项目 | 形态 | 它没覆盖的 |
 |---|---|---|
-| [shareAI-lab/learn-claude-code](https://github.com/shareAI-lab/learn-claude-code) | Python，17 个渐进式课程，同样的标语 | 单供应商；没有 token/成本/缓存仪表；没有 TUI；没有重放 |
-| [SWE-agent/mini-swe-agent](https://github.com/SWE-agent/mini-swe-agent) | ~100 行 Python；最纯粹的仅 bash Agent —— 它连工具调用 API 都不用，模型直接回复一个命令 | 通过 litellm 的供应商作为黑箱；不是一个渐进式课程；没有成本/缓存仪表 |
-| [ghuntley/how-to-build-a-coding-agent](https://ghuntley.com/agent/) | Go，6 步讲座 | 多工具路线；没有仪表、TUI 或重放 |
-| [decodingai course](https://github.com/decodingai-magazine/building-a-coding-agent-from-scratch-course) | Python，8 篇文章 + 4 个视频，Modal 沙箱 | 跟踪外包给一个 SaaS 而不是内置 |
-| [owenthereal/build-your-own-coding-agent](https://github.com/owenthereal/build-your-own-coding-agent) | Python，~700 行，没有 SDK —— 精神上最接近 | 没有仪表、多协议或 TUI |
+| [shareAI-lab/learn-claude-code](https://github.com/shareAI-lab/learn-claude-code) | Python，17 节递进课程，标语一样 | 只认单一供应商；没有 token / 成本 / 缓存仪表；没有 TUI；没有重放 |
+| [SWE-agent/mini-swe-agent](https://github.com/SWE-agent/mini-swe-agent) | ~100 行 Python；最纯粹的"只有 bash" Agent——它连工具调用 API 都不用，模型直接回一条命令 | 供应商全交给 litellm，是个黑箱；不是递进课程；没有成本 / 缓存仪表 |
+| [ghuntley/how-to-build-a-coding-agent](https://ghuntley.com/agent/) | Go，6 步工作坊 | 走多工具路线；没有仪表、没有 TUI、没有重放 |
+| [decodingai course](https://github.com/decodingai-magazine/building-a-coding-agent-from-scratch-course) | Python，8 篇文章 + 4 个视频，Modal 沙箱 | trace 外包给 SaaS，不是自己做出来的 |
+| [owenthereal/build-your-own-coding-agent](https://github.com/owenthereal/build-your-own-coding-agent) | Python，~700 行，不用 SDK——精神上最接近 | 没有仪表、没有多协议、没有 TUI |
 
-特别值得知道 `mini-swe-agent` 的是：它展示了一个比一个工具还要根本的形态 —— **零**工具，命令从纯模型输出中解析出来。如果你觉得这个仓库够小了，那个才是底线。
+`mini-swe-agent` 值得单独说一句：它演示的形态比"只有一个工具"还要极端——
+*零*工具，直接从模型的纯文本输出里把命令解析出来。你要是觉得这个仓库已经
+够精简了，那一个才是地板。
 
 ## 许可
 

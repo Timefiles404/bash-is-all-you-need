@@ -1,0 +1,91 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 770 420" width="770" height="420"
+     font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#57606a"/>
+    </marker>
+    <marker id="ab" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#2563eb"/>
+    </marker>
+  </defs>
+
+  <rect width="770" height="420" fill="#fafbfc" rx="8"/>
+  <rect x="0" y="0" width="770" height="42" fill="#1f2937" rx="8"/>
+  <rect x="0" y="34" width="770" height="8" fill="#1f2937"/>
+  <text x="24" y="27" fill="#ffffff" font-size="15" font-weight="600">One loop, two wire formats</text>
+  <text x="746" y="27" fill="#9ca3af" font-size="12" text-anchor="end">stage 03</text>
+
+  <path d="M382 58 L382 372" stroke="#d0d7de" stroke-width="1" stroke-dasharray="4 4"/>
+
+  <!-- before -->
+  <text x="24" y="76" font-size="12.5" fill="#57606a">before: one copy of the agent per protocol</text>
+
+  <text x="107" y="100" font-size="12" fill="#57606a" text-anchor="middle">OpenAI build</text>
+  <text x="271" y="100" font-size="12" fill="#57606a" text-anchor="middle">Anthropic build</text>
+
+  <rect x="32" y="108" width="150" height="28" rx="5" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="107" y="127" font-size="12" fill="#1f2328" text-anchor="middle">the loop</text>
+  <rect x="32" y="140" width="150" height="28" rx="5" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="107" y="159" font-size="12" fill="#1f2328" text-anchor="middle">stream parser</text>
+  <rect x="32" y="172" width="150" height="28" rx="5" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="107" y="191" font-size="12" fill="#1f2328" text-anchor="middle">events + trace</text>
+  <rect x="32" y="204" width="150" height="28" rx="5" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="107" y="223" font-size="12" fill="#1f2328" text-anchor="middle">permission gate</text>
+  <rect x="32" y="236" width="150" height="28" rx="5" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="107" y="255" font-size="12" fill="#1f2328" text-anchor="middle">run the command</text>
+
+  <rect x="196" y="108" width="150" height="28" rx="5" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="271" y="127" font-size="12" fill="#1f2328" text-anchor="middle">the loop</text>
+  <rect x="196" y="140" width="150" height="28" rx="5" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="271" y="159" font-size="12" fill="#1f2328" text-anchor="middle">stream parser</text>
+  <rect x="196" y="172" width="150" height="28" rx="5" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="271" y="191" font-size="12" fill="#1f2328" text-anchor="middle">events + trace</text>
+  <rect x="196" y="204" width="150" height="28" rx="5" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="271" y="223" font-size="12" fill="#1f2328" text-anchor="middle">permission gate</text>
+  <rect x="196" y="236" width="150" height="28" rx="5" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="271" y="255" font-size="12" fill="#1f2328" text-anchor="middle">run the command</text>
+
+  <path d="M189 118 L189 254" stroke="#d97706" stroke-width="1.5" stroke-dasharray="4 3"/>
+
+  <text x="32" y="292" font-size="11.5" fill="#92400e">Two copies of identical logic.</text>
+  <text x="32" y="312" font-size="11.5" fill="#57606a">Add a retry to the left and the right falls a version behind;</text>
+  <text x="32" y="332" font-size="11.5" fill="#57606a">two months later nobody can say which is the real one.</text>
+
+  <!-- after -->
+  <text x="400" y="76" font-size="12.5" fill="#57606a">after: one neutral language, translated at the edge</text>
+
+  <rect x="414" y="92" width="320" height="46" rx="6" fill="#eff6ff" stroke="#2563eb" stroke-width="1.5"/>
+  <text x="574" y="112" font-size="13.5" fill="#1e3a8a" text-anchor="middle" font-weight="600">the loop, main.go</text>
+  <text x="574" y="130" font-size="11" fill="#1e40af" text-anchor="middle" font-family="ui-monospace, Consolas, monospace">Msg · Block · StopReason · Usage</text>
+
+  <text x="746" y="146" font-size="11.5" fill="#2563eb" text-anchor="end">translation boundary</text>
+  <path d="M574 138 L574 156" stroke="#2563eb" stroke-width="1.5"/>
+  <path d="M479 156 L655 156" stroke="#2563eb" stroke-width="1.5"/>
+  <path d="M479 156 L479 174" stroke="#2563eb" stroke-width="1.5" marker-end="url(#ab)"/>
+  <path d="M655 156 L655 174" stroke="#2563eb" stroke-width="1.5" marker-end="url(#ab)"/>
+
+  <rect x="404" y="176" width="150" height="44" rx="6" fill="#ffffff" stroke="#2563eb"/>
+  <text x="479" y="195" font-size="12" fill="#1f2328" text-anchor="middle" font-family="ui-monospace, Consolas, monospace">openai.go</text>
+  <text x="479" y="212" font-size="10.5" fill="#57606a" text-anchor="middle">only this knows OpenAI</text>
+
+  <rect x="580" y="176" width="150" height="44" rx="6" fill="#ffffff" stroke="#2563eb"/>
+  <text x="655" y="195" font-size="12" fill="#1f2328" text-anchor="middle" font-family="ui-monospace, Consolas, monospace">anthropic.go</text>
+  <text x="655" y="212" font-size="10.5" fill="#57606a" text-anchor="middle">only this knows Anthropic</text>
+
+  <path d="M479 220 L479 246" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
+  <path d="M655 220 L655 246" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
+
+  <rect x="396" y="248" width="166" height="42" rx="6" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="479" y="266" font-size="10.5" fill="#1f2328" text-anchor="middle" font-family="ui-monospace, Consolas, monospace">POST /chat/completions</text>
+  <text x="479" y="282" font-size="10" fill="#57606a" text-anchor="middle" font-family="ui-monospace, Consolas, monospace">Authorization: Bearer</text>
+
+  <rect x="572" y="248" width="166" height="42" rx="6" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="655" y="266" font-size="10.5" fill="#1f2328" text-anchor="middle" font-family="ui-monospace, Consolas, monospace">POST /messages</text>
+  <text x="655" y="282" font-size="10" fill="#57606a" text-anchor="middle" font-family="ui-monospace, Consolas, monospace">x-api-key</text>
+
+  <rect x="396" y="306" width="342" height="50" rx="6" fill="#f0fdf4" stroke="#15803d"/>
+  <text x="567" y="326" font-size="12.5" fill="#14532d" text-anchor="middle">bus, trace, replay, render: unchanged</text>
+  <text x="567" y="344" font-size="11.5" fill="#15803d" text-anchor="middle">they subscribe to events, not to a wire format</text>
+
+  <text x="24" y="400" font-size="11.5" fill="#57606a">There is one test: any vendor's word inside main.go means the abstraction has already leaked.</text>
+</svg>

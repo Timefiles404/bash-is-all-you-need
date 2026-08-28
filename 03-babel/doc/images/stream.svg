@@ -1,0 +1,96 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 790 540" width="790" height="540"
+     font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#57606a"/>
+    </marker>
+  </defs>
+
+  <rect width="790" height="540" fill="#fafbfc" rx="8"/>
+  <rect x="0" y="0" width="790" height="42" fill="#1f2937" rx="8"/>
+  <rect x="0" y="34" width="790" height="8" fill="#1f2937"/>
+  <text x="24" y="27" fill="#ffffff" font-size="15" font-weight="600">The same tool call, frame order on two streams</text>
+  <text x="766" y="27" fill="#9ca3af" font-size="12" text-anchor="end">stage 03</text>
+
+  <!-- column headers -->
+  <rect x="24" y="60" width="368" height="30" rx="5" fill="#eff6ff" stroke="#2563eb"/>
+  <text x="208" y="80" font-size="12.5" fill="#1e3a8a" text-anchor="middle">OpenAI: data: lines only, sentinel at the end</text>
+  <rect x="404" y="60" width="362" height="30" rx="5" fill="#eff6ff" stroke="#2563eb"/>
+  <text x="585" y="80" font-size="12.5" fill="#1e3a8a" text-anchor="middle">Anthropic: event: + data:, no sentinel</text>
+
+  <path d="M208 92 L208 104" stroke="#57606a" stroke-width="1.2" marker-end="url(#a)"/>
+  <path d="M585 92 L585 104" stroke="#57606a" stroke-width="1.2" marker-end="url(#a)"/>
+
+  <!-- left frames -->
+  <rect x="32" y="108" width="352" height="26" rx="4" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="42" y="125" font-size="11" fill="#1f2328" font-family="ui-monospace, Consolas, monospace">data:</text>
+  <text x="96" y="125" font-size="11.5" fill="#1f2328">opening frame, content is an empty string</text>
+
+  <rect x="32" y="139" width="352" height="26" rx="4" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="42" y="156" font-size="11" fill="#1f2328" font-family="ui-monospace, Consolas, monospace">data:</text>
+  <text x="96" y="156" font-size="11.5" fill="#1f2328">tool_calls[0]: id and name, only here</text>
+
+  <rect x="32" y="170" width="352" height="26" rx="4" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="42" y="187" font-size="11" fill="#1f2328" font-family="ui-monospace, Consolas, monospace">data:</text>
+  <text x="96" y="187" font-size="11.5" fill="#1f2328">arguments fragments x7, split mid-word</text>
+
+  <rect x="32" y="201" width="352" height="26" rx="4" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="42" y="218" font-size="11" fill="#1f2328" font-family="ui-monospace, Consolas, monospace">data:</text>
+  <text x="96" y="218" font-size="11.5" fill="#1f2328">finish_reason arrives in this frame</text>
+
+  <rect x="32" y="232" width="352" height="26" rx="4" fill="#fff7ed" stroke="#d97706" stroke-width="1.5"/>
+  <text x="42" y="249" font-size="11" fill="#92400e" font-family="ui-monospace, Consolas, monospace">data:</text>
+  <text x="96" y="249" font-size="11.5" fill="#92400e">usage here, and choices is an empty array</text>
+
+  <rect x="32" y="263" width="352" height="26" rx="4" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="42" y="280" font-size="11" fill="#1f2328" font-family="ui-monospace, Consolas, monospace">data: [DONE]</text>
+
+  <rect x="32" y="294" width="352" height="26" rx="4" fill="#fff7ed" stroke="#d97706" stroke-width="1.5"/>
+  <text x="42" y="311" font-size="11" fill="#92400e" font-family="ui-monospace, Consolas, monospace">data:</text>
+  <text x="96" y="311" font-size="11.5" fill="#92400e">a frame after the sentinel, carrying cost</text>
+
+  <!-- right frames -->
+  <rect x="412" y="108" width="346" height="26" rx="4" fill="#fff7ed" stroke="#d97706" stroke-width="1.5"/>
+  <text x="422" y="125" font-size="11" fill="#92400e" font-family="ui-monospace, Consolas, monospace">ping</text>
+  <text x="486" y="125" font-size="11.5" fill="#92400e">arrives before message_start</text>
+
+  <rect x="412" y="139" width="346" height="26" rx="4" fill="#fff7ed" stroke="#d97706" stroke-width="1.5"/>
+  <text x="422" y="156" font-size="11" fill="#92400e" font-family="ui-monospace, Consolas, monospace">message_start</text>
+  <text x="530" y="156" font-size="11.5" fill="#92400e">input_tokens 56 — wrong</text>
+
+  <rect x="412" y="170" width="346" height="26" rx="4" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="422" y="187" font-size="11" fill="#1f2328" font-family="ui-monospace, Consolas, monospace">content_block_start</text>
+  <text x="566" y="187" font-size="11.5" fill="#1f2328">id and name only here</text>
+
+  <rect x="412" y="201" width="346" height="26" rx="4" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="422" y="218" font-size="11" fill="#1f2328" font-family="ui-monospace, Consolas, monospace">content_block_delta</text>
+  <text x="566" y="218" font-size="11.5" fill="#1f2328">partial_json x6</text>
+
+  <rect x="412" y="232" width="346" height="26" rx="4" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="422" y="249" font-size="11" fill="#1f2328" font-family="ui-monospace, Consolas, monospace">content_block_stop</text>
+
+  <rect x="412" y="263" width="346" height="26" rx="4" fill="#f0fdf4" stroke="#15803d" stroke-width="1.5"/>
+  <text x="422" y="280" font-size="11" fill="#14532d" font-family="ui-monospace, Consolas, monospace">message_delta</text>
+  <text x="530" y="280" font-size="11.5" fill="#14532d">stop reason and usage, only here</text>
+
+  <rect x="412" y="294" width="346" height="26" rx="4" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="422" y="311" font-size="11" fill="#1f2328" font-family="ui-monospace, Consolas, monospace">message_stop</text>
+
+  <rect x="412" y="325" width="346" height="26" rx="4" fill="#fff7ed" stroke="#d97706" stroke-width="1.5"/>
+  <text x="422" y="342" font-size="11" fill="#92400e" font-family="ui-monospace, Consolas, monospace">ping</text>
+  <text x="486" y="342" font-size="11.5" fill="#92400e">after message_stop, carrying cost</text>
+
+  <!-- notes -->
+  <text x="32" y="380" font-size="11.5" fill="#57606a">A parser using choices[0] crashes near the end.</text>
+  <text x="32" y="400" font-size="11.5" fill="#57606a">A client that stops at [DONE] loses the last frame.</text>
+
+  <text x="412" y="380" font-size="11.5" fill="#57606a">Same request: message_start 56, message_delta 291.</text>
+  <text x="412" y="400" font-size="11.5" fill="#57606a">The cache counters appear only on message_delta.</text>
+  <text x="412" y="420" font-size="11.5" fill="#57606a">No sentinel: the stream ends when the connection closes.</text>
+
+  <rect x="24" y="444" width="742" height="56" rx="6" fill="#eff6ff" stroke="#2563eb"/>
+  <text x="42" y="466" font-size="12.5" fill="#1e3a8a">sse.go does one thing: cut bytes into frames. It does not know what [DONE] means.</text>
+  <text x="42" y="486" font-size="12" fill="#1e40af">A sentinel belongs to the payload, not the framing: put it in the reader and the reader serves one protocol.</text>
+
+  <text x="24" y="524" font-size="11.5" fill="#57606a">The columns share nothing — not frame count, not names, not fields — except "blank line ends a frame".</text>
+</svg>

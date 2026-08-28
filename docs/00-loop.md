@@ -18,7 +18,7 @@ coding Agent。
 1. **`main()`** —— 主循环。先读它，其余全是它调用的细节。
 2. **`callModel()`** —— 一次 HTTP POST。这里没有 SDK，而 SDK 底下也就是
    这么点东西。
-3. **`runBash()`** —— 十行。Agent 能做的一切都得从这里过。
+3. **`runBash()`** —— 十四行。Agent 能做的一切都得从这里过。
 
 ## 循环长什么样
 
@@ -28,7 +28,9 @@ coding Agent。
      └─ 循环：
         ├─ 带上整个 message 数组 POST /chat/completions
         ├─ 把 assistant 的回复 append 到 messages
-        ├─ 没有 tool_calls？  → 打印文本，退出循环
+        ├─ 打印 [tokens: prompt=… completion=…]
+        ├─ 有文本？→ 打印出来，不管这一轮是不是同时还要了工具
+        ├─ 没有 tool_calls？→ 退出循环
         └─ 对每个 tool_call：
              跑掉那条命令
              把 {role:"tool", tool_call_id, content: output} append 上去
@@ -51,11 +53,15 @@ coding Agent。
 `runBash` 里最常见的新手错误就这一个：
 
 ```go
-out, err := cmd.CombinedOutput()
-if err != nil {
-    return err          // ← 错了
-}
+func runBash(shell, command string) (string, error) {   // ← 第一步就错了
+    out, err := cmd.CombinedOutput()
+    if err != nil {
+        return "", err                                   // ← 然后就有了这一句
+    }
 ```
+
+真正的签名只返回一个 `string`，这就是那个决定。没有地方放 error，因为退出码非
+零本来就不是一个 error。
 
 退出码非零，不代表你的程序坏了。它产出了信息，而该对这份信息作出反应的
 是模型，不是你。看下面那次真实运行：`python stats.py` 以 1 退出，吐出
@@ -87,7 +93,7 @@ export AGENT_BASE_URL=... AGENT_API_KEY=... AGENT_MODEL=...
 | 回合 | 它干了什么 | prompt token |
 |---:|---|---:|
 | 1 | `ls -la` | 429 |
-| 2 | `cat README.md && cat stats.py` | 613 |
+| 2 | `cat README.md; cat stats.py` | 613 |
 | 3 | `python stats.py` → traceback | 737 |
 | 4 | `sed -i ...` 打补丁 | 932 |
 | 5 | `cat stats.py` | 1079 |
@@ -145,7 +151,7 @@ export AGENT_BASE_URL=... AGENT_API_KEY=... AGENT_MODEL=...
    然后读 API 回的错误。这一下学到的协议知识比读文档多。
 2. **把系统提示词删掉。** 看 Agent 怎么退化——它会开始让**你**去跑命令。
    所谓"Agent 效果"，大半就住在那个字符串里。
-3. **把 `maxTokens` 改成 100。** 这时 `finish_reason` 会回 `length`，
+3. **把 `callModel` 里的 `MaxTokens: 4096` 改成 100。** 这时 `finish_reason` 会回 `length`，
    Agent 说到一半被截断，还一声不响。阶段 01 修的就是这个。
 4. **换个模型指过去。** 任何 OpenAI 兼容的端点都行，本地 Ollama 也算。
    小模型会产出不合法的工具调用——那不是你的代码坏了，而且值得早点

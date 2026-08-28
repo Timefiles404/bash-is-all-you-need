@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 390" width="700" height="390"
+     font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#57606a"/>
+    </marker>
+  </defs>
+
+  <rect width="700" height="390" fill="#fafbfc" rx="8"/>
+  <rect x="0" y="0" width="700" height="42" fill="#1f2937" rx="8"/>
+  <rect x="0" y="34" width="700" height="8" fill="#1f2937"/>
+  <text x="24" y="27" fill="#ffffff" font-size="15" font-weight="600">One call's prompt, split three ways</text>
+  <text x="676" y="27" fill="#9ca3af" font-size="12" text-anchor="end">stage 04</text>
+
+  <text x="26" y="70" font-size="12" fill="#57606a">This turn sent 963 prompt tokens. They are not all the same price:</text>
+
+  <!-- three components -->
+  <rect x="26" y="84" width="200" height="66" rx="6" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="46" y="106" font-size="18" fill="#1f2328" font-family="ui-monospace, Consolas, monospace">█</text>
+  <text x="70" y="106" font-size="12.5" fill="#1f2328" font-weight="600">full · full price</text>
+  <text x="46" y="128" font-size="12" fill="#57606a">3 tokens</text>
+  <text x="46" y="144" font-size="11.5" fill="#57606a">the prefix moved a little</text>
+
+  <rect x="250" y="84" width="200" height="66" rx="6" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="270" y="106" font-size="18" fill="#8250df" font-family="ui-monospace, Consolas, monospace">▓</text>
+  <text x="294" y="106" font-size="12.5" fill="#1f2328" font-weight="600">write · cache write</text>
+  <text x="270" y="128" font-size="12" fill="#57606a">0 tokens</text>
+  <text x="270" y="144" font-size="11.5" fill="#57606a">dearer than full price</text>
+
+  <rect x="474" y="84" width="200" height="66" rx="6" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="494" y="106" font-size="18" fill="#15803d" font-family="ui-monospace, Consolas, monospace">░</text>
+  <text x="518" y="106" font-size="12.5" fill="#1f2328" font-weight="600">read · cache read</text>
+  <text x="494" y="128" font-size="12" fill="#57606a">960 tokens</text>
+  <text x="494" y="144" font-size="11.5" fill="#57606a">about a tenth of full</text>
+
+  <path d="M350 150 L350 172" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
+
+  <!-- the bar -->
+  <rect x="26" y="176" width="648" height="52" rx="6" fill="#f6f8fa" stroke="#d0d7de"/>
+  <text x="46" y="208" font-size="15" fill="#1f2328" font-family="ui-monospace, Consolas, monospace">│ in 963    <tspan fill="#1f2328">█</tspan><tspan fill="#15803d">░░░░░░░░░░░░░░░░░░░</tspan>  full 3 · write 0 · read 960</text>
+
+  <!-- the 3-token point -->
+  <path d="M126 232 L126 254" stroke="#cf222e" stroke-width="1.3" marker-end="url(#a)"/>
+  <rect x="26" y="256" width="320" height="48" rx="6" fill="#fef2f2" stroke="#cf222e"/>
+  <text x="42" y="275" font-size="11.5" fill="#cf222e">3 × 20 ÷ 963 = 0 cells</text>
+  <text x="42" y="293" font-size="11.5" fill="#cf222e">so it is forced to one cell — too small to see</text>
+
+  <rect x="360" y="256" width="314" height="48" rx="6" fill="#f0fdf4" stroke="#15803d"/>
+  <text x="376" y="275" font-size="11.5" fill="#14532d">Three glyphs, not three colours.</text>
+  <text x="376" y="293" font-size="11.5" fill="#14532d">Still legible after grep, a file, or a CI log.</text>
+
+  <text x="42" y="322" font-size="11.5" fill="#cf222e">and a component that is not there are different things.</text>
+
+  <text x="26" y="352" font-size="11.5" fill="#57606a">Three numbers are readable; a bar is glanceable — the thing to notice is the proportion changing.</text>
+  <text x="26" y="372" font-size="11.5" fill="#57606a">A chart that only works in a colour terminal is blank exactly when somebody shows you a problem.</text>
+</svg>

@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 780 480" width="780" height="480"
+     font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif">
+  <defs>
+    <marker id="ab" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#2563eb"/>
+    </marker>
+    <marker id="ag" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#15803d"/>
+    </marker>
+  </defs>
+
+  <rect width="780" height="480" fill="#fafbfc" rx="8"/>
+  <rect x="0" y="0" width="780" height="42" fill="#1f2937" rx="8"/>
+  <rect x="0" y="34" width="780" height="8" fill="#1f2937"/>
+  <text x="24" y="27" fill="#ffffff" font-size="15" font-weight="600">一个 subagent：什么穿过那条边界</text>
+  <text x="756" y="27" fill="#9ca3af" font-size="12" text-anchor="end">阶段 07</text>
+
+  <text x="28" y="62" font-size="12.5" fill="#1f2328" font-weight="600">父 agent 的 []Msg</text>
+  <text x="438" y="62" font-size="12.5" fill="#1f2328" font-weight="600">孩子的 []Msg —— spawn 里新建的一个</text>
+
+  <!-- the parent's array -->
+  <rect x="28" y="72" width="210" height="28" rx="5" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="133" y="91" font-size="11.5" fill="#1f2328" text-anchor="middle">system + stable</text>
+
+  <rect x="28" y="106" width="210" height="28" rx="5" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="133" y="125" font-size="11.5" fill="#1f2328" text-anchor="middle">user：三份文档，各写三句</text>
+
+  <rect x="28" y="140" width="210" height="34" rx="5" fill="#eff6ff" stroke="#2563eb" stroke-width="1.5"/>
+  <text x="133" y="161" font-size="11.5" fill="#1e3a8a" text-anchor="middle" font-weight="600">assistant：一个 task 调用</text>
+
+  <rect x="28" y="182" width="210" height="42" rx="5" fill="#f0fdf4" stroke="#15803d" stroke-width="1.5"/>
+  <text x="133" y="200" font-size="11.5" fill="#14532d" text-anchor="middle" font-weight="600">user：一块 tool_result</text>
+  <text x="133" y="217" font-size="11" fill="#14532d" text-anchor="middle">报告 707 B</text>
+
+  <rect x="28" y="232" width="210" height="28" rx="5" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="133" y="251" font-size="11.5" fill="#1f2328" text-anchor="middle">assistant：三句总结</text>
+
+  <!-- the child's array, and the dashed box is the whole point -->
+  <rect x="430" y="64" width="330" height="228" rx="6" fill="none" stroke="#9ca3af" stroke-width="1.5" stroke-dasharray="5 4"/>
+
+  <rect x="438" y="72" width="314" height="26" rx="5" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="595" y="90" font-size="11.5" fill="#1f2328" text-anchor="middle">subagentSystem + 同一份 stable</text>
+
+  <rect x="438" y="104" width="314" height="26" rx="5" fill="#eff6ff" stroke="#2563eb" stroke-width="1.5"/>
+  <text x="595" y="122" font-size="11.5" fill="#1e3a8a" text-anchor="middle">user：父 agent 写的那段 prompt</text>
+
+  <rect x="438" y="136" width="314" height="24" rx="5" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="595" y="152" font-size="11" fill="#1f2328" text-anchor="middle">assistant：cat a.md</text>
+
+  <rect x="438" y="166" width="314" height="24" rx="5" fill="#f6f8fa" stroke="#d0d7de"/>
+  <text x="595" y="182" font-size="11" fill="#1f2328" text-anchor="middle">tool_result：二十多 kB 的正文</text>
+
+  <rect x="438" y="196" width="314" height="24" rx="5" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="595" y="212" font-size="11" fill="#1f2328" text-anchor="middle">assistant：走错一次，退回来</text>
+
+  <rect x="438" y="226" width="314" height="24" rx="5" fill="#f6f8fa" stroke="#d0d7de"/>
+  <text x="595" y="242" font-size="11" fill="#1f2328" text-anchor="middle">tool_result：…</text>
+
+  <rect x="438" y="256" width="314" height="32" rx="5" fill="#f0fdf4" stroke="#15803d" stroke-width="1.5"/>
+  <text x="595" y="277" font-size="11.5" fill="#14532d" text-anchor="middle" font-weight="600">assistant：最终报告 707 B</text>
+
+  <text x="438" y="310" font-size="11.5" fill="#57606a">spawn 返回的那一刻，这一整列就没了。</text>
+  <text x="438" y="328" font-size="11.5" fill="#57606a">过边界的只是最后那段文字的一个副本。</text>
+
+  <!-- what crosses, in each direction -->
+  <path d="M238 157 L300 157 L300 117 L432 117" stroke="#2563eb" stroke-width="1.5" fill="none" marker-end="url(#ab)"/>
+  <text x="306" y="110" font-size="11" fill="#2563eb">prompt</text>
+
+  <path d="M438 272 L400 272 L400 202 L244 202" stroke="#15803d" stroke-width="1.5" fill="none" marker-end="url(#ag)"/>
+  <text x="320" y="240" font-size="11.5" fill="#15803d" text-anchor="middle" font-weight="600">只有这段文字过边界</text>
+
+  <!-- shared -->
+  <rect x="28" y="350" width="724" height="62" rx="6" fill="#eff6ff" stroke="#2563eb" stroke-width="1.5"/>
+  <text x="44" y="372" font-size="12.5" fill="#1e3a8a" font-weight="600">两边共用的，是同一份，不是两份</text>
+  <text x="44" y="394" font-size="12" fill="#1e40af">provider · HTTP client · 那道许可闸门 · shell 配置和工作目录 · 总线核心（整棵树一条有序的 trace）</text>
+
+  <text x="28" y="436" font-size="11.5" fill="#57606a">孩子的记录不过边界：每一次工具调用、每一段命令输出、每一次走错又退回来，都留在被扔掉的那一列里。</text>
+  <text x="28" y="456" font-size="11.5" fill="#57606a">父 agent 的上下文只长一段报告的长度 —— 所以它省的不是 token，是上下文。</text>
+</svg>

@@ -1,0 +1,106 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 780 590" width="780" height="590"
+     font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#57606a"/>
+    </marker>
+    <marker id="ag" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#15803d"/>
+    </marker>
+  </defs>
+
+  <rect width="780" height="590" fill="#fafbfc" rx="8"/>
+  <rect x="0" y="0" width="780" height="42" fill="#1f2937" rx="8"/>
+  <rect x="0" y="34" width="780" height="8" fill="#1f2937"/>
+  <text x="24" y="27" fill="#ffffff" font-size="15" font-weight="600">dispatch 的两遍：并发地跑，按下标写</text>
+  <text x="756" y="27" fill="#9ca3af" font-size="12" text-anchor="end">阶段 07</text>
+
+  <text x="28" y="60" font-size="12" fill="#1f2328" font-weight="600">模型这一轮要了四个工具调用，顺序就是下面这个顺序</text>
+
+  <!-- the four calls -->
+  <rect x="28" y="68" width="176" height="44" rx="5" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="116" y="87" font-size="11.5" fill="#1f2328" text-anchor="middle" font-weight="600">call_1 · bash</text>
+  <text x="116" y="104" font-size="11" fill="#57606a" text-anchor="middle" font-family="ui-monospace, Consolas, monospace">ls *.md</text>
+
+  <rect x="212" y="68" width="176" height="44" rx="5" fill="#eff6ff" stroke="#2563eb" stroke-width="1.5"/>
+  <text x="300" y="87" font-size="11.5" fill="#1e3a8a" text-anchor="middle" font-weight="600">call_2 · task</text>
+  <text x="300" y="104" font-size="11" fill="#1e40af" text-anchor="middle">读 a.md，写三句</text>
+
+  <rect x="396" y="68" width="176" height="44" rx="5" fill="#eff6ff" stroke="#2563eb" stroke-width="1.5"/>
+  <text x="484" y="87" font-size="11.5" fill="#1e3a8a" text-anchor="middle" font-weight="600">call_3 · task</text>
+  <text x="484" y="104" font-size="11" fill="#1e40af" text-anchor="middle">读 b.md，写三句</text>
+
+  <rect x="580" y="68" width="176" height="44" rx="5" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="668" y="87" font-size="11.5" fill="#1f2328" text-anchor="middle" font-weight="600">call_4 · bash</text>
+  <text x="668" y="104" font-size="11" fill="#57606a" text-anchor="middle" font-family="ui-monospace, Consolas, monospace">wc -c *.md</text>
+
+  <path d="M116 112 L116 126" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
+  <path d="M300 112 L300 126" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
+  <path d="M484 112 L484 126" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
+  <path d="M668 112 L668 126" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
+
+  <!-- pass 1 -->
+  <rect x="24" y="132" width="732" height="118" rx="6" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="40" y="152" font-size="12.5" fill="#1f2328" font-weight="600">第一遍 —— 一个 goroutine，按上面这个顺序走一遍。所有许可提问都在这里问完。</text>
+
+  <rect x="28" y="172" width="176" height="62" rx="5" fill="#fff7ed" stroke="#d97706" stroke-width="1.5"/>
+  <text x="116" y="191" font-size="11" fill="#92400e" text-anchor="middle">1 · 闸门问一次 → 批准</text>
+  <text x="116" y="208" font-size="11" fill="#92400e" text-anchor="middle">就地跑掉</text>
+  <text x="116" y="225" font-size="11" fill="#92400e" text-anchor="middle">结果写进 texts[0]</text>
+
+  <rect x="212" y="172" width="176" height="62" rx="5" fill="#fff7ed" stroke="#d97706" stroke-width="1.5"/>
+  <text x="300" y="196" font-size="11" fill="#92400e" text-anchor="middle">2 · 闸门问一次 → 批准</text>
+  <text x="300" y="215" font-size="11" fill="#92400e" text-anchor="middle">推进 async，先不跑</text>
+
+  <rect x="396" y="172" width="176" height="62" rx="5" fill="#fff7ed" stroke="#d97706" stroke-width="1.5"/>
+  <text x="484" y="196" font-size="11" fill="#92400e" text-anchor="middle">3 · 闸门问一次 → 批准</text>
+  <text x="484" y="215" font-size="11" fill="#92400e" text-anchor="middle">推进 async，先不跑</text>
+
+  <rect x="580" y="172" width="176" height="62" rx="5" fill="#fff7ed" stroke="#d97706" stroke-width="1.5"/>
+  <text x="668" y="191" font-size="11" fill="#92400e" text-anchor="middle">4 · 闸门问一次 → 批准</text>
+  <text x="668" y="208" font-size="11" fill="#92400e" text-anchor="middle">就地跑掉</text>
+  <text x="668" y="225" font-size="11" fill="#92400e" text-anchor="middle">结果写进 texts[3]</text>
+
+  <!-- pass 2 -->
+  <rect x="24" y="266" width="732" height="124" rx="6" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="40" y="287" font-size="12.5" fill="#1f2328" font-weight="600">第二遍 —— async 里的两个孩子一起跑</text>
+
+  <text x="40" y="322" font-size="11" fill="#1f2328">call_2 的孩子</text>
+  <rect x="140" y="308" width="420" height="20" rx="4" fill="#eff6ff" stroke="#2563eb"/>
+  <text x="566" y="323" font-size="11" fill="#2563eb">后结束</text>
+
+  <text x="40" y="356" font-size="11" fill="#1f2328">call_3 的孩子</text>
+  <rect x="140" y="342" width="240" height="20" rx="4" fill="#eff6ff" stroke="#2563eb"/>
+  <text x="386" y="357" font-size="11" fill="#2563eb">先结束</text>
+
+  <path d="M140 374 L700 374" stroke="#d0d7de" stroke-width="1.5"/>
+  <text x="706" y="378" font-size="10.5" fill="#9ca3af">时间 →</text>
+
+  <!-- the two reports cross on their way to their slots -->
+  <path d="M560 328 L560 400 L300 400 L300 426" stroke="#15803d" stroke-width="1.5" fill="none" marker-end="url(#ag)"/>
+  <path d="M380 362 L380 410 L484 410 L484 426" stroke="#15803d" stroke-width="1.5" fill="none" marker-end="url(#ag)"/>
+
+  <!-- the slots -->
+  <rect x="28" y="430" width="176" height="44" rx="5" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="116" y="449" font-size="11.5" fill="#1f2328" text-anchor="middle" font-family="ui-monospace, Consolas, monospace">texts[0]</text>
+  <text x="116" y="466" font-size="11" fill="#57606a" text-anchor="middle">ls 的输出</text>
+
+  <rect x="212" y="430" width="176" height="44" rx="5" fill="#f0fdf4" stroke="#15803d" stroke-width="1.5"/>
+  <text x="300" y="449" font-size="11.5" fill="#14532d" text-anchor="middle" font-family="ui-monospace, Consolas, monospace">texts[1]</text>
+  <text x="300" y="466" font-size="11" fill="#14532d" text-anchor="middle">call_2 的报告</text>
+
+  <rect x="396" y="430" width="176" height="44" rx="5" fill="#f0fdf4" stroke="#15803d" stroke-width="1.5"/>
+  <text x="484" y="449" font-size="11.5" fill="#14532d" text-anchor="middle" font-family="ui-monospace, Consolas, monospace">texts[2]</text>
+  <text x="484" y="466" font-size="11" fill="#14532d" text-anchor="middle">call_3 的报告</text>
+
+  <rect x="580" y="430" width="176" height="44" rx="5" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="668" y="449" font-size="11.5" fill="#1f2328" text-anchor="middle" font-family="ui-monospace, Consolas, monospace">texts[3]</text>
+  <text x="668" y="466" font-size="11" fill="#57606a" text-anchor="middle">wc 的输出</text>
+
+  <!-- what the other way round would cost -->
+  <rect x="24" y="490" width="732" height="58" rx="6" fill="#fff7ed" stroke="#d97706" stroke-width="1.5"/>
+  <text x="40" y="513" font-size="12" fill="#92400e">按完成先后追加会怎样：call_3 的报告坐进 texts[1]，同一段会话重放两遍，得到两个不同的</text>
+  <text x="40" y="533" font-size="12" fill="#92400e">消息数组、两个不同的提示前缀 —— 照第 04 章的说法，一个永远不命中的缓存。</text>
+
+  <text x="28" y="570" font-size="11.5" fill="#57606a">执行是并发的，历史是确定的。并发可以改变一件事要花多久，不可以改变这段对话说了什么。</text>
+</svg>

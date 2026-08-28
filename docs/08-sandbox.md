@@ -126,7 +126,7 @@ interp.New(
     interp.Dir(root),
     interp.StdIO(nil, &stdout, &stderr),
     interp.ExecHandlers(s.execHandler(bus)),  // 每个程序，最终的 argv
-    interp.OpenHandler(s.open),              // 由 shell 自己打开的每个文件
+    interp.OpenHandler(s.openHandler(bus)),   // 由 shell 自己打开的每个文件
 )
 ```
 

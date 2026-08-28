@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 400" width="700" height="400"
+     font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#57606a"/>
+    </marker>
+    <marker id="ag" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#15803d"/>
+    </marker>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#cf222e"/>
+    </marker>
+  </defs>
+
+  <rect width="700" height="400" fill="#fafbfc" rx="8"/>
+  <rect x="0" y="0" width="700" height="42" fill="#1f2937" rx="8"/>
+  <rect x="0" y="34" width="700" height="8" fill="#1f2937"/>
+  <text x="24" y="27" fill="#ffffff" font-size="15" font-weight="600">两条命令，同一个文件</text>
+  <text x="676" y="27" fill="#9ca3af" font-size="12" text-anchor="end">阶段 08</text>
+
+  <path d="M350 58 L350 330" stroke="#d0d7de" stroke-width="1" stroke-dasharray="4 4"/>
+
+  <!-- left: cat .env -->
+  <rect x="26" y="60" width="298" height="30" rx="5" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="175" y="80" font-size="13" fill="#1f2328" text-anchor="middle" font-family="ui-monospace, Consolas, monospace">cat .env</text>
+  <path d="M175 90 L175 112" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
+
+  <rect x="26" y="114" width="298" height="52" rx="5" fill="#f6f8fa" stroke="#d0d7de"/>
+  <text x="42" y="134" font-size="11.5" fill="#57606a">交给程序的 argv：</text>
+  <text x="42" y="154" font-size="12.5" fill="#1f2328" font-family="ui-monospace, Consolas, monospace">["cat", ".env"]</text>
+  <path d="M175 166 L175 188" stroke="#15803d" stroke-width="1.5" marker-end="url(#ag)"/>
+
+  <rect x="26" y="190" width="298" height="46" rx="5" fill="#f0fdf4" stroke="#15803d" stroke-width="1.5"/>
+  <text x="175" y="210" font-size="12.5" fill="#14532d" text-anchor="middle" font-weight="600">策略看见了 .env 这个名字</text>
+  <text x="175" y="228" font-size="11.5" fill="#14532d" text-anchor="middle">第三层拦得住</text>
+
+  <!-- right: cat < .env -->
+  <rect x="376" y="60" width="298" height="30" rx="5" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="525" y="80" font-size="13" fill="#1f2328" text-anchor="middle" font-family="ui-monospace, Consolas, monospace">cat &lt; .env</text>
+  <path d="M525 90 L525 112" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
+
+  <rect x="376" y="114" width="298" height="52" rx="5" fill="#f6f8fa" stroke="#d0d7de"/>
+  <text x="392" y="134" font-size="11.5" fill="#57606a">交给程序的 argv：</text>
+  <text x="392" y="154" font-size="12.5" fill="#cf222e" font-family="ui-monospace, Consolas, monospace">["cat"]</text>
+  <text x="470" y="154" font-size="11.5" fill="#cf222e">一个参数都没有</text>
+  <path d="M525 166 L525 188" stroke="#cf222e" stroke-width="1.5" marker-end="url(#ar)"/>
+
+  <rect x="376" y="190" width="298" height="46" rx="5" fill="#fef2f2" stroke="#cf222e" stroke-width="1.5"/>
+  <text x="525" y="210" font-size="12.5" fill="#cf222e" text-anchor="middle" font-weight="600">策略看不到任何文件名</text>
+  <text x="525" y="228" font-size="11.5" fill="#cf222e" text-anchor="middle">文件是 shell 打开的，程序拿到的是一个 fd</text>
+
+  <!-- the second handler -->
+  <path d="M525 236 L525 258" stroke="#2563eb" stroke-width="1.5" marker-end="url(#a)"/>
+  <rect x="376" y="260" width="298" height="46" rx="5" fill="#eff6ff" stroke="#2563eb" stroke-width="1.5"/>
+  <text x="525" y="280" font-size="12.5" fill="#1e3a8a" text-anchor="middle" font-weight="600" font-family="ui-monospace, Consolas, monospace">OpenHandler</text>
+  <text x="525" y="298" font-size="11.5" fill="#1e40af" text-anchor="middle">要补上这个洞，需要第二个处理器</text>
+
+  <rect x="26" y="260" width="298" height="46" rx="5" fill="#ffffff" stroke="#d0d7de" stroke-dasharray="4 3"/>
+  <text x="175" y="286" font-size="11.5" fill="#57606a" text-anchor="middle">这一条不需要它</text>
+
+  <rect x="26" y="322" width="648" height="30" rx="5" fill="#fff7ed" stroke="#d97706"/>
+  <text x="42" y="342" font-size="11.5" fill="#92400e">它只看得见 shell 自己打开的文件。shell 启动的那些程序打开了什么，一个解释器没有能力看到。</text>
+
+  <text x="26" y="376" font-size="11.5" fill="#57606a">要看到那一层就得上 ptrace、seccomp-bpf 或者文件系统命名空间 —— 那是操作系统的答案，也是这一章最后落到的地方。</text>
+</svg>

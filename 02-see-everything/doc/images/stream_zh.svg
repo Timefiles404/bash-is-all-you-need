@@ -1,0 +1,96 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 560" width="700" height="560"
+     font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#57606a"/>
+    </marker>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#b91c1c"/>
+    </marker>
+    <marker id="ao" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#d97706"/>
+    </marker>
+    <marker id="ab" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#2563eb"/>
+    </marker>
+  </defs>
+
+  <rect width="700" height="560" fill="#fafbfc" rx="8"/>
+  <rect x="0" y="0" width="700" height="42" fill="#1f2937" rx="8"/>
+  <rect x="0" y="34" width="700" height="8" fill="#1f2937"/>
+  <text x="24" y="27" fill="#ffffff" font-size="15" font-weight="600">一次流式回复，逐帧</text>
+  <text x="676" y="27" fill="#9ca3af" font-size="12" text-anchor="end">阶段 02</text>
+
+  <text x="24" y="60" font-size="11" fill="#9ca3af">网关送出来的 data: 帧，从上到下</text>
+
+  <!-- time spine -->
+  <path d="M16 70 L16 470" stroke="#e5e7eb" stroke-width="2" marker-end="url(#a)"/>
+
+  <!-- 1. role opener -->
+  <rect x="28" y="68" width="286" height="30" rx="5" fill="#f3f4f6" stroke="#d0d7de"/>
+  <text x="40" y="88" font-size="11.5" fill="#6b7280" font-family="ui-monospace, Consolas, monospace">delta: {role:"assistant", content:""}</text>
+  <path d="M314 83 L332 83" stroke="#d97706" stroke-width="1.5" marker-end="url(#ao)"/>
+  <text x="338" y="80" font-size="11.5" fill="#92400e">没有载荷。不算第一个 token ——</text>
+  <text x="338" y="96" font-size="11.5" fill="#92400e">算了，TTFT 就变成了 TTFB。</text>
+
+  <!-- 2. id + name -->
+  <rect x="28" y="108" width="286" height="30" rx="5" fill="#eff6ff" stroke="#2563eb" stroke-width="1.5"/>
+  <text x="40" y="128" font-size="11.5" fill="#1e3a8a" font-family="ui-monospace, Consolas, monospace">tool_calls[0]: {id, function.name}</text>
+  <path d="M314 123 L332 123" stroke="#2563eb" stroke-width="1.5" marker-end="url(#ab)"/>
+  <text x="338" y="120" font-size="11.5" fill="#1e40af">id 和 name 只在这一帧出现，</text>
+  <text x="338" y="136" font-size="11.5" fill="#b91c1c">之后每一帧都是 null —— 所以要 latch。</text>
+
+  <!-- 3..7 argument fragments -->
+  <rect x="28" y="150" width="286" height="26" rx="5" fill="#eff6ff" stroke="#93c5fd"/>
+  <text x="40" y="168" font-size="11.5" fill="#1e3a8a" font-family="ui-monospace, Consolas, monospace">arguments: {"command": </text>
+
+  <rect x="28" y="180" width="286" height="26" rx="5" fill="#eff6ff" stroke="#93c5fd"/>
+  <text x="40" y="198" font-size="11.5" fill="#1e3a8a" font-family="ui-monospace, Consolas, monospace">arguments: "</text>
+
+  <rect x="28" y="210" width="286" height="26" rx="5" fill="#eff6ff" stroke="#93c5fd"/>
+  <text x="40" y="228" font-size="11.5" fill="#1e3a8a" font-family="ui-monospace, Consolas, monospace">arguments: ls</text>
+
+  <rect x="28" y="240" width="286" height="26" rx="5" fill="#eff6ff" stroke="#93c5fd"/>
+  <text x="40" y="258" font-size="11.5" fill="#1e3a8a" font-family="ui-monospace, Consolas, monospace">arguments:  -la /srv</text>
+
+  <rect x="28" y="270" width="286" height="26" rx="5" fill="#eff6ff" stroke="#93c5fd"/>
+  <text x="40" y="288" font-size="11.5" fill="#1e3a8a" font-family="ui-monospace, Consolas, monospace">arguments: /app</text>
+
+  <!-- bracket over the fragments -->
+  <path d="M320 152 L328 152 L328 294 L320 294" stroke="#2563eb" stroke-width="1.5" fill="none"/>
+  <path d="M328 223 L344 223" stroke="#2563eb" stroke-width="1.5" marker-end="url(#ab)"/>
+  <text x="350" y="196" font-size="11.5" fill="#1e40af">断在词中间，断在路径中间。</text>
+  <text x="350" y="214" font-size="11.5" fill="#b91c1c">没有任何一片是合法 JSON，</text>
+  <text x="350" y="232" font-size="11.5" fill="#b91c1c">一片都不要拿去解析。</text>
+  <text x="350" y="252" font-size="11.5" fill="#1e40af">按 index 攒原始字节，攒完再解析一次。</text>
+
+  <!-- 8. finish_reason -->
+  <rect x="28" y="308" width="286" height="30" rx="5" fill="#eff6ff" stroke="#2563eb" stroke-width="1.5"/>
+  <text x="40" y="328" font-size="11.5" fill="#1e3a8a" font-family="ui-monospace, Consolas, monospace">finish_reason: …</text>
+  <path d="M314 323 L332 323" stroke="#2563eb" stroke-width="1.5" marker-end="url(#ab)"/>
+  <text x="338" y="327" font-size="11.5" fill="#1e40af">同上：在这之前每一帧都是 null。</text>
+
+  <!-- 9. usage -->
+  <rect x="28" y="348" width="286" height="30" rx="5" fill="#fef2f2" stroke="#b91c1c" stroke-width="1.5"/>
+  <text x="40" y="368" font-size="11.5" fill="#7f1d1d" font-family="ui-monospace, Consolas, monospace">usage: {…}, "choices": []</text>
+  <path d="M314 363 L332 363" stroke="#b91c1c" stroke-width="1.5" marker-end="url(#ar)"/>
+  <text x="338" y="360" font-size="11.5" fill="#7f1d1d" font-weight="600">choices[0] 在这里越界 panic。</text>
+  <text x="338" y="376" font-size="11.5" fill="#7f1d1d">用 range，空数组就是不进循环。</text>
+
+  <!-- 10. DONE -->
+  <rect x="28" y="388" width="286" height="30" rx="5" fill="#fff7ed" stroke="#d97706" stroke-width="1.5"/>
+  <text x="40" y="408" font-size="11.5" fill="#92400e" font-family="ui-monospace, Consolas, monospace">data: [DONE]</text>
+  <path d="M314 403 L332 403" stroke="#d97706" stroke-width="1.5" marker-end="url(#ao)"/>
+  <text x="338" y="407" font-size="11.5" fill="#92400e">跳过它，继续读。它不是停止信号。</text>
+
+  <!-- 11. post-DONE -->
+  <rect x="28" y="428" width="286" height="30" rx="5" fill="#fef2f2" stroke="#b91c1c" stroke-width="1.5"/>
+  <text x="40" y="448" font-size="11.5" fill="#7f1d1d" font-family="ui-monospace, Consolas, monospace">{"choices":[],"cost":"0"}</text>
+  <path d="M314 443 L332 443" stroke="#b91c1c" stroke-width="1.5" marker-end="url(#ar)"/>
+  <text x="338" y="440" font-size="11.5" fill="#7f1d1d">停在 [DONE] 的客户端把这一帧扔了，</text>
+  <text x="338" y="456" font-size="11.5" fill="#7f1d1d">而且连接没读干净，没法复用。</text>
+
+  <line x1="24" y1="484" x2="676" y2="484" stroke="#e5e7eb" stroke-width="1"/>
+  <text x="24" y="508" font-size="11.5" fill="#57606a">整条流里 `event:` 行一共 0 行 —— 协议里有这个字段，这个端点不用它。</text>
+  <text x="24" y="530" font-size="11.5" fill="#57606a">五个坑没有一个会报错：一个 panic，一个丢 id，一个拼错参数，一个量错延迟，一个多付一次握手。</text>
+</svg>

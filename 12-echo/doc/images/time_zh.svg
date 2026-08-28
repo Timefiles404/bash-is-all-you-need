@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 400" width="700" height="400"
+     font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#57606a"/>
+    </marker>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#cf222e"/>
+    </marker>
+  </defs>
+
+  <rect width="700" height="400" fill="#fafbfc" rx="8"/>
+  <rect x="0" y="0" width="700" height="42" fill="#1f2937" rx="8"/>
+  <rect x="0" y="34" width="700" height="8" fill="#1f2937"/>
+  <text x="24" y="27" fill="#ffffff" font-size="15" font-weight="600">十秒 shell，十四分钟模型</text>
+  <text x="676" y="27" fill="#9ca3af" font-size="12" text-anchor="end">阶段 12</text>
+
+  <text x="26" y="70" font-size="12" fill="#57606a">同样十六段录下来的会话，这条整条横杠就是花在模型上的时间：</text>
+
+  <!-- the model-time bar: 620px = 864,374 ms -->
+  <rect x="26" y="82" width="620" height="30" rx="4" fill="#2563eb"/>
+  <text x="336" y="102" font-size="12.5" fill="#ffffff" text-anchor="middle" font-weight="600">864,374 ms 模型时间</text>
+
+  <!-- the sliver -->
+  <path d="M26 118 L26 146" stroke="#cf222e" stroke-width="1.4"/>
+  <path d="M26.3 118 L26.3 146" stroke="#cf222e" stroke-width="1.4"/>
+  <text x="34" y="140" font-size="12" fill="#cf222e" font-weight="600">这一章省下来的 401 ms 在这里</text>
+  <text x="34" y="158" font-size="11.5" fill="#cf222e">按同一个比例，它宽 0.29 个像素 —— 上面那道红线已经比它粗得多</text>
+
+  <!-- zoomed comparison -->
+  <text x="26" y="196" font-size="12" fill="#57606a">把模型时间缩小一千倍，两者才可比：</text>
+
+  <rect x="26" y="208" width="620" height="22" rx="3" fill="#dbeafe" stroke="#2563eb"/>
+  <rect x="26" y="208" width="288" height="22" rx="3" fill="#2563eb"/>
+  <text x="170" y="224" font-size="11.5" fill="#ffffff" text-anchor="middle">401 ms</text>
+  <text x="480" y="224" font-size="11.5" fill="#1e3a8a" text-anchor="middle">864,374 ms ÷ 1000 = 864 ms</text>
+
+  <!-- the three numbers -->
+  <rect x="26" y="252" width="196" height="62" rx="6" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="124" y="274" font-size="12.5" fill="#1f2328" text-anchor="middle" font-weight="600">命中 4 次 / 107 条</text>
+  <text x="124" y="294" font-size="20" fill="#cf222e" text-anchor="middle" font-weight="600">3.7%</text>
+  <text x="124" y="308" font-size="11" fill="#57606a" text-anchor="middle">十六段真实会话重放</text>
+
+  <rect x="246" y="252" width="196" height="62" rx="6" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="344" y="274" font-size="12.5" fill="#1f2328" text-anchor="middle" font-weight="600">省下的时间占模型时间</text>
+  <text x="344" y="294" font-size="20" fill="#cf222e" text-anchor="middle" font-weight="600">0.05%</text>
+  <text x="344" y="308" font-size="11" fill="#57606a" text-anchor="middle">401 ms ÷ 864,374 ms</text>
+
+  <rect x="466" y="252" width="208" height="62" rx="6" fill="#f0fdf4" stroke="#15803d"/>
+  <text x="570" y="274" font-size="12.5" fill="#14532d" text-anchor="middle" font-weight="600">第 04 章那个缓存</text>
+  <text x="570" y="294" font-size="20" fill="#15803d" text-anchor="middle" font-weight="600">83.9%</text>
+  <text x="570" y="308" font-size="11" fill="#14532d" text-anchor="middle">418,688 / 499,172 prompt token</text>
+
+  <path d="M570 316 L570 334" stroke="#15803d" stroke-width="1.4" marker-end="url(#a)"/>
+  <text x="670" y="352" font-size="11.5" fill="#14532d" text-anchor="end">它不需要白名单、见证人或分词器。第 04 章为它写了一个 HTTP 头。</text>
+
+  <text x="26" y="382" font-size="11.5" fill="#57606a">同一次会话里，真正在省钱的那个缓存八章前就建好了。这一章造出来的这个，默认是关着的。</text>
+</svg>

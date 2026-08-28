@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 430" width="700" height="430"
+     font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#57606a"/>
+    </marker>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#cf222e"/>
+    </marker>
+  </defs>
+
+  <rect width="700" height="430" fill="#fafbfc" rx="8"/>
+  <rect x="0" y="0" width="700" height="42" fill="#1f2937" rx="8"/>
+  <rect x="0" y="34" width="700" height="8" fill="#1f2937"/>
+  <text x="24" y="27" fill="#ffffff" font-size="15" font-weight="600">一次模型调用会在四个地方失败</text>
+  <text x="676" y="27" fill="#9ca3af" font-size="12" text-anchor="end">阶段 09</text>
+
+  <!-- the happy path -->
+  <path d="M26 92 L636 92" stroke="#2563eb" stroke-width="2" marker-end="url(#a)"/>
+
+  <rect x="26" y="76" width="118" height="32" rx="5" fill="#eff6ff" stroke="#2563eb"/>
+  <text x="85" y="97" font-size="12" fill="#1e3a8a" text-anchor="middle" font-family="ui-monospace, Consolas, monospace">build</text>
+  <rect x="176" y="76" width="118" height="32" rx="5" fill="#eff6ff" stroke="#2563eb"/>
+  <text x="235" y="97" font-size="12" fill="#1e3a8a" text-anchor="middle" font-family="ui-monospace, Consolas, monospace">connect</text>
+  <rect x="326" y="76" width="118" height="32" rx="5" fill="#eff6ff" stroke="#2563eb"/>
+  <text x="385" y="97" font-size="12" fill="#1e3a8a" text-anchor="middle" font-family="ui-monospace, Consolas, monospace">status</text>
+  <rect x="476" y="76" width="118" height="32" rx="5" fill="#eff6ff" stroke="#2563eb"/>
+  <text x="535" y="97" font-size="12" fill="#1e3a8a" text-anchor="middle" font-family="ui-monospace, Consolas, monospace">stream</text>
+
+  <!-- drop lines -->
+  <path d="M85 108 L85 138" stroke="#cf222e" stroke-width="1.4" marker-end="url(#ar)"/>
+  <path d="M235 108 L235 138" stroke="#cf222e" stroke-width="1.4" marker-end="url(#ar)"/>
+  <path d="M385 108 L385 138" stroke="#cf222e" stroke-width="1.4" marker-end="url(#ar)"/>
+  <path d="M535 108 L535 138" stroke="#cf222e" stroke-width="1.4" marker-end="url(#ar)"/>
+
+  <!-- what failed there -->
+  <rect x="26" y="140" width="118" height="88" rx="5" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="85" y="160" font-size="11.5" fill="#1f2328" text-anchor="middle">请求没构造出来</text>
+  <text x="85" y="178" font-size="11" fill="#57606a" text-anchor="middle">系统消息放错、</text>
+  <text x="85" y="193" font-size="11" fill="#57606a" text-anchor="middle">消息数组为空</text>
+  <text x="85" y="216" font-size="11.5" fill="#cf222e" text-anchor="middle" font-weight="600">我们自己的</text>
+
+  <rect x="176" y="140" width="118" height="88" rx="5" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="235" y="160" font-size="11.5" fill="#1f2328" text-anchor="middle">连不上</text>
+  <text x="235" y="178" font-size="11" fill="#57606a" text-anchor="middle">DNS、拒绝连接、</text>
+  <text x="235" y="193" font-size="11" fill="#57606a" text-anchor="middle">握手超时</text>
+  <text x="235" y="216" font-size="11.5" fill="#15803d" text-anchor="middle" font-weight="600">再试一次</text>
+
+  <rect x="326" y="140" width="118" height="88" rx="5" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="385" y="160" font-size="11.5" fill="#1f2328" text-anchor="middle">拿到了状态码</text>
+  <text x="385" y="178" font-size="11" fill="#57606a" text-anchor="middle">401 / 400 / 500 /</text>
+  <text x="385" y="193" font-size="11" fill="#57606a" text-anchor="middle">503 / 413</text>
+  <text x="385" y="216" font-size="11.5" fill="#d97706" text-anchor="middle" font-weight="600">要看 body</text>
+
+  <rect x="476" y="140" width="118" height="88" rx="5" fill="#fef2f2" stroke="#cf222e"/>
+  <text x="535" y="160" font-size="11.5" fill="#1f2328" text-anchor="middle">流开始之后断了</text>
+  <text x="535" y="178" font-size="11" fill="#57606a" text-anchor="middle">传输层死了，或者</text>
+  <text x="535" y="193" font-size="11" fill="#57606a" text-anchor="middle">服务端发了错误事件</text>
+  <text x="535" y="216" font-size="11.5" fill="#cf222e" text-anchor="middle" font-weight="600">要看有没有 type</text>
+
+  <!-- billed row -->
+  <text x="26" y="256" font-size="12" fill="#57606a">上游生成了 token 吗，也就是这次失败要不要付钱：</text>
+  <rect x="26" y="266" width="448" height="28" rx="4" fill="#f0fdf4" stroke="#15803d"/>
+  <text x="250" y="285" font-size="12" fill="#14532d" text-anchor="middle">前三个阶段：什么都没生成，一分钱不收</text>
+  <rect x="476" y="266" width="198" height="28" rx="4" fill="#fef2f2" stroke="#cf222e"/>
+  <text x="575" y="285" font-size="12" fill="#cf222e" text-anchor="middle" font-weight="600">这一个：收了，而且看不见</text>
+
+  <!-- three outcomes -->
+  <text x="26" y="326" font-size="12" fill="#57606a">四个地方，八种失败，最后只落到三个动作上 —— 因为一个 agent 只有三个动作：</text>
+  <rect x="26" y="336" width="204" height="30" rx="5" fill="#ffffff" stroke="#15803d" stroke-width="1.5"/>
+  <text x="128" y="356" font-size="12.5" fill="#14532d" text-anchor="middle" font-weight="600">重试 —— 同一个端点再来</text>
+  <rect x="248" y="336" width="204" height="30" rx="5" fill="#ffffff" stroke="#d97706" stroke-width="1.5"/>
+  <text x="350" y="356" font-size="12.5" fill="#92400e" text-anchor="middle" font-weight="600">换一家 —— 往下降一级</text>
+  <rect x="470" y="336" width="204" height="30" rx="5" fill="#ffffff" stroke="#cf222e" stroke-width="1.5"/>
+  <text x="572" y="356" font-size="12.5" fill="#cf222e" text-anchor="middle" font-weight="600">停下 —— 把话说清楚</text>
+
+  <text x="26" y="392" font-size="11.5" fill="#57606a">阶段决定了两件事：这次失败该走哪个动作，以及它有没有花钱。所以 Phase 是事件上的一个字段，不是一句日志。</text>
+  <text x="26" y="412" font-size="11.5" fill="#57606a">状态码不在这张图里做任何判断 —— 它只是 status 那一格的输入，而那一格必须往 body 里再看一眼。</text>
+</svg>

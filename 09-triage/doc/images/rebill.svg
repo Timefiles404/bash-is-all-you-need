@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 420" width="700" height="420"
+     font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#57606a"/>
+    </marker>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#cf222e"/>
+    </marker>
+    <marker id="ag" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#15803d"/>
+    </marker>
+  </defs>
+
+  <rect width="700" height="420" fill="#fafbfc" rx="8"/>
+  <rect x="0" y="0" width="700" height="42" fill="#1f2937" rx="8"/>
+  <rect x="0" y="34" width="700" height="8" fill="#1f2937"/>
+  <text x="24" y="27" fill="#ffffff" font-size="15" font-weight="600">Two requests, one usage</text>
+  <text x="676" y="27" fill="#9ca3af" font-size="12" text-anchor="end">stage 09</text>
+
+  <text x="132" y="66" font-size="12" fill="#57606a" text-anchor="middle">your side</text>
+  <text x="568" y="66" font-size="12" fill="#57606a" text-anchor="middle">upstream</text>
+  <path d="M350 74 L350 356" stroke="#d0d7de" stroke-width="1" stroke-dasharray="4 4"/>
+
+  <!-- attempt 1 -->
+  <rect x="26" y="80" width="212" height="30" rx="5" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="132" y="100" font-size="12" fill="#1f2328" text-anchor="middle">attempt 1: 963 tokens sent</text>
+  <path d="M238 95 L462 95" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
+
+  <rect x="466" y="80" width="208" height="30" rx="5" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="570" y="100" font-size="12" fill="#1f2328" text-anchor="middle">generating, and billing</text>
+
+  <path d="M570 110 L570 134" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
+  <rect x="466" y="136" width="208" height="30" rx="5" fill="#f0fdf4" stroke="#15803d"/>
+  <text x="570" y="156" font-size="12" fill="#14532d" text-anchor="middle">finished, charge recorded</text>
+
+  <!-- the break -->
+  <path d="M462 190 L238 190" stroke="#cf222e" stroke-width="1.8" marker-end="url(#ar)" stroke-dasharray="6 4"/>
+  <text x="350" y="182" font-size="11.5" fill="#cf222e" text-anchor="middle">the stream broke after 354 bytes</text>
+
+  <rect x="26" y="175" width="212" height="30" rx="5" fill="#fef2f2" stroke="#cf222e"/>
+  <text x="132" y="195" font-size="12" fill="#cf222e" text-anchor="middle" font-family="ui-monospace, Consolas, monospace">unexpected EOF</text>
+
+  <rect x="386" y="210" width="288" height="46" rx="5" fill="#fef2f2" stroke="#cf222e"/>
+  <text x="530" y="229" font-size="11.5" fill="#cf222e" text-anchor="middle">usage rides at the end; this stream has none</text>
+  <text x="530" y="247" font-size="11.5" fill="#cf222e" text-anchor="middle" font-weight="600">the charge is real and unobservable</text>
+
+  <!-- attempt 2 -->
+  <rect x="26" y="266" width="212" height="30" rx="5" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="132" y="286" font-size="12" fill="#1f2328" text-anchor="middle">attempt 2: the same 963</text>
+  <path d="M238 281 L462 281" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
+
+  <rect x="466" y="266" width="208" height="30" rx="5" fill="#eff6ff" stroke="#2563eb"/>
+  <text x="570" y="286" font-size="12" fill="#1e3a8a" text-anchor="middle">the prefix is warm: 960 cached</text>
+
+  <path d="M462 326 L238 326" stroke="#15803d" stroke-width="1.8" marker-end="url(#ag)"/>
+  <text x="350" y="318" font-size="11.5" fill="#15803d" text-anchor="middle">this one reached the end</text>
+
+  <rect x="26" y="311" width="212" height="30" rx="5" fill="#f0fdf4" stroke="#15803d"/>
+  <text x="132" y="331" font-size="12" fill="#14532d" text-anchor="middle" font-family="ui-monospace, Consolas, monospace">usage: full 3 · read 960</text>
+
+  <rect x="26" y="356" width="648" height="24" rx="4" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="42" y="373" font-size="11.5" fill="#1f2328">In the trace: two <tspan font-family="ui-monospace, Consolas, monospace">request</tspan> events, one <tspan font-family="ui-monospace, Consolas, monospace">usage</tspan> event</text>
+
+  <text x="26" y="402" font-size="11.5" fill="#57606a">The failed attempt was not wasted: it warmed the cache. Its own bill, though, nobody can retrieve.</text>
+</svg>

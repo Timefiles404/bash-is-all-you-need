@@ -3,8 +3,9 @@
 **What you build:** a coding agent that can explore a codebase, run commands, edit
 files, and check its own work.
 
-**What it costs you:** one file, ~200 lines of Go, no dependencies outside the
-standard library.
+**What it costs you:** one file, 346 lines of Go — 253 once the comment-only
+lines are taken out, and this file is heavily commented — with no dependencies
+outside the standard library.
 
 That ratio is the first lesson. An agent is not a large piece of software. The
 hard parts of this repo are all in the stages that come *after* this one, and
@@ -165,7 +166,7 @@ Things the real API did that the types in `main.go` had to accommodate:
 
 ## What you can answer now
 
-**Why is a working coding agent only about two hundred lines?**
+**Why is a working coding agent only a few hundred lines?**
 Because the loop is genuinely small: send the conversation, run whatever
 commands come back, append the results, repeat. There is no SDK underneath —
 `callModel()` is one HTTP POST — and one tool covers exploring, editing and

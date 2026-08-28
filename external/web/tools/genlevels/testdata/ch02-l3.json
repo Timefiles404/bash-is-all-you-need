@@ -1,0 +1,111 @@
+{
+  "id": "ch02-l3",
+  "chapter": "ch02",
+  "stage": "02-see-everything",
+  "title": "Keep the head and the tail",
+  "estimateMinutes": 8,
+
+  "source": {
+    "file": "02-see-everything/code/exec.go",
+    "extract": [{ "symbol": "truncate" }],
+    "docComment": "asProse"
+  },
+
+  "program": {
+    "package": "main",
+    "imports": ["fmt", "os", "unicode/utf8"],
+    "harness": "harness.go",
+    "argv": ["3"],
+    "files": { "input.txt": "fixtures/go-test-output.txt" }
+  },
+
+  "holes": [
+    {
+      "id": "floor",
+      "anchor": "\tif max < 256 {\n\t\tmax = 256\n\t}",
+      "prompt": "What happens when the caller asks for a very small budget?",
+      "options": [
+        {
+          "id": "none",
+          "text": "",
+          "why": "No floor. A caller that passes 12 gets eight bytes of head and four of tail, which is not an excerpt of anything — and the elision marker is longer than the text it replaced.",
+          "correct": false
+        },
+        {
+          "id": "floor-256",
+          "text": "\tif max < 256 {\n\t\tmax = 256\n\t}",
+          "why": "A floor, so the result is always big enough to be worth reading. 256 is not magic; it is 'longer than the elision marker, with a line or two either side'.",
+          "correct": true
+        }
+      ]
+    },
+    {
+      "id": "split",
+      "anchor": "\thead := max * 2 / 3\n\ttail := max - head",
+      "prompt": "How much of the output do you keep, and from where?",
+      "options": [
+        {
+          "id": "head-only",
+          "text": "\thead := max\n\ttail := 0",
+          "why": "The obvious one, and the one almost every harness ships. It is also the one that loses the line you needed: a failing test run puts the summary at the end, and a panic puts the error there too.",
+          "correct": false
+        },
+        {
+          "id": "head-tail",
+          "text": "\thead := max * 2 / 3\n\ttail := max - head",
+          "why": "Two thirds head, one third tail. The head carries what the command was doing; the tail carries how it ended. The middle is the part a model can most often do without.",
+          "correct": true
+        },
+        {
+          "id": "tail-only",
+          "text": "\thead := 0\n\ttail := max",
+          "why": "Keeps the outcome and throws away the command that produced it. Better than head-only for a test run, worse for anything that fails early.",
+          "correct": false
+        }
+      ]
+    },
+    {
+      "id": "runes",
+      "anchor": "\tfor head > 0 && !utf8.RuneStart(s[head]) {\n\t\thead--\n\t}",
+      "prompt": "The cut lands in the middle of a multi-byte character. Then what?",
+      "options": [
+        {
+          "id": "ignore",
+          "text": "",
+          "why": "Cut anyway. The output ends in half a rune, which prints as a replacement character — and if the model quotes it back, the broken byte travels into the next request.",
+          "correct": false
+        },
+        {
+          "id": "back-up",
+          "text": "\tfor head > 0 && !utf8.RuneStart(s[head]) {\n\t\thead--\n\t}",
+          "why": "Walk back to a rune boundary. Costs at most three bytes and means the excerpt is always valid UTF-8, which everything downstream assumes.",
+          "correct": true
+        }
+      ]
+    }
+  ],
+
+  "expect": { "stdout": "fixtures/expected-l3.txt", "exitCode": 0, "match": "exact" },
+
+  "hints": [
+    "Run it with head-only selected and read the last line of the output you get.",
+    "What does `go test` print last, and where would it be after a head-only cut?",
+    "docs/01-dont-die.md has the paragraph this function's comment is short for."
+  ],
+
+  "reveal": {
+    "steps": [
+      { "hole": "floor", "note": "The floor comes first because the other two only make sense above it." },
+      { "hole": "split", "note": "The repository's answer, and the reason is the comment above the function." },
+      { "hole": "runes", "note": "The detail that only shows up when somebody's build output is not ASCII." }
+    ],
+    "diff": { "from": "01-dont-die/code/main.go", "to": "02-see-everything/code/exec.go" },
+    "readMore": "docs/01-dont-die.md"
+  },
+
+  "trace": {
+    "file": "session.jsonl",
+    "kinds": ["command_start", "command_end", "tool_result", "notice"],
+    "speed": 1
+  }
+}

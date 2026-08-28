@@ -1,10 +1,11 @@
 # The checks that have to pass before anything lands.
 #
 # The interesting job is `drift`, and it is the reason this file exists. The
-# browser course under web/ builds every level by extracting real lines out of
-# stages/, and it refuses to build when a byte has moved. Without that running
-# automatically, a course about a codebase decays the ordinary way: the code
-# changes, the lesson does not, and nobody finds out until a reader does.
+# browser course under external/web builds every level by extracting real lines
+# out of the stage directories, and it refuses to build when a byte has moved.
+# Without that running automatically, a course about a codebase decays the
+# ordinary way: the code changes, the lesson does not, and nobody finds out
+# until a reader does.
 #
 # It needs no Go toolchain and takes seconds, so it runs on everything.
 
@@ -12,7 +13,7 @@ name: ci
 
 on:
   push:
-    branches: [main, zh-cn]
+    branches: [main]
   pull_request:
 
 permissions:
@@ -20,22 +21,15 @@ permissions:
 
 jobs:
   drift:
-    name: levels still match stages/
+    name: levels still match the stages
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      # The site only exists on main. On zh-cn there is nothing to check, and a
-      # job that fails for being on the wrong branch teaches people to ignore it.
       - name: check
-        run: |
-          if [ ! -f web/tools/build.py ]; then
-            echo "no web/ on this branch — nothing to check"
-            exit 0
-          fi
-          python web/tools/build.py --check
+        run: python external/web/tools/build.py --check
 
   go:
     name: go ${{ matrix.what }}
@@ -55,7 +49,7 @@ jobs:
         # -l lists what it would change. Anything listed is a failure, and the
         # listing is the error message.
         run: |
-          out=$(gofmt -l stages/ tui/)
+          out=$(gofmt -l ./*/code/ external/tui/)
           if [ -n "$out" ]; then echo "$out"; exit 1; fi
       - name: vet
         if: matrix.what == 'vet'
@@ -67,7 +61,7 @@ jobs:
         if: matrix.what == 'race'
         # Only the packages with concurrency worth the runtime cost: the shell,
         # and the two stages that made the agent tree concurrent.
-        run: go test ./tui/... ./stages/07-multiply/ ./stages/08-sandbox/ -race -count=1
+        run: go test ./external/tui/... ./07-multiply/code/ ./08-sandbox/code/ -race -count=1
 
   crossbuild:
     name: every stage builds for ${{ matrix.goos }}
@@ -89,7 +83,7 @@ jobs:
           GOOS: ${{ matrix.goos }}
           GOARCH: amd64
         run: |
-          for d in stages/*/; do
-            go build -o /dev/null "./$d" || exit 1
+          for d in ./[0-9][0-9]-*/code/; do
+            go build -o /dev/null "$d" || exit 1
           done
-          go build -o /dev/null ./tui/...
+          go build -o /dev/null ./external/tui/...

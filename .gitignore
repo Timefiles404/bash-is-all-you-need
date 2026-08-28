@@ -6,6 +6,10 @@
 /agent
 /agent.exe
 bin/
+# every stage builds from <stage>/code, so an unnamed `go build` drops a binary
+# called `code` next to wherever you ran it.
+/code
+code.exe
 
 # session traces (stage 02+)
 *.jsonl
@@ -20,8 +24,5 @@ providers.json
 # scratch space for experiments and subagent work
 .work/
 
-# stray stage binaries from `go build ./stages/...`
-# *.exe covers Windows; a cross-compiled one has no extension at all,
-# and the GOOS=linux/darwin builds in AGENTS.md produce exactly that.
+# stray binaries from a cross-compile, which have no extension at all
 *.exe
-/[0-9][0-9]-*

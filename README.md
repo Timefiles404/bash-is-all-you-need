@@ -36,14 +36,14 @@ The honest caveat, stated up front: **"bash is all you need" is a claim about
 sufficiency, not optimality.** Real products ship dedicated read/edit/grep tools
 because they buy token efficiency, structured errors, staleness checks, and
 permission granularity. Bash is what keeps the agent from being capped at
-whatever its author imagined. `docs/` argues both sides where it matters.
+whatever its author imagined. Each chapter argues both sides where it matters.
 
 ---
 
 ## Stages
 
 Each stage introduces exactly one idea and ships a complete, runnable snapshot
-under `stages/`. Duplication between snapshots is intentional — a readable diff
+under its own directory. Duplication between snapshots is intentional — a readable diff
 beats DRY in a teaching repo.
 
 Every chapter ends the same way: exercises you can actually run, then the
@@ -54,15 +54,15 @@ check yourself — and then a few open questions that have no answer here.
 
 | Stage | Idea | Status |
 |---|---|---|
-| [00 The Loop](docs/00-loop.md) | request → tool call → execute → repeat. One file, no SDK. | ✅ built |
-| [01 Don't Die](docs/01-dont-die.md) | truncation, timeouts, process-tree kill, `finish_reason`, permission gate | ✅ built |
-| [02 See Everything](docs/02-see-everything.md) | event bus, streaming, full instrumentation, JSONL trace, replay | ✅ built |
-| [03 Babel](docs/03-babel.md) | one agent, many protocols: OpenAI + Anthropic behind a neutral core | ✅ built |
-| [04 The Cache](docs/04-the-cache.md) | prompt caching as *discipline*, and what it is worth in dollars | ✅ built |
-| [05 Live Forever](docs/05-live-forever.md) | compaction, context injection, memory — and what compaction really costs | ✅ built |
-| [06 The Composer](docs/06-the-composer.md) | a TUI in the standard library: God view vs Model view of the same session | ✅ built |
-| [07 Multiply](docs/07-multiply.md) | subagents by recursion, skills, and what PTC really is | ✅ built |
-| [08 Sandbox](docs/08-sandbox.md) *(optional)* | embedded shell interpreter, and why you cannot secure a shell by reading the command | ✅ built |
+| [00 The Loop](00-loop/) | request → tool call → execute → repeat. One file, no SDK. | ✅ built |
+| [01 Don't Die](01-dont-die/) | truncation, timeouts, process-tree kill, `finish_reason`, permission gate | ✅ built |
+| [02 See Everything](02-see-everything/) | event bus, streaming, full instrumentation, JSONL trace, replay | ✅ built |
+| [03 Babel](03-babel/) | one agent, many protocols: OpenAI + Anthropic behind a neutral core | ✅ built |
+| [04 The Cache](04-the-cache/) | prompt caching as *discipline*, and what it is worth in dollars | ✅ built |
+| [05 Live Forever](05-live-forever/) | compaction, context injection, memory — and what compaction really costs | ✅ built |
+| [06 The Composer](06-the-composer/) | a TUI in the standard library: God view vs Model view of the same session | ✅ built |
+| [07 Multiply](07-multiply/) | subagents by recursion, skills, and what PTC really is | ✅ built |
+| [08 Sandbox](08-sandbox/) *(optional)* | embedded shell interpreter, and why you cannot secure a shell by reading the command | ✅ built |
 
 ### Phase 2 — production (09–19)
 
@@ -74,15 +74,15 @@ that is not JSON, the note that went stale, the P95 nobody measured. Same rules
 Phase 2 continues from **stage 07**, not stage 08. Stage 08 is the one place in
 the repo that takes a dependency, and it is advertised as optional; carrying it
 down the trunk would make it mandatory in practice. It stays a side road —
-`diff stages/07-multiply stages/08-sandbox` is the patch, if you want the
+`diff 07-multiply/code 08-sandbox/code` is the patch, if you want the
 sandbox in a later stage.
 
 | Stage | Idea | Status |
 |---|---|---|
-| [09 Triage](docs/09-triage.md) | an error is a decision, not a string: one taxonomy over two protocols, `Retry-After`, a retry budget, the fallback ladder | ✅ built |
-| [10 Deadlock](docs/10-deadlock.md) | the tool that never returns and the stream that stalls: every wait gets a deadline and an owner | ✅ built |
-| [11 Malformed](docs/11-malformed.md) | the tool call is not valid JSON — what each protocol hands you, why repairing it is the trap, and one validation boundary | ✅ built |
-| [12 Echo](docs/12-echo.md) | the cheapest tool call is the one you do not make — and an audit, on traces you already have, of what that is worth before you build it | ✅ built |
+| [09 Triage](09-triage/) | an error is a decision, not a string: one taxonomy over two protocols, `Retry-After`, a retry budget, the fallback ladder | ✅ built |
+| [10 Deadlock](10-deadlock/) | the tool that never returns and the stream that stalls: every wait gets a deadline and an owner | ✅ built |
+| [11 Malformed](11-malformed/) | the tool call is not valid JSON — what each protocol hands you, why repairing it is the trap, and one validation boundary | ✅ built |
+| [12 Echo](12-echo/) | the cheapest tool call is the one you do not make — and an audit, on traces you already have, of what that is worth before you build it | ✅ built |
 | 13 Rewind | the session and the workspace are both state, and both need a rewind — resume from the trace, checkpoint before mutation | 🚧 planned |
 | 14 Amnesia | compaction is lossy, so measure the loss: a probe set, a recall number, protected regions | 🚧 planned |
 | 15 Rot | a memory needs an expiry and a witness: stale versus wrong, supersede versus contradict, self-evolving skills that disagree | 🚧 planned |
@@ -91,11 +91,11 @@ sandbox in a later stage.
 | 18 The Scoreboard | four metrics off the trace, and a bad case that becomes a regression test | 🚧 planned |
 | 19 Borrowed Tools | MCP written from scratch over stdio JSON-RPC, and the schema tax measured in tokens | 🚧 planned |
 
-**Appendix: [Wire notes](docs/wire-notes.md)** — what one real gateway actually
+**Appendix: [Wire notes](external/wire-notes.md)** — what one real gateway actually
 sends, probed byte by byte: how each protocol reports a truncated tool call
 (badly, and differently), where streaming usage lies, which error you get for an
 unknown model (401, not 404), and proof that prompt caching works. Every claim
-carries its raw evidence. The teaching material in `docs/` is built on this file
+carries its raw evidence. The teaching material in every chapter is built on this file
 rather than on protocol documentation, because the two do not agree.
 
 ## What you get by the end
@@ -158,7 +158,7 @@ for Windows — the agent finds it automatically).
 ```sh
 git clone <this repo> && cd bash-is-all-you-need
 cp .env.example .env      # fill in your endpoint, key and model
-go build -o agent ./stages/00-loop
+go build -o agent ./00-loop/code
 
 mkdir sandbox && cd sandbox    # it runs what the model says. use a scratch dir.
 set -a && . ../.env && set +a
@@ -173,7 +173,7 @@ running bill on the line under it, Escape to interrupt a turn, Ctrl-O to fold
 the instrument panels away and bring them back, and slash commands:
 
 ```sh
-go build -o agent ./stages/12-echo
+go build -o agent ./12-echo/code
 cd sandbox && ../agent
 ```
 
@@ -193,15 +193,15 @@ echo "same thing" | ../agent                    # a pipe, as in stage 00
 ../agent --no-tui                               # the plain prompt of the chapters
 ```
 
-The shell lives in `tui/` and **no chapter explains it**, deliberately — see
+The shell lives in `external/tui/` and **no chapter explains it**, deliberately — see
 the note in [AGENTS.md](AGENTS.md) on the one package that is allowed to exist
-outside `stages/`.
+outside the stage folders.
 
 Then look at what it did — no key required, and it works on somebody else's
 trace just as well as your own:
 
 ```sh
-go build -o composer ./stages/06-the-composer
+go build -o composer ./06-the-composer/code
 ./composer --composer session.jsonl                  # TUI: g / m / w switch views
 ./composer --composer-dump session.jsonl --view model --call 12   # the same, greppable
 ```
@@ -234,7 +234,7 @@ stops is part of the teaching:
   framework hides raw-mode
   restoration, the Escape-key ambiguity, and display width versus byte length,
   which are the three things that chapter is about. The interactive shell in
-  `tui/` is held to the same rule — it is the standard library and `x/sys`, and
+  `external/tui/` is held to the same rule — it is the standard library and `x/sys`, and
   it is a package rather than a stage file precisely because it is *not* part of
   the course.
 - **Not a benchmark chaser.** If you want SWE-bench numbers from a minimal

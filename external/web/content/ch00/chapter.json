@@ -1,0 +1,186 @@
+{
+  "id": "ch00",
+  "stage": "00-loop/code",
+  "doc": "docs/00-loop.md",
+  "title": { "zh": "循环", "en": "" },
+  "subtitle": { "zh": "一个能干活的编码 agent，大约两百行", "en": "" },
+  "levels": ["level-01", "level-02", "level-03", "level-04"],
+
+  "quiz": [
+    {
+      "id": "q1",
+      "stem": {
+        "zh": "关卡 04 里那张表算出来的账单是 4982 tokens，最终会话大小是 1192 tokens。现在再往下走一轮：第 7 轮的请求带上去 1350 tokens。这时账单总数是多少？",
+        "en": ""
+      },
+      "options": [
+        {
+          "id": "a",
+          "text": { "zh": "1350", "en": "" },
+          "correct": false,
+          "why": { "zh": "这是第 7 轮这一次请求的大小，不是累计。账单是每一次请求都要单独付的。", "en": "" }
+        },
+        {
+          "id": "b",
+          "text": { "zh": "2542", "en": "" },
+          "correct": false,
+          "why": { "zh": "1192 + 1350，把「最终会话大小」当成了已经付掉的钱。会话大小和账单是两列数字，关卡 04 把它们分开打印就是为了这个。", "en": "" }
+        },
+        {
+          "id": "c",
+          "text": { "zh": "6332", "en": "" },
+          "correct": true,
+          "why": { "zh": "4982 + 1350。账单是 prompt 那一列的和，第 7 轮把前六轮的内容又重发了一遍，于是又付了一次。", "en": "" }
+        },
+        {
+          "id": "d",
+          "text": { "zh": "4982", "en": "" },
+          "correct": false,
+          "why": { "zh": "那是前六轮的账单，第 7 轮的钱还没算进去。", "en": "" }
+        }
+      ]
+    },
+    {
+      "id": "q2",
+      "stem": {
+        "zh": "你把 runBash 改成「命令非零退出就 return err」，然后让 agent 去修一个会抛 ZeroDivisionError 的脚本。会发生什么？",
+        "en": ""
+      },
+      "options": [
+        {
+          "id": "a",
+          "text": { "zh": "agent 打印错误，然后重试同一条命令", "en": "" },
+          "correct": false,
+          "why": { "zh": "它不会重试，因为它根本没走到「决定下一步」那一步。返回 error 的是你的 Go 代码，循环在那里就断了。", "en": "" }
+        },
+        {
+          "id": "b",
+          "text": { "zh": "traceback 永远到不了模型手里，agent 停在它刚要变得有用的那一刻", "en": "" },
+          "correct": true,
+          "why": { "zh": "python stats.py 的退出码只是 1，几乎不含信息；traceback 才是定位 bug 的全部依据。把非零退出变成一个 Go error，等于在模型最需要看的时候把屏幕关掉。关卡 03 的第三条命令跑的就是这个。", "en": "" }
+        },
+        {
+          "id": "c",
+          "text": { "zh": "没有区别，模型自己会再跑一次", "en": "" },
+          "correct": false,
+          "why": { "zh": "模型什么都没收到，它连「这条命令跑过了」都不知道。", "en": "" }
+        },
+        {
+          "id": "d",
+          "text": { "zh": "接口返回 400", "en": "" },
+          "correct": false,
+          "why": { "zh": "协议层没被破坏，坏掉的是信息流。会引出 400 的是下一题那种情况。", "en": "" }
+        }
+      ]
+    },
+    {
+      "id": "q3",
+      "stem": {
+        "zh": "模型在一轮里要了三条命令，你只往回追加了两条 role:\"tool\" 消息。下一次请求会怎样？",
+        "en": ""
+      },
+      "options": [
+        {
+          "id": "a",
+          "text": { "zh": "模型少看到一条输出，继续往下走", "en": "" },
+          "correct": false,
+          "why": { "zh": "它连「少看到」的机会都没有，那次请求根本发不出去。", "en": "" }
+        },
+        {
+          "id": "b",
+          "text": { "zh": "接口拒绝这次请求：有一个 tool_call 没有对应的结果", "en": "" },
+          "correct": true,
+          "why": { "zh": "协议是配对的。少一条结果，整个 messages 数组就不合法。注意错误出现在下一次请求上，而不是你漏掉的那一刻 —— 这是它难查的原因。", "en": "" }
+        },
+        {
+          "id": "c",
+          "text": { "zh": "第三条命令会被自动重跑", "en": "" },
+          "correct": false,
+          "why": { "zh": "没有任何一层会替你补上这条结果。tool 消息只可能是你自己追加的。", "en": "" }
+        },
+        {
+          "id": "d",
+          "text": { "zh": "只有当那条命令失败时才会出问题", "en": "" },
+          "correct": false,
+          "why": { "zh": "失败的命令同样要有结果，因为失败本身就是结果。这一点和配对规则是两件独立的事。", "en": "" }
+        }
+      ]
+    },
+    {
+      "id": "q4",
+      "stem": {
+        "zh": "把 max_tokens 从 4096 改成 100，再让 agent 干一件需要解释的事。finish_reason 会是什么，stage 00 的循环怎么处理它？",
+        "en": ""
+      },
+      "options": [
+        {
+          "id": "a",
+          "text": { "zh": "finish_reason 是 length，循环把它当成一次说完了的回复", "en": "" },
+          "correct": true,
+          "why": { "zh": "这个循环只问一个问题：有没有 tool_calls。一段被截断的回复通常一个都没有，于是它和「模型说完了」长得一模一样。finish_reason 从头到尾没有被读过，这是 stage 01 修的那个 bug。", "en": "" }
+        },
+        {
+          "id": "b",
+          "text": { "zh": "finish_reason 是 length，循环会自动接着让它写完", "en": "" },
+          "correct": false,
+          "why": { "zh": "没有任何一行代码读这个字段，也就谈不上续写。续写要自己实现。", "en": "" }
+        },
+        {
+          "id": "c",
+          "text": { "zh": "finish_reason 是 tool_calls，命令照常执行", "en": "" },
+          "correct": false,
+          "why": { "zh": "截断发生在输出中途，通常连一个完整的 tool_call 都没形成，更常见的结果是一段话说到一半。", "en": "" }
+        },
+        {
+          "id": "d",
+          "text": { "zh": "请求报错，因为 max_tokens 太小", "en": "" },
+          "correct": false,
+          "why": { "zh": "100 是合法值，接口会正常返回。坏的是内容，不是请求。", "en": "" }
+        }
+      ]
+    }
+  ],
+
+  "closing": {
+    "intro": {
+      "zh": "这一章的四关都在同一个循环里打转：发出去、跑、把结果放回去、再发。剩下的十二章没有一章是在让 agent 变聪明，它们都在处理这个循环撞上真实世界之后的事。",
+      "en": ""
+    },
+    "reading": [
+      {
+        "label": "00-loop/code/main.go",
+        "note": { "zh": "整章的源码，两百行。按 main() → callModel() → runBash() 的顺序读。", "en": "" }
+      },
+      {
+        "label": "docs/00-loop.md",
+        "note": { "zh": "这一章的原文，包括那张 token 表、四个练习，以及五个「答案不在仓库里」的问题。", "en": "" }
+      },
+      {
+        "label": "docs/wire-notes.md",
+        "note": { "zh": "真实接口做过的那些不写在文档里的事。content 回 null、arguments 是字符串、reasoning_content 从哪来。", "en": "" }
+      },
+      {
+        "label": "docs/01-dont-die.md",
+        "note": { "zh": "下一章。输出截断、命令超时、进程树、权限门 —— 这一章故意漏掉的东西。", "en": "" }
+      }
+    ],
+    "tryThis": [
+      {
+        "title": { "zh": "把配对弄断一次", "en": "" },
+        "body": { "zh": "跑真实的 stage 00，在 tool 结果的循环里 continue 掉一条，读接口回的那句错。这句错比协议文档教得多。", "en": "" }
+      },
+      {
+        "title": { "zh": "删掉 system prompt", "en": "" },
+        "body": { "zh": "把 systemPrompt 换成空串再跑。agent 会开始请你去执行命令。所谓「agent 质量」，大半住在那个字符串里。", "en": "" }
+      },
+      {
+        "title": { "zh": "把 max_tokens 改成 100", "en": "" },
+        "body": { "zh": "回复会在半句话处断掉，而循环看不出区别。这就是第 4 题在问的东西，也是 stage 01 要修的第一个 bug。", "en": "" }
+      },
+      {
+        "title": { "zh": "换一个小模型", "en": "" },
+        "body": { "zh": "任何 OpenAI 兼容的端点都能用，本地的 Ollama 也行。小模型会送来畸形的 tool call —— 那不是你的代码坏了，而且早点见到它是好事。", "en": "" }
+      }
+    ]
+  }
+}

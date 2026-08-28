@@ -30,8 +30,14 @@ import * as ov from './overlays.js';
 import { showDiff } from './diff.js';
 import { installKeys } from './keys.js';
 import { session, progress, resetAll, isDone } from './state.js';
+import { register as registerSW } from './sw-register.js';
 
 async function boot() {
+  // First, and before anything that can throw. A chapter's WebAssembly is
+  // several megabytes and this is what stops a reload paying for it again;
+  // it fails silently and the site does not depend on it. See sw.js.
+  registerSW();
+
   try {
     const mod = await import(/* @vite-ignore */ RUNTIME_MODULE);
     // The real runtime exports `Runtime` and also defaults it; accepting either

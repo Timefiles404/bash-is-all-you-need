@@ -15,6 +15,7 @@ a suite that passes against a stale binary is worse than no suite.
 """
 
 import argparse
+import hashlib
 import json
 import os
 import pathlib
@@ -143,6 +144,38 @@ def write_manifest(entries: dict):
     (WASM_OUT / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
 
 
+def stamp_service_worker(entries: dict):
+    """Write the cache generation into sw.js.
+
+    The service worker's only invalidation is its cache name: change it and the
+    previous generation is deleted wholesale on the next activation. So the name
+    has to change whenever any build output does, and nothing else in the file
+    needs to know which output changed.
+
+    The stamp is a digest of the built assets rather than a timestamp, because a
+    timestamp changes on a rebuild that produced identical bytes, and throwing a
+    reader's 9 MB away to hand them the same 9 MB is the one thing this file
+    exists to avoid.
+    """
+    h = hashlib.sha256()
+    for name in sorted(entries):
+        h.update(name.encode("utf-8"))
+        h.update(str(entries[name]).encode("utf-8"))
+    stamp = h.hexdigest()[:12]
+
+    sw = WEB / "sw.js"
+    src = sw.read_text(encoding="utf-8")
+    line = re.compile(r"^const BUILD = '[^']*';$", re.M)
+    if not line.search(src):
+        raise SystemExit("build: sw.js has no BUILD line to stamp")
+    out = line.sub("const BUILD = '%s';" % stamp, src)
+    if out != src:
+        sw.write_text(out, encoding="utf-8")
+        print("  sw.js cache generation -> %s" % stamp)
+    else:
+        print("  sw.js cache generation unchanged (%s)" % stamp)
+
+
 def check_levels():
     print("* verifying levels against stages/ (the drift check)")
     tool = WEB / "tools" / "genlevels"
@@ -240,6 +273,7 @@ def main() -> int:
                   f"ARCHITECTURE.md §7. Raise the budget on purpose or find the bytes.")
 
     write_manifest(entries)
+    stamp_service_worker(entries)
 
     if args.shell:
         return 0

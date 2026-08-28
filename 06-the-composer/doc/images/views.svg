@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 400" width="700" height="400"
+     font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#57606a"/>
+    </marker>
+  </defs>
+
+  <rect width="700" height="400" fill="#fafbfc" rx="8"/>
+  <rect x="0" y="0" width="700" height="42" fill="#1f2937" rx="8"/>
+  <rect x="0" y="34" width="700" height="8" fill="#1f2937"/>
+  <text x="24" y="27" fill="#ffffff" font-size="15" font-weight="600">Three views on the same trace</text>
+  <text x="676" y="27" fill="#9ca3af" font-size="12" text-anchor="end">stage 06</text>
+
+  <rect x="210" y="62" width="280" height="42" rx="6" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="350" y="80" font-size="13" fill="#1f2328" text-anchor="middle" font-family="ui-monospace, Consolas, monospace">session.jsonl</text>
+  <text x="350" y="96" font-size="11.5" fill="#57606a" text-anchor="middle">30 MB, one event per line, one file</text>
+
+  <path d="M290 104 L150 132" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
+  <path d="M350 104 L350 132" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
+  <path d="M410 104 L550 132" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
+
+  <!-- GOD -->
+  <rect x="26" y="136" width="200" height="150" rx="6" fill="#ffffff" stroke="#2563eb" stroke-width="1.5"/>
+  <rect x="26" y="136" width="200" height="26" rx="6" fill="#2563eb"/>
+  <rect x="26" y="150" width="200" height="12" fill="#2563eb"/>
+  <text x="40" y="154" font-size="12" fill="#ffffff" font-weight="600">GOD</text>
+  <text x="212" y="154" font-size="12" fill="#bfdbfe" text-anchor="end" font-family="ui-monospace, Consolas, monospace">g</text>
+  <text x="126" y="180" font-size="12.5" fill="#1f2328" text-anchor="middle" font-weight="600">what happened</text>
+  <text x="40" y="204" font-size="11.5" fill="#57606a">every call, every command,</text>
+  <text x="40" y="221" font-size="11.5" fill="#57606a">every charge, in time order</text>
+  <text x="40" y="248" font-size="11.5" fill="#1f2328">Answers:</text>
+  <text x="40" y="266" font-size="11.5" fill="#57606a">what did it do in those 40s</text>
+
+  <!-- MODEL -->
+  <rect x="250" y="136" width="200" height="150" rx="6" fill="#ffffff" stroke="#d97706" stroke-width="1.5"/>
+  <rect x="250" y="136" width="200" height="26" rx="6" fill="#d97706"/>
+  <rect x="250" y="150" width="200" height="12" fill="#d97706"/>
+  <text x="264" y="154" font-size="12" fill="#ffffff" font-weight="600">MODEL</text>
+  <text x="436" y="154" font-size="12" fill="#fde68a" text-anchor="end" font-family="ui-monospace, Consolas, monospace">m</text>
+  <text x="350" y="180" font-size="12.5" fill="#1f2328" text-anchor="middle" font-weight="600">what the model saw</text>
+  <text x="264" y="204" font-size="11.5" fill="#57606a">the message array sent on</text>
+  <text x="264" y="221" font-size="11.5" fill="#57606a">call N, unpacked and flat</text>
+  <text x="264" y="248" font-size="11.5" fill="#1f2328">Answers:</text>
+  <text x="264" y="266" font-size="11.5" fill="#57606a">why it decided that</text>
+
+  <!-- WIRE -->
+  <rect x="474" y="136" width="200" height="150" rx="6" fill="#ffffff" stroke="#15803d" stroke-width="1.5"/>
+  <rect x="474" y="136" width="200" height="26" rx="6" fill="#15803d"/>
+  <rect x="474" y="150" width="200" height="12" fill="#15803d"/>
+  <text x="488" y="154" font-size="12" fill="#ffffff" font-weight="600">WIRE</text>
+  <text x="660" y="154" font-size="12" fill="#bbf7d0" text-anchor="end" font-family="ui-monospace, Consolas, monospace">w</text>
+  <text x="574" y="180" font-size="12.5" fill="#1f2328" text-anchor="middle" font-weight="600">the bytes that went out</text>
+  <text x="488" y="204" font-size="11.5" fill="#57606a">the request body, indented,</text>
+  <text x="488" y="221" font-size="11.5" fill="#57606a">shown even if not valid JSON</text>
+  <text x="488" y="248" font-size="11.5" fill="#1f2328">Answers:</text>
+  <text x="488" y="266" font-size="11.5" fill="#57606a">whether those two are true</text>
+
+  <rect x="26" y="302" width="648" height="52" rx="6" fill="#fff7ed" stroke="#d97706"/>
+  <text x="42" y="322" font-size="12.5" fill="#92400e" font-weight="600">All three sit on the same call; g / m / w switches in place</text>
+  <text x="42" y="342" font-size="11.5" fill="#92400e">So what it saw and what you think it saw line up directly, and WIRE checks the other two for lying.</text>
+
+  <text x="26" y="378" font-size="11.5" fill="#57606a">One file, three questions. No single place on a screen has ever shown all three at once.</text>
+</svg>

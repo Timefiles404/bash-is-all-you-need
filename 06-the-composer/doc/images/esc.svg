@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 450" width="700" height="450"
+     font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#57606a"/>
+    </marker>
+    <marker id="ab" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#2563eb"/>
+    </marker>
+    <marker id="ag" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#15803d"/>
+    </marker>
+  </defs>
+
+  <rect width="700" height="450" fill="#fafbfc" rx="8"/>
+  <rect x="0" y="0" width="700" height="42" fill="#1f2937" rx="8"/>
+  <rect x="0" y="34" width="700" height="8" fill="#1f2937"/>
+  <text x="24" y="27" fill="#ffffff" font-size="15" font-weight="600">After a lone 0x1b arrives</text>
+  <text x="676" y="27" fill="#9ca3af" font-size="12" text-anchor="end">stage 06</text>
+
+  <rect x="196" y="62" width="308" height="36" rx="6" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="350" y="85" font-size="12.5" fill="#1f2328" text-anchor="middle">a read returns, the buffer ends in <tspan font-family="ui-monospace, Consolas, monospace" fill="#cf222e">0x1b</tspan></text>
+  <path d="M350 98 L350 118" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
+
+  <text x="350" y="134" font-size="12.5" fill="#92400e" text-anchor="middle" font-weight="600">two possibilities, identical bytes</text>
+
+  <rect x="40" y="146" width="272" height="86" rx="6" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="176" y="168" font-size="12.5" fill="#1f2328" text-anchor="middle" font-weight="600">the user pressed Escape</text>
+  <rect x="60" y="180" width="52" height="26" rx="4" fill="#fef2f2" stroke="#cf222e"/>
+  <text x="86" y="198" font-size="12" fill="#cf222e" text-anchor="middle" font-family="ui-monospace, Consolas, monospace">1b</text>
+  <text x="126" y="198" font-size="11.5" fill="#57606a">nothing more is coming</text>
+  <text x="60" y="222" font-size="11.5" fill="#57606a">that is the whole keypress</text>
+
+  <rect x="388" y="146" width="272" height="86" rx="6" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="524" y="168" font-size="12.5" fill="#1f2328" text-anchor="middle" font-weight="600">the user pressed Up</text>
+  <rect x="408" y="180" width="52" height="26" rx="4" fill="#fef2f2" stroke="#cf222e"/>
+  <text x="434" y="198" font-size="12" fill="#cf222e" text-anchor="middle" font-family="ui-monospace, Consolas, monospace">1b</text>
+  <rect x="464" y="180" width="52" height="26" rx="4" fill="#f6f8fa" stroke="#8c959f" stroke-dasharray="4 3"/>
+  <text x="490" y="198" font-size="12" fill="#57606a" text-anchor="middle" font-family="ui-monospace, Consolas, monospace">5b</text>
+  <rect x="520" y="180" width="52" height="26" rx="4" fill="#f6f8fa" stroke="#8c959f" stroke-dasharray="4 3"/>
+  <text x="546" y="198" font-size="12" fill="#57606a" text-anchor="middle" font-family="ui-monospace, Consolas, monospace">41</text>
+  <text x="408" y="222" font-size="11.5" fill="#57606a">two more bytes, microseconds behind</text>
+
+  <path d="M176 232 L176 252 L340 252" stroke="#57606a" stroke-width="1.5" fill="none"/>
+  <path d="M524 232 L524 252 L360 252" stroke="#57606a" stroke-width="1.5" fill="none"/>
+  <path d="M350 252 L350 270" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
+
+  <rect x="150" y="272" width="400" height="34" rx="6" fill="#fff7ed" stroke="#d97706" stroke-width="1.5"/>
+  <text x="350" y="294" font-size="12.5" fill="#92400e" text-anchor="middle" font-weight="600">Nothing in the stream separates them. Only time does.</text>
+
+  <path d="M270 306 L270 328" stroke="#2563eb" stroke-width="1.5" marker-end="url(#ab)"/>
+  <path d="M430 306 L430 328" stroke="#15803d" stroke-width="1.5" marker-end="url(#ag)"/>
+
+  <rect x="60" y="330" width="240" height="58" rx="6" fill="#eff6ff" stroke="#2563eb"/>
+  <text x="180" y="350" font-size="11.5" fill="#1e3a8a" text-anchor="middle">more bytes within 50ms</text>
+  <text x="180" y="368" font-size="11.5" fill="#1e40af" text-anchor="middle" font-family="ui-monospace, Consolas, monospace">decodeKey → decodeCSI</text>
+  <text x="180" y="382" font-size="11" fill="#1e40af" text-anchor="middle">it was an arrow key</text>
+
+  <rect x="400" y="330" width="240" height="58" rx="6" fill="#f0fdf4" stroke="#15803d"/>
+  <text x="520" y="350" font-size="11.5" fill="#14532d" text-anchor="middle">50ms passed, nothing came</text>
+  <text x="520" y="368" font-size="11.5" fill="#14532d" text-anchor="middle" font-family="ui-monospace, Consolas, monospace">decodeKeyFinal → keyEsc</text>
+  <text x="520" y="382" font-size="11" fill="#14532d" text-anchor="middle">it was Escape</text>
+
+  <rect x="26" y="400" width="648" height="34" rx="6" fill="#fef2f2" stroke="#cf222e"/>
+  <text x="42" y="422" font-size="11.5" fill="#cf222e">The hole never closes: 50ms is the link's property, not the stream's. On busy ssh, 80ms.</text>
+</svg>

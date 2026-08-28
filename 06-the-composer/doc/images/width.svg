@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 400" width="700" height="400"
+     font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif">
+  <rect width="700" height="400" fill="#fafbfc" rx="8"/>
+  <rect x="0" y="0" width="700" height="42" fill="#1f2937" rx="8"/>
+  <rect x="0" y="34" width="700" height="8" fill="#1f2937"/>
+  <text x="24" y="27" fill="#ffffff" font-size="15" font-weight="600">Bytes, runes, columns</text>
+  <text x="676" y="27" fill="#9ca3af" font-size="12" text-anchor="end">stage 06</text>
+
+  <!-- header row -->
+  <text x="40" y="76" font-size="12" fill="#57606a">string</text>
+  <text x="330" y="76" font-size="12" fill="#57606a" text-anchor="middle">len() bytes</text>
+  <text x="450" y="76" font-size="12" fill="#57606a" text-anchor="middle">runes</text>
+  <text x="580" y="76" font-size="12" fill="#15803d" text-anchor="middle" font-weight="600">columns — what the terminal uses</text>
+  <path d="M40 84 L660 84" stroke="#d0d7de" stroke-width="1"/>
+
+  <!-- row 1 -->
+  <text x="40" y="112" font-size="14" fill="#1f2328" font-family="ui-monospace, Consolas, monospace">你好世界</text>
+  <text x="330" y="112" font-size="13" fill="#1f2328" text-anchor="middle">12</text>
+  <text x="450" y="112" font-size="13" fill="#1f2328" text-anchor="middle">4</text>
+  <rect x="536" y="96" width="88" height="22" rx="4" fill="#f0fdf4" stroke="#15803d"/>
+  <text x="580" y="112" font-size="13" fill="#14532d" text-anchor="middle" font-weight="600">8</text>
+  <path d="M40 124 L660 124" stroke="#eaeef2" stroke-width="1"/>
+
+  <!-- row 2 -->
+  <text x="40" y="152" font-size="13" fill="#1f2328" font-family="ui-monospace, Consolas, monospace">"\x1b[31mred\x1b[0m"</text>
+  <text x="330" y="152" font-size="13" fill="#1f2328" text-anchor="middle">12</text>
+  <text x="450" y="152" font-size="13" fill="#1f2328" text-anchor="middle">12</text>
+  <rect x="536" y="136" width="88" height="22" rx="4" fill="#f0fdf4" stroke="#15803d"/>
+  <text x="580" y="152" font-size="13" fill="#14532d" text-anchor="middle" font-weight="600">3</text>
+  <path d="M40 164 L660 164" stroke="#eaeef2" stroke-width="1"/>
+
+  <!-- row 3 -->
+  <text x="40" y="192" font-size="14" fill="#1f2328" font-family="ui-monospace, Consolas, monospace">六个汉字的名字</text>
+  <text x="330" y="192" font-size="13" fill="#1f2328" text-anchor="middle">18</text>
+  <text x="450" y="192" font-size="13" fill="#1f2328" text-anchor="middle">6</text>
+  <rect x="536" y="176" width="88" height="22" rx="4" fill="#f0fdf4" stroke="#15803d"/>
+  <text x="580" y="192" font-size="13" fill="#14532d" text-anchor="middle" font-weight="600">12</text>
+
+  <!-- the %-20s failure -->
+  <rect x="26" y="220" width="648" height="94" rx="6" fill="#fef2f2" stroke="#cf222e" stroke-width="1.5"/>
+  <text x="42" y="242" font-size="12.5" fill="#cf222e" font-weight="600">%-20s pads to twenty BYTES</text>
+  <text x="42" y="264" font-size="11.5" fill="#1f2328">Six CJK characters are already 18 bytes, so it adds 2 spaces — and draws 12 columns.</text>
+  <text x="42" y="284" font-size="11.5" fill="#1f2328">The next column starts 6 places early, on that row only. Every other row is fine.</text>
+  <text x="42" y="304" font-size="11.5" fill="#cf222e">So it gets reported as "the terminal is broken", not "my format verb counted the wrong thing".</text>
+
+  <rect x="26" y="328" width="648" height="34" rx="6" fill="#fff7ed" stroke="#d97706"/>
+  <text x="42" y="350" font-size="11.5" fill="#92400e">Ambiguous characters (Greek, Cyrillic, box glyphs, ±) are 2 columns in a CJK locale and 1 elsewhere.</text>
+
+  <text x="26" y="386" font-size="11.5" fill="#57606a">A layout whose shape depends on LANG is much worse than a box that is occasionally one column narrow.</text>
+</svg>

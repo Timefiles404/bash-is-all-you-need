@@ -433,3 +433,75 @@ who filled every hole by elimination.
 
 `source` on a question is checked the same way a level's is: the file must exist.
 A quiz question about code that has been deleted is a question with no answer.
+
+---
+
+## The reading material
+
+One Markdown file per level, at `web/content/chNN/reading/<levelId>.md`. It is
+what the reading pane shows beside the editor, and it is the only content file
+written by hand from end to end.
+
+A level with no such file is an ordinary state: the pane stays collapsed and its
+button says why. Nothing has to be registered anywhere — the pane fetches the
+path and takes a 404 as an answer.
+
+### Two languages, one file
+
+```md
+<!--lang:zh-->
+# 数组只增不减
+...
+
+<!--lang:en-->
+# The array only grows
+...
+```
+
+Text before the first marker is treated as Chinese. Both halves stay in the same
+file on purpose: a translation drifts fastest when it lives somewhere the author
+of the original is not looking.
+
+### What the renderer understands
+
+Headings, paragraphs, lists (nested by indentation), blockquotes, pipe tables,
+horizontal rules, inline code, emphasis, links, and fenced code blocks. Raw HTML
+is escaped rather than passed through. `#` renders as `<h2>` — the pane's own
+header already carries the level's title.
+
+### Quoted code
+
+A fence may name where its contents came from, and a Go one is highlighted with
+the same CodeMirror the editor uses:
+
+````md
+```go stages/00-loop/main.go:40-42
+// A fuse. Without it, a model that keeps calling tools loops until your key
+// runs dry. Stage 01 turns this into a real budget.
+const maxTurns = 25
+```
+````
+
+**The body must match those lines byte for byte.** This is the same rule the
+level format opens with, for the same reason: prose that quotes code it has
+retyped starts correct and stops being correct without anything failing. The
+provenance line is printed under the block so a reader can check it, and so can
+you — the lines are a substring of a file in the repository or they are not.
+
+Two things a snippet must not be: the answer to one of the level's holes, and a
+line so deeply indented that the pane can only show its whitespace.
+
+### Cross-references
+
+A link whose target starts with `#` moves the editor instead of navigating:
+
+| target | what it does |
+| --- | --- |
+| `[…](#hole:1)` | scrolls to that hole in the file that holds it, and marks it |
+| `[…](#line:27)` | line 27 of the file that is open |
+| `[…](#line:exec.go:20)` | opens that file first |
+| `[…](#file:transcript.go)` | opens the file, marks nothing |
+
+Anything else is an ordinary link and opens in a new tab. A reference the page
+does not understand renders as a link that goes nowhere, which is what the same
+file does when it is read as plain Markdown outside the site.

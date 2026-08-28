@@ -138,7 +138,10 @@ export function labelButtons() {
   tip('#btn-stop', 'btn.stop', 'Esc');
   tip('#btn-clear', 'btn.clear');
 
-  const text = (s) => document.createTextNode(s);
+  // The label is wrapped rather than a bare text node so a stylesheet can drop
+  // it and leave the icon: the code column's toolbar runs out of room once the
+  // reading pane takes half of it, and a clipped word reads as a bug.
+  const text = (s) => el('span.label', null, s);
   $('#btn-format').replaceChildren(svg('wand'), text(t('btn.format')));
   $('#btn-save').replaceChildren(svg('save'), text(t('btn.save')));
   $('#btn-reveal').replaceChildren(svg('book'), text(t('btn.reveal')));

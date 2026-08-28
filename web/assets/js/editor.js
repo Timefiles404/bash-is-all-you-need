@@ -69,6 +69,42 @@ export function createEditor(host, hooks) {
   return cm ? new CMEditor(host, hooks) : new PlainEditor(host, hooks);
 }
 
+/* ------------------------------------------------------- read-only snippets */
+
+// A code block in the reading pane wants the highlighting and none of the
+// furniture. `minimalSetup` is exactly that list: the meta package builds it
+// from syntaxHighlighting plus a history and a keymap, with no gutters and no
+// active-line background.
+function blockTheme() {
+  return cm.EditorView.theme(
+    { '&': { backgroundColor: 'transparent' }, '.cm-scroller': { overflowX: 'auto' } },
+    { dark: true },
+  );
+}
+
+/**
+ * Render `code` into `host` with the same Go highlighting the editor uses.
+ * Returns false when CodeMirror is not loaded or the language is not one it
+ * was given, and the caller keeps its plain <pre>.
+ */
+export function highlightCode(host, code, lang) {
+  if (!cm || lang !== 'go') return false;
+  new cm.EditorView({
+    parent: host,
+    state: cm.EditorState.create({
+      doc: code,
+      extensions: [
+        cm.minimalSetup ?? cm.basicSetup,
+        cm.go(),
+        blockTheme(),
+        cm.EditorView.editable.of(false),
+        cm.EditorState.readOnly.of(true),
+      ],
+    }),
+  });
+  return true;
+}
+
 /* ------------------------------------------------------------------ CodeMirror */
 
 class CMEditor {
@@ -115,6 +151,30 @@ class CMEditor {
       );
     });
 
+    // A second, short-lived decoration layer, kept apart from the holes: the
+    // flash is where a reading passage pointed, and it must not survive an
+    // edit that has already moved the code out from under it.
+    this.flashEffect = cm.StateEffect.define();
+    const flashField = cm.StateField.define({
+      create: () => cm.Decoration.none,
+      update: (value, tr) => {
+        for (const e of tr.effects) {
+          if (!e.is(this.flashEffect)) continue;
+          if (!e.value) return cm.Decoration.none;
+          const marks = [];
+          if (e.value.line != null) {
+            marks.push(cm.Decoration.line({ class: 'cm-flash-line' }).range(e.value.line));
+          }
+          if (e.value.to > e.value.from) {
+            marks.push(cm.Decoration.mark({ class: 'cm-flash' }).range(e.value.from, e.value.to));
+          }
+          return cm.Decoration.set(marks, true);
+        }
+        return tr.docChanged ? cm.Decoration.none : value;
+      },
+      provide: (f) => cm.EditorView.decorations.from(f),
+    });
+
     const clicks = cm.EditorView.domEventHandlers({
       mousedown: (event) => {
         const chip = event.target.closest?.('[data-hole]');
@@ -135,6 +195,7 @@ class CMEditor {
           theme(),
           rangeField,
           decorations,
+          flashField,
           clicks,
           this.readonly.of(cm.EditorState.readOnly.of(false)),
           cm.EditorView.updateListener.of((u) => {
@@ -177,6 +238,29 @@ class CMEditor {
   rectFor(holeId) {
     const node = this.view.dom.querySelector(`[data-hole="${holeId}"]`);
     return node ? node.getBoundingClientRect() : null;
+  }
+
+  /** Scroll a span into the middle of the box and mark it for a moment. */
+  flash(from, to, line = null) {
+    const len = this.view.state.doc.length;
+    const a = Math.max(0, Math.min(len, from));
+    const b = Math.max(a, Math.min(len, to));
+    this.view.dispatch({
+      effects: [
+        this.flashEffect.of({ from: a, to: b, line }),
+        cm.EditorView.scrollIntoView(a, { y: 'center' }),
+      ],
+    });
+    clearTimeout(this.flashTimer);
+    this.flashTimer = setTimeout(() => {
+      this.view.dispatch({ effects: this.flashEffect.of(null) });
+    }, 2400);
+  }
+
+  flashLine(n) {
+    const doc = this.view.state.doc;
+    const line = doc.line(Math.max(1, Math.min(doc.lines, n)));
+    this.flash(line.from, line.to, line.from);
   }
 
   focus() {
@@ -231,6 +315,28 @@ class PlainEditor {
 
   rectFor() {
     return null;
+  }
+
+  // A textarea has one way to point at a span, and it is the selection. It
+  // needs the focus to be drawn, which is fair: following a cross-reference is
+  // a request to look at the code.
+  flash(from, to) {
+    const len = this.ta.value.length;
+    const a = Math.max(0, Math.min(len, from));
+    const b = Math.max(a, Math.min(len, to));
+    this.ta.focus();
+    this.ta.setSelectionRange(a, b);
+    const rows = this.ta.value.slice(0, a).split('\n').length - 1;
+    const lineHeight = parseFloat(getComputedStyle(this.ta).lineHeight) || 20;
+    this.ta.scrollTop = Math.max(0, rows * lineHeight - this.ta.clientHeight / 2);
+  }
+
+  flashLine(n) {
+    const lines = this.ta.value.split('\n');
+    const i = Math.max(1, Math.min(lines.length, n)) - 1;
+    let from = 0;
+    for (let j = 0; j < i; j++) from += lines[j].length + 1;
+    this.flash(from, from + lines[i].length);
   }
 
   focus() {

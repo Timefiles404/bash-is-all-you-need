@@ -83,6 +83,7 @@ export const BINDINGS = [
   ['stop', 'Esc'],
   ['format', `${MOD}+Shift+F`],
   ['rail', `${MOD}+B`],
+  ['reading', `${MOD}+E`],
   ['palette', `${MOD}+K`],
   ['undo', `${MOD}+Z`],
   ['redo', `Shift+${MOD}+Z`],

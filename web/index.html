@@ -20,6 +20,7 @@
     <link rel="stylesheet" href="./assets/css/layout.css" />
     <link rel="stylesheet" href="./assets/css/components.css" />
     <link rel="stylesheet" href="./assets/css/workbench.css" />
+    <link rel="stylesheet" href="./assets/css/reading.css" />
     <link rel="stylesheet" href="./assets/css/overlays.css" />
   </head>
   <body>
@@ -48,11 +49,23 @@
       <section id="editor-pane" aria-label="editor">
         <div id="filetree" aria-label="files"></div>
 
+        <!-- The reading material, and the handle between it and the code. Both
+             are empty until reading.js fills them, and both are display:none
+             while the pane is collapsed. -->
+        <aside id="reading" aria-label="reading"></aside>
+        <div
+          id="reading-split"
+          role="separator"
+          aria-orientation="vertical"
+          tabindex="0"
+        ></div>
+
         <div id="code-col">
           <div class="pane-head">
             <span id="open-file-name" class="mono">—</span>
             <span class="spacer"></span>
             <button class="btn icon-only" id="btn-rail" data-tip="rail"></button>
+            <button class="btn icon-only" id="btn-reading" data-tip="reading"></button>
             <button class="btn" id="btn-format" data-tip="format"></button>
             <button class="btn" id="btn-save" data-tip="save"></button>
             <button class="btn warn" id="btn-reveal" data-tip="reveal"></button>

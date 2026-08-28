@@ -11,6 +11,10 @@ const PATHS = {
   eraser: '<path d="M2.5 12.5h11"/><path d="M4.5 10.2 9 5.7l3.2 3.2-3.3 3.3H6z"/>',
   file: '<path d="M4 2.5h4.5L12 6v7.5H4z"/><path d="M8.5 2.5V6H12"/>',
   panel: '<rect x="2.5" y="3" width="11" height="10" rx="1.2"/><path d="M6.5 3v10"/>',
+  // The reading pane's own mark: lines of prose in the left half of a split,
+  // which is what the button actually does to the middle pane.
+  read:
+    '<rect x="2.5" y="3" width="11" height="10" rx="1.2"/><path d="M9 3v10"/><path d="M4.7 6h2.6M4.7 8.5h2.6M4.7 11h1.7"/>',
   wand: '<path d="M3.5 12.5 11 5"/><path d="M9.5 3.5 10 5l1.5.5L10 6l-.5 1.5L9 6l-1.5-.5L9 5z"/>',
   keyboard:
     '<rect x="1.8" y="4" width="12.4" height="8" rx="1.2"/><path d="M4.4 6.6h.01M7 6.6h.01M9.6 6.6h.01M12 6.6h.01M4.4 9.4h7.2"/>',

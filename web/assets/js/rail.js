@@ -8,17 +8,29 @@ import { $, el, clear } from './dom.js';
 import { t, L } from './i18n.js';
 import { svg } from './icons.js';
 import { isDone, levelStatus, progress } from './state.js';
+import * as intro from './ui/intro.js';
 
 let ctx = null;
 let wired = false;
 
 export function mountRail(context) {
   ctx = context;
+  intro.setContext({
+    chapters: context.chapters,
+    openLevel: (chapter, id) => context.onOpenLevel(chapter, id),
+  });
   // mountRail is called again on every level change to move the cursor, so the
   // language listener has to be attached once rather than once per call.
   if (!wired) {
     wired = true;
     window.addEventListener('langchange', render);
+    // The rail is the only thing that knows both whether the introduction is
+    // showing and where the cursor should be, so it redraws for both.
+    window.addEventListener('intro:toggle', render);
+    // The first mount happens before any level is opened, which is the one
+    // moment `progress.last` still reads null for a first-time visitor —
+    // openLevel writes it. Anyone with progress lands where they left off.
+    intro.maybeAutoOpen(!!progress.last || Object.keys(progress.levels).length > 0);
   }
   render();
 }
@@ -51,9 +63,37 @@ function dot(state) {
   return d;
 }
 
+/**
+ * The introduction, above chapter 00 and never locked.
+ *
+ * It is the one entry in the rail that is not a step: it costs nothing to
+ * reopen, it has no state to earn, and a reader who wants the loop explained
+ * again on chapter 07 should not have to hunt for it. So it gets no dot and no
+ * number — a name and an icon, separated from the chapters by a rule.
+ */
+function introEntry() {
+  const open = intro.isOpen();
+  return el(
+    'div.chapter.intro-entry',
+    null,
+    el(
+      'button.chapter-head',
+      {
+        type: 'button',
+        'aria-current': String(open),
+        title: `${intro.label()} — ${intro.hint()}`,
+        onclick: () => (open ? intro.closeIntro() : intro.openIntro()),
+      },
+      svg('book'),
+      el('span.name', null, intro.label()),
+    ),
+  );
+}
+
 export function render() {
   if (!ctx) return;
   const root = clear($('#chapters'));
+  root.append(introEntry());
 
   let cleared = 0;
   let total = 0;
@@ -100,7 +140,10 @@ export function render() {
               'aria-current': String(ctx.currentLevelId === level.id),
               title: `${label} — ${t('level.' + state)}`,
               disabled: state === 'locked',
-              onclick: () => ctx.onOpenLevel(chapter, level.id),
+              onclick: () => {
+                intro.closeIntro();
+                ctx.onOpenLevel(chapter, level.id);
+              },
             },
             dot(state),
             el('span.label', null, label),
@@ -124,7 +167,10 @@ export function render() {
             'data-state': quizOpen ? (quizDone ? 'cleared' : 'available') : 'locked',
             title: quizOpen ? t('rail.quiz') : t('rail.lockedHint'),
             disabled: !quizOpen,
-            onclick: () => ctx.onOpenQuiz(chapter),
+            onclick: () => {
+              intro.closeIntro();
+              ctx.onOpenQuiz(chapter);
+            },
           },
           quizOpen && quizDone ? dot('cleared') : quizOpen ? dot('available') : dot('locked'),
           el('span.label', null, t('rail.quiz')),
@@ -140,7 +186,10 @@ export function render() {
             'data-state': quizOpen ? 'available' : 'locked',
             title: quizOpen ? t('rail.closing') : t('rail.lockedHint'),
             disabled: !quizOpen,
-            onclick: () => ctx.onOpenClosing(chapter),
+            onclick: () => {
+              intro.closeIntro();
+              ctx.onOpenClosing(chapter);
+            },
           },
           dot(quizOpen ? 'available' : 'locked'),
           el('span.label', null, t('rail.closing')),

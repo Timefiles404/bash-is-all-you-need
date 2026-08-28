@@ -23,7 +23,8 @@ import {
   toggleRailPane,
   updateStatus,
 } from './panes.js';
-import { openLevel, openFile, onEditorChange, onHoleClick, remountRail } from './level.js';
+import { openLevel, openFile, onEditorChange, onHoleClick, remountRail, jumpTo } from './level.js';
+import { mountReading, toggleReading } from './reading.js';
 import { run, stop, save, format, runCheck, reveal, openQuiz } from './runner.js';
 import * as ov from './overlays.js';
 import { showDiff } from './diff.js';
@@ -61,6 +62,8 @@ async function boot() {
 
   remountRail();
   mountFileTree(openFile);
+  // Before openLevel, which is what asks the pane to show a level's material.
+  mountReading({ onXref: jumpTo });
   wireButtons();
   wireKeys();
   applyRail(progress.railCollapsed);
@@ -112,6 +115,13 @@ function commands() {
     { id: 'format', label: t('cmd.format'), combo: `${MOD}+Shift+F`, icon: 'wand', run: format },
     { id: 'check', label: t('cmd.check'), icon: 'check', run: runCheck },
     { id: 'rail', label: t('cmd.rail'), combo: `${MOD}+B`, icon: 'panel', run: toggleRailPane },
+    {
+      id: 'reading',
+      label: t('cmd.reading'),
+      combo: `${MOD}+E`,
+      icon: 'read',
+      run: toggleReading,
+    },
     { id: 'help', label: t('cmd.help'), combo: '?', icon: 'keyboard', run: ov.showHelp },
     { id: 'reveal', label: t('cmd.reveal'), icon: 'book', run: reveal },
     {
@@ -146,6 +156,7 @@ function wireKeys() {
     run,
     format,
     rail: toggleRailPane,
+    reading: toggleReading,
     palette: () => ov.showPalette(commands()),
   });
 }

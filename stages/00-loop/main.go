@@ -177,7 +177,7 @@ func (c *client) callModel(msgs []message) (*chatResponse, error) {
 }
 
 // ---------------------------------------------------------------------------
-// The tool. Every action the agent can take goes through these ten lines.
+// The tool. Every action the agent can take goes through these fourteen lines.
 // ---------------------------------------------------------------------------
 
 // findBash locates a POSIX shell. On Windows that means Git Bash, which every

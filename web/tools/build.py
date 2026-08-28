@@ -167,6 +167,28 @@ def check_levels():
             )
 
 
+def check_snippets():
+    """The reading material's half of the same promise as check_levels.
+
+    genlevels refuses to build a level whose source moved. This refuses to ship
+    reading material that quotes code which moved. Same failure, same direction,
+    and the reading is the half a person actually reads beside the code.
+    """
+    print("* verifying quoted code in the reading material")
+    r = subprocess.run(
+        [sys.executable, str(WEB / "tools" / "snippets.py")],
+        text=True, capture_output=True,
+    )
+    sys.stdout.write(r.stdout)
+    sys.stderr.write(r.stderr)
+    if r.returncode != 0:
+        raise SystemExit(
+            "build: reading material quotes code that is no longer in stages/. "
+            "Either the quote is stale or the source moved and the quote has to "
+            "follow; the report above says which way."
+        )
+
+
 def check_conformance(wasm: pathlib.Path):
     print("* running the filesystem conformance suite")
     if shutil.which("node") is None:
@@ -193,6 +215,7 @@ def main() -> int:
 
     if args.check:
         check_levels()
+        check_snippets()
         wasm = WASM_OUT / "shell.wasm"
         if wasm.exists():
             check_conformance(wasm)

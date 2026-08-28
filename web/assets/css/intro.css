@@ -1,0 +1,629 @@
+/* The introduction's own chrome.
+ *
+ * Everything an IDE wants — dense rows, a fixed 34px header, text sized to fit
+ * next to code — is wrong for something that is read straight through. So this
+ * file gives the introduction a measure, a scroll of its own, and headings with
+ * real space around them, and keeps all of it behind `.intro` so none of it can
+ * reach the workbench.
+ *
+ * It is linked from intro.js rather than from index.html, so that the page's
+ * markup stays the workbench's to edit.
+ *
+ * No raw colours: every value here comes from tokens.css. */
+
+/* The pane sits in the same grid tracks as the editor and the terminal —
+   column 2 to the end, every row — rather than in a track of its own. Grid
+   items may overlap, and this one is appended last, so it covers the workbench
+   without ever taking a pixel of width from it. Column 1 is the rail in every
+   breakpoint layout.js defines, which is why the rail stays reachable. */
+#intro-pane {
+  /* The measure, in px on purpose. As `em` it would resolve against each
+     element's own font-size, so a 21px heading would come out a third wider
+     than the paragraph under it and the column would have three left edges. */
+  --measure: 660px;
+
+  /* This is the first pane on the site with a scrollbar of its own that a
+     reader will actually drag. Without this the browser paints it in its
+     default light scheme and there is a white stripe down a dark page. Scoped
+     here rather than on :root, which is not this file's to set. */
+  color-scheme: dark;
+
+  grid-column: 2 / -1;
+  grid-row: 1 / -1;
+  position: relative;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--bg-1);
+}
+
+#intro-pane[data-open="false"] {
+  display: none;
+}
+
+/* ------------------------------------------------------------------- header */
+
+.intro-head {
+  flex: 0 0 auto;
+  height: 40px;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-1);
+}
+
+.intro-head-in {
+  max-width: 988px;
+  height: 100%;
+  margin: 0 auto;
+  padding: 0 var(--sp-5);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.intro-kicker {
+  flex: 0 0 auto;
+  font-size: var(--fs-xs);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--fg-2);
+}
+
+/* The section list scrolls sideways rather than wrapping: a header that grows
+   a second row moves the whole document down as the window narrows. */
+.intro-nav {
+  display: flex;
+  gap: 2px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.intro-nav::-webkit-scrollbar {
+  display: none;
+}
+
+.intro-navlink {
+  padding: 3px var(--sp-2);
+  border-radius: var(--radius);
+  font-size: var(--fs-sm);
+  color: var(--fg-1);
+  white-space: nowrap;
+  transition: background var(--dur-fast), color var(--dur-fast);
+}
+
+.intro-navlink:hover {
+  background: var(--bg-2);
+  color: var(--fg-0);
+}
+
+.intro-head-in .spacer {
+  flex: 1 1 auto;
+}
+
+/* ------------------------------------------------------------------- scroll */
+
+.intro-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  outline: none;
+}
+
+/* Two widths, not one. Prose is held to a measure you can read without losing
+   the line; diagrams and transcripts get the whole column, because a flowchart
+   squeezed to the measure is a flowchart nobody can read. Both are centred on the
+   same axis so the page still has one edge. */
+.intro-doc {
+  max-width: 940px;
+  margin: 0 auto;
+  padding: var(--sp-6) var(--sp-5) 120px;
+  font-size: 15px;
+  line-height: 1.9;
+  color: var(--fg-0);
+}
+
+@supports (color: color-mix(in srgb, white, black)) {
+  /* Slightly off full brightness, so bold text has somewhere to go. Derived
+     from the tokens rather than picked. */
+  .intro-doc {
+    color: color-mix(in srgb, var(--fg-0) 82%, var(--fg-1));
+  }
+}
+
+.intro-doc h1,
+.intro-doc h2,
+.intro-doc h3,
+.intro-doc p,
+.intro-doc ul,
+.intro-doc ol,
+.intro-doc dl,
+.intro-doc blockquote,
+.intro-note,
+.intro-code,
+.intro-cta {
+  max-width: var(--measure);
+  margin-inline: auto;
+}
+
+/* ---------------------------------------------------------------- headings */
+
+.intro-doc h1 {
+  margin: 0 auto var(--sp-3);
+  font-size: 30px;
+  line-height: 1.35;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--fg-0);
+}
+
+.intro-lede {
+  margin: 0 auto var(--sp-6);
+  font-size: 16px;
+  line-height: 1.95;
+  color: var(--fg-1);
+}
+
+.intro-sec {
+  margin-top: 60px;
+}
+
+.intro-doc h2 {
+  margin: 0 auto var(--sp-5);
+  padding-top: var(--sp-5);
+  border-top: 1px solid var(--line);
+  font-size: 21px;
+  line-height: 1.5;
+  font-weight: 600;
+  color: var(--fg-0);
+}
+
+.intro-doc h3 {
+  margin: var(--sp-6) auto var(--sp-3);
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.6;
+  color: var(--fg-0);
+}
+
+/* A short accent rule instead of a bullet or a glyph: it marks the heading
+   without adding a shape the rest of the page does not use. */
+.intro-doc h3::before {
+  content: "";
+  display: block;
+  width: 22px;
+  height: 2px;
+  margin-bottom: var(--sp-2);
+  background: var(--accent);
+  border-radius: 1px;
+}
+
+/* ------------------------------------------------------------------- prose */
+
+.intro-doc p {
+  margin: 0 auto var(--sp-4);
+}
+
+.intro-doc strong {
+  font-weight: 600;
+  color: var(--fg-0);
+}
+
+.intro-doc em {
+  font-style: italic;
+  color: var(--fg-0);
+}
+
+.intro-doc code {
+  font-family: var(--font-mono);
+  /* The mono stacks here ship programming ligatures, and this page quotes real
+     source: `!=` drawn as a single glyph is a character the file does not
+     contain. */
+  font-variant-ligatures: none;
+  font-size: 0.88em;
+  padding: 1px 5px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: var(--bg-2);
+  color: var(--fg-0);
+  white-space: nowrap;
+}
+
+.intro-doc blockquote {
+  margin: var(--sp-5) auto;
+  padding: var(--sp-1) 0 var(--sp-1) var(--sp-4);
+  border-left: 2px solid var(--accent-line);
+  font-size: 16.5px;
+  line-height: 1.85;
+  color: var(--fg-0);
+}
+
+.intro-list,
+.intro-steps {
+  margin: 0 auto var(--sp-4);
+  padding-left: 1.4em;
+}
+
+.intro-list > li,
+.intro-steps > li {
+  margin-bottom: var(--sp-2);
+  padding-left: var(--sp-1);
+}
+
+.intro-list > li::marker {
+  color: var(--fg-2);
+}
+
+.intro-steps > li::marker {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  color: var(--accent);
+}
+
+.intro-defs {
+  margin: 0 auto var(--sp-4);
+}
+
+.intro-defs dt {
+  margin-top: var(--sp-3);
+  font-weight: 600;
+  color: var(--fg-0);
+}
+
+.intro-defs dd {
+  margin: var(--sp-1) 0 0;
+  padding-left: var(--sp-4);
+  border-left: 1px solid var(--line);
+}
+
+.intro-note {
+  margin: var(--sp-5) auto;
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--line);
+  border-left: 2px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--bg-2);
+  font-size: 13.5px;
+  line-height: 1.85;
+  color: var(--fg-1);
+}
+
+.intro-err {
+  color: var(--danger);
+  font-family: var(--font-mono);
+}
+
+/* -------------------------------------------------------------------- code */
+
+.intro-code {
+  margin: 0 auto var(--sp-4);
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-inset);
+  font-family: var(--font-mono);
+  font-variant-ligatures: none;
+  font-size: 12.5px;
+  line-height: 1.75;
+  color: var(--fg-1);
+  white-space: pre;
+  overflow-x: auto;
+}
+
+/* `.intro-doc code` further down styles code inside a sentence. A <pre> is
+   already the block, so its <code> gives all of that back — including the
+   nowrap, which otherwise folds a recorded command's whole output onto one
+   line. */
+pre.intro-code code,
+pre.turn-code code,
+pre.turn-say code {
+  font: inherit;
+  color: inherit;
+  padding: 0;
+  border: 0;
+  background: none;
+  white-space: inherit;
+}
+
+/* ------------------------------------------------------------------ figures */
+
+.intro-fig {
+  margin: var(--sp-6) 0;
+}
+
+/* The scroll box, not the page, is what gives when the pane is narrow: the
+   svg carries a min-width so it stops shrinking before its labels stop being
+   readable, and this scrolls instead. */
+.intro-fig-box {
+  padding: var(--sp-5) var(--sp-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--bg-inset);
+  overflow-x: auto;
+}
+
+.intro-fig figcaption {
+  max-width: var(--measure);
+  margin: var(--sp-3) auto 0;
+  font-size: 12.5px;
+  line-height: 1.75;
+  color: var(--fg-2);
+}
+
+svg.fg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+svg.fg text {
+  dominant-baseline: auto;
+}
+
+.fg-box {
+  fill: var(--bg-2);
+  stroke: var(--line-strong);
+  stroke-width: 1.5;
+}
+
+.fg-box-key {
+  stroke: var(--accent-line);
+}
+
+.fg-t {
+  fill: var(--fg-0);
+  font: 13px var(--font-sans);
+}
+
+.fg-t-dim {
+  fill: var(--fg-1);
+}
+
+.fg-m {
+  fill: var(--fg-2);
+  font: 10.5px var(--font-mono);
+}
+
+.fg-m-key,
+.fg-m-a {
+  fill: var(--accent);
+}
+
+.fg-n {
+  fill: var(--fg-2);
+  font: 11.5px var(--font-sans);
+}
+
+.fg-n-a {
+  fill: var(--accent);
+}
+
+.fg-line,
+.fg-line-soft,
+.fg-flow,
+.fg-flow-plain,
+.fg-spine,
+.fg-branch {
+  fill: none;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.fg-line {
+  stroke: var(--fg-2);
+}
+
+.fg-line-soft,
+.fg-spine {
+  stroke: var(--line-strong);
+}
+
+.fg-flow {
+  stroke: var(--accent);
+}
+
+.fg-flow-plain {
+  stroke: var(--accent-line);
+}
+
+.fg-branch {
+  stroke: var(--line-strong);
+  stroke-dasharray: 3 3.5;
+}
+
+/* Marker contents are scaled by markerWidth / viewBox, which here is 0.52 —
+   so 2.9 in marker units is the 1.5 every other stroke on the page uses. */
+.fg-head,
+.fg-head-a {
+  fill: none;
+  stroke-width: 2.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.fg-head {
+  stroke: var(--fg-2);
+}
+
+.fg-head-a {
+  stroke: var(--accent);
+}
+
+.fg-node {
+  fill: var(--bg-1);
+  stroke: var(--accent);
+  stroke-width: 1.5;
+}
+
+.fg-node-side {
+  fill: var(--bg-1);
+  stroke: var(--line-strong);
+  stroke-width: 1.5;
+  stroke-dasharray: 2.4 2.4;
+}
+
+.fg-col {
+  fill: var(--bg-2);
+  stroke: var(--line-strong);
+  stroke-width: 1.5;
+}
+
+.fg-band {
+  fill: var(--accent-soft);
+  stroke: var(--accent-line);
+  stroke-width: 1.5;
+}
+
+.fg-hair {
+  fill: none;
+  stroke: var(--line-strong);
+  stroke-width: 1;
+}
+
+.fg-big {
+  fill: var(--accent-bright);
+  font: 500 22px var(--font-mono);
+}
+
+.fg-big-dim {
+  fill: var(--fg-1);
+}
+
+/* --------------------------------------------------------------- transcript */
+
+.intro-turns {
+  margin: var(--sp-5) 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.turn {
+  padding-left: var(--sp-4);
+  border-left: 2px solid var(--line-strong);
+}
+
+.turn[data-role="call"] {
+  border-left-color: var(--accent-line);
+}
+
+.turn[data-role="out"] {
+  border-left-color: var(--line);
+}
+
+.turn-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-1);
+}
+
+.turn-role {
+  font: var(--fs-xs) / 1.4 var(--font-mono);
+  letter-spacing: 0.06em;
+  color: var(--fg-2);
+}
+
+.turn[data-role="call"] .turn-role {
+  color: var(--accent);
+}
+
+.turn-meta {
+  font: var(--fs-xs) / 1.4 var(--font-mono);
+  color: var(--fg-2);
+  opacity: 0.8;
+}
+
+.turn-code,
+.turn-say {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-variant-ligatures: none;
+  font-size: 12.5px;
+  line-height: 1.7;
+}
+
+.turn-code {
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-inset);
+  color: var(--fg-0);
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.turn-out {
+  color: var(--fg-1);
+}
+
+/* The model's own words, kept as the bytes it produced — including the
+   Markdown it wrote — because that is what the transcript holds. */
+.turn-say {
+  color: var(--fg-1);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* --------------------------------------------------------------------- cta */
+
+.intro-cta {
+  margin-top: var(--sp-6);
+}
+
+.intro-start {
+  height: 30px;
+  padding: 0 var(--sp-4);
+  font-size: var(--fs-md);
+}
+
+/* ---------------------------------------------------------------- the rail */
+
+.intro-entry {
+  padding: var(--sp-1) 0 var(--sp-2);
+  margin-bottom: var(--sp-1);
+  border-bottom: 1px solid var(--line);
+}
+
+.intro-entry .chapter-head[aria-current="true"] {
+  background: var(--accent-soft);
+  color: var(--fg-0);
+}
+
+.intro-entry .chapter-head .icon {
+  color: var(--fg-2);
+}
+
+.intro-entry .chapter-head[aria-current="true"] .icon,
+.intro-entry .chapter-head:hover .icon {
+  color: var(--accent);
+}
+
+/* Collapsed, the rail keeps only positions; the introduction keeps its icon,
+   which is the only thing it had that was not a name. */
+#app.rail-collapsed #rail .intro-entry {
+  padding: 0 0 var(--sp-2);
+}
+
+/* -------------------------------------------------------------- narrow pane */
+
+@media (max-width: 1279px) {
+  .intro-doc {
+    padding: var(--sp-5) var(--sp-4) 96px;
+    font-size: 14.5px;
+  }
+
+  .intro-head-in {
+    padding: 0 var(--sp-4);
+  }
+
+  .intro-doc h1 {
+    font-size: 26px;
+  }
+
+  .intro-doc h2 {
+    font-size: 19px;
+  }
+}

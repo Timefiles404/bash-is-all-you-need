@@ -51,6 +51,7 @@ export function installKeys(h) {
       else if (k === 'enter') h.run();
       else if (k === 'f' && e.shiftKey) h.format();
       else if (k === 'b' && !e.shiftKey) h.rail();
+      else if (k === 'e' && !e.shiftKey) h.reading();
       else if (k === 'k' && !e.shiftKey) h.palette();
       else claimed = false;
 

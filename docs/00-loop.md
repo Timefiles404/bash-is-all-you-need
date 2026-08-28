@@ -20,7 +20,7 @@ none of them are about making the agent smarter.
 1. **`main()`** — the loop. Read this first; everything else is a detail it calls.
 2. **`callModel()`** — one HTTP POST. There is no SDK here, and there is nothing
    underneath an SDK except this.
-3. **`runBash()`** — ten lines. Every action the agent is capable of goes through
+3. **`runBash()`** — fourteen lines. Every action the agent is capable of goes through
    them.
 
 ## The shape of the loop
@@ -31,7 +31,9 @@ user types a task
      └─ LOOP:
         ├─ POST /chat/completions with the whole message array
         ├─ append the assistant reply to messages
-        ├─ no tool_calls?  → print the text, exit LOOP
+        ├─ print [tokens: prompt=… completion=…]
+        ├─ any text? → print it, whether or not tools were also asked for
+        ├─ no tool_calls? → exit LOOP
         └─ for each tool_call:
              run the command
              append {role:"tool", tool_call_id, content: output}
@@ -53,14 +55,19 @@ you answer two, the next request is malformed. If a command fails, the failure
 
 ## Errors are observations, not exceptions
 
-The single most common beginner mistake in `runBash` is this:
+The single most common beginner mistake in `runBash` is to give it an error
+to return, and then return one:
 
 ```go
-out, err := cmd.CombinedOutput()
-if err != nil {
-    return err          // ← wrong
-}
+func runBash(shell, command string) (string, error) {   // ← the first wrong move
+    out, err := cmd.CombinedOutput()
+    if err != nil {
+        return "", err                                   // ← and the one it leads to
+    }
 ```
+
+The real signature returns a bare `string`, and that is the decision. There is
+nowhere to put an error because a non-zero exit is not one.
 
 A command that exits non-zero has not broken your program. It has produced
 information, and the model is the component that should react to it. Look at
@@ -93,7 +100,7 @@ run → patch → re-read → verify):
 | turn | what it did | prompt tokens |
 |---:|---|---:|
 | 1 | `ls -la` | 429 |
-| 2 | `cat README.md && cat stats.py` | 613 |
+| 2 | `cat README.md; cat stats.py` | 613 |
 | 3 | `python stats.py` → traceback | 737 |
 | 4 | `sed -i ...` to patch it | 932 |
 | 5 | `cat stats.py` | 1079 |
@@ -156,7 +163,7 @@ Things the real API did that the types in `main.go` had to accommodate:
 2. **Delete the system prompt.** Watch how the agent's behaviour degrades — it
    starts asking *you* to run commands. Most of "agent quality" lives in that
    string.
-3. **Change `maxTokens` to 100.** Now `finish_reason` comes back as `length` and
+3. **Change the `MaxTokens: 4096` in `callModel` to 100.** Now `finish_reason` comes back as `length` and
    the agent silently truncates mid-thought. This is the bug stage 01 fixes.
 4. **Point it at a different model.** Any OpenAI-compatible endpoint works,
    including a local Ollama. Small models produce malformed tool calls — that is

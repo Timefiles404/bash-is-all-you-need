@@ -13,6 +13,7 @@ import { mountRail } from './rail.js';
 import { renderFileTree } from './filetree.js';
 import { updateStatus } from './panes.js';
 import { scheduleCheck, refreshFixture, openQuiz } from './runner.js';
+import { showReading } from './reading.js';
 import * as ov from './overlays.js';
 import { session, choices as choicesFor, setChoice, setLast } from './state.js';
 
@@ -46,6 +47,9 @@ export async function openLevel(chapter, levelId) {
   refreshFixture();
   setLast(chapter.id, levelId);
   remountRail();
+  // Not awaited: the material is a fetch of a text file, and the editor should
+  // not wait behind it to show the code.
+  showReading(chapter.id, level);
   openFile(level.entry || level.files[0].path);
 
   app.runTerm.clear();
@@ -107,6 +111,36 @@ export function openFile(path) {
   renderFileTree();
   renderHoleList();
   updateStatus();
+}
+
+/**
+ * Follow a cross-reference from the reading pane.
+ *
+ * The hole case deliberately reads the ranges back out of the editor rather
+ * than out of `session`: after a pick or a format pass the editor is the one
+ * that knows where the hole ended up, and pointing at a stale offset is worse
+ * than not pointing at all.
+ */
+export function jumpTo(ref) {
+  if (!ref) return;
+
+  if (ref.kind === 'file') return openFile(ref.path);
+
+  if (ref.kind === 'hole') {
+    const path = Object.keys(session.files).find((p) => session.files[p].order.includes(ref.id));
+    if (!path) return;
+    if (path !== session.openPath) openFile(path);
+    const r = app.editor.getRanges().find((x) => x.id === ref.id);
+    if (r) app.editor.flash(r.from, r.to);
+    return;
+  }
+
+  if (ref.kind === 'line' && Number.isFinite(ref.n)) {
+    const path = ref.path || session.openPath;
+    if (!session.files[path]) return;
+    if (path !== session.openPath) openFile(path);
+    app.editor.flashLine(ref.n);
+  }
 }
 
 export function onEditorChange(text) {

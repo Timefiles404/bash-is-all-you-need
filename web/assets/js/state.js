@@ -30,6 +30,12 @@ export const progress = {
   quiz: stored.quiz || {}, // chapterId -> {answers, score, total}
   railCollapsed: !!stored.railCollapsed,
   last: stored.last || null, // {chapter, level}
+
+  // The reading pane. Collapsing is per level, because whether the material is
+  // worth the width depends on the level; the divider's position is not,
+  // because it is a statement about this screen.
+  reading: stored.reading || {}, // levelId -> true when collapsed
+  readingSize: stored.readingSize || {}, // {w, h} in px
 };
 
 let saveTimer = 0;
@@ -97,6 +103,27 @@ export function setRail(collapsed) {
 
 export function setLast(chapter, level) {
   progress.last = { chapter, level };
+  changed();
+}
+
+/** Absent means shown: a level the learner has never collapsed opens with its
+ *  material out. */
+export function readingCollapsed(levelId) {
+  return !!progress.reading[levelId];
+}
+
+export function setReadingCollapsed(levelId, collapsed) {
+  if (collapsed) progress.reading[levelId] = true;
+  else delete progress.reading[levelId];
+  changed();
+}
+
+export function readingSize() {
+  return progress.readingSize;
+}
+
+export function setReadingSize(patch) {
+  Object.assign(progress.readingSize, patch);
   changed();
 }
 

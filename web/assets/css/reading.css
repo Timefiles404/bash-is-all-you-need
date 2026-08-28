@@ -1,0 +1,402 @@
+/* The reading pane, and the Markdown inside it.
+
+   The pane is a split of the middle column rather than an overlay, because the
+   point of the material is to be read against the code, and anything that
+   covers the editor makes that impossible. Everything here is scoped to
+   `#editor-pane.reading-on`, so with the pane collapsed the frame in
+   layout.css is untouched — the same grid, to the pixel, as before this file
+   existed. */
+
+/* ------------------------------------------------------------- the split */
+
+#reading,
+#reading-split {
+  display: none;
+}
+
+/* Wide: the material sits under the file list, sharing its column, and the
+   code takes the rest. One column of prose, one of code, and a hairline
+   between them that can be dragged. */
+#editor-pane.reading-on {
+  grid-template-columns: var(--read-w, 320px) 6px minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-areas:
+    "tree    split code"
+    "reading split code";
+}
+
+#editor-pane.reading-on #filetree {
+  grid-area: tree;
+  max-height: 32vh;
+  border-right: 0;
+  border-bottom: 1px solid var(--line);
+}
+
+#editor-pane.reading-on #reading {
+  grid-area: reading;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--bg-1);
+}
+
+#editor-pane.reading-on #reading-split {
+  grid-area: split;
+  display: block;
+  border-left: 1px solid var(--line);
+  background: transparent;
+  cursor: col-resize;
+  transition: background var(--dur-fast);
+}
+
+#reading-split:hover,
+#reading-split:focus-visible,
+#reading-split.dragging {
+  background: var(--accent-soft);
+}
+
+/* While a drag is in flight the pointer is often over the editor, and a text
+   caret there makes the drag look like it stopped working. */
+#app.splitting,
+#app.splitting * {
+  cursor: col-resize !important;
+  user-select: none;
+}
+
+#app.splitting.splitting-row,
+#app.splitting.splitting-row * {
+  cursor: row-resize !important;
+}
+
+/* The code column's toolbar has to fit in whatever the split leaves it, and
+   what it leaves is a number the learner sets by dragging — so the class comes
+   from reading.js measuring the column, not from a viewport media query, which
+   cannot see the divider. Below the threshold the three labelled buttons give
+   up their words and keep their icons, which the tooltips already name. */
+#editor-pane.code-narrow #code-col .pane-head .btn .label {
+  display: none;
+}
+
+#editor-pane.code-narrow #code-col .pane-head .btn {
+  width: 24px;
+  padding: 0;
+  justify-content: center;
+}
+
+#editor-pane.reading-on #code-col > .pane-head {
+  overflow: hidden;
+}
+
+#editor-pane.reading-on #open-file-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------------------------------------------------------- the pane head */
+
+#reading .pane-head {
+  gap: var(--sp-2);
+}
+
+#reading .pane-head .level {
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: var(--fs-sm);
+  color: var(--fg-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#reading-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--sp-4) var(--sp-4) var(--sp-6);
+}
+
+/* The pane is narrow and holds several scrollers of its own. A platform-width
+   scrollbar on a 240px column is a visible fraction of the reading width. */
+#reading-body,
+#reading-body .md-code,
+#reading-body .md-code .cm-scroller,
+#reading-body .md-table {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+
+/* --------------------------------------------------------------- markdown */
+
+.md {
+  font-size: var(--fs-md);
+  line-height: 1.85;
+  color: var(--fg-0);
+}
+
+.md > :first-child {
+  margin-top: 0;
+}
+
+.md p {
+  margin: 0 0 var(--sp-3);
+}
+
+.md h2,
+.md h3,
+.md h4 {
+  margin: var(--sp-5) 0 var(--sp-2);
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.md h2 {
+  font-size: var(--fs-lg);
+  letter-spacing: -0.01em;
+}
+
+.md h3 {
+  font-size: var(--fs-md);
+  color: var(--fg-0);
+}
+
+.md h4 {
+  font-size: var(--fs-sm);
+  color: var(--fg-1);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.md ul,
+.md ol {
+  margin: 0 0 var(--sp-3);
+  padding-left: 1.5em;
+}
+
+.md li {
+  margin: 0 0 var(--sp-1);
+}
+
+.md li > ul,
+.md li > ol {
+  margin: var(--sp-1) 0 0;
+}
+
+.md hr {
+  height: 0;
+  margin: var(--sp-5) 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+}
+
+.md blockquote {
+  margin: 0 0 var(--sp-3);
+  padding: 2px 0 2px var(--sp-3);
+  border-left: 2px solid var(--accent-line);
+  color: var(--fg-1);
+}
+
+.md blockquote p:last-child {
+  margin-bottom: 0;
+}
+
+.md code {
+  font: var(--fs-sm) / 1.5 var(--font-mono);
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 1px 4px;
+  word-break: break-word;
+}
+
+.md a {
+  color: var(--accent-bright);
+  text-decoration-color: var(--accent-line);
+  text-underline-offset: 2px;
+}
+
+/* A cross-reference is a control, not a citation: it moves the editor. The
+   dashed rule and the arrow say that it does something here rather than
+   somewhere else. */
+.md a.xref {
+  display: inline;
+  color: var(--accent-bright);
+  text-decoration: none;
+  border-bottom: 1px dashed var(--accent-line);
+  cursor: pointer;
+}
+
+.md a.xref:hover {
+  background: var(--accent-soft);
+  border-bottom-style: solid;
+}
+
+.md a.xref .icon {
+  width: 11px;
+  height: 11px;
+  margin-right: 2px;
+  vertical-align: -1px;
+  opacity: 0.8;
+}
+
+/* ------------------------------------------------------------ code blocks */
+
+.md .md-code {
+  margin: 0 0 var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--bg-inset);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow-x: auto;
+}
+
+/* tab-size 4, to match both the Go source and what CodeMirror draws in the
+   highlighted version of the same block. A <pre> defaults to 8, which pushes
+   a snippet from three levels deep halfway across the pane. */
+.md .md-code code {
+  display: block;
+  background: none;
+  border: 0;
+  padding: 0;
+  white-space: pre;
+  tab-size: 4;
+  font: var(--fs-sm) / 1.6 var(--font-mono);
+  color: var(--fg-0);
+}
+
+/* A highlighted block is a CodeMirror view with no gutters, so it has to be
+   told to size itself to its content instead of to a pane. */
+.md .md-code.hl {
+  padding: var(--sp-2) 0;
+}
+
+.md .md-code .cm-editor {
+  height: auto;
+  background: none;
+}
+
+.md .md-code .cm-scroller {
+  font: var(--fs-sm) / 1.6 var(--font-mono);
+}
+
+.md .md-code .cm-content {
+  padding: 0;
+}
+
+.md .md-code .cm-line {
+  padding: 0 var(--sp-3);
+}
+
+/* Where a snippet came from. It is one line, quiet, and always present on a
+   quoted block, because a snippet with no source is the thing this repo keeps
+   getting wrong. */
+.md .md-src {
+  margin: calc(-1 * var(--sp-2)) 0 var(--sp-3);
+  font: var(--fs-xs) / 1.5 var(--font-mono);
+  color: var(--fg-2);
+}
+
+/* ---------------------------------------------------------------- tables */
+
+.md .md-table {
+  margin: 0 0 var(--sp-3);
+  overflow-x: auto;
+}
+
+.md table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: var(--fs-sm);
+}
+
+/* Cells wrap rather than scroll: the pane can be 240px wide, and a table that
+   has to be dragged sideways to be read is not a table any more. The
+   scrolling container is still there for the ones that cannot wrap. */
+.md th,
+.md td {
+  padding: var(--sp-1) var(--sp-2);
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+
+.md th {
+  color: var(--fg-2);
+  font-weight: 500;
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.md td {
+  color: var(--fg-0);
+}
+
+.md .empty {
+  color: var(--fg-2);
+}
+
+/* ----------------------------------------------------- the flash in the code */
+
+/* Following a cross-reference has to land somewhere visible. The mark fades
+   rather than blinks: a blink asks to be watched, and the reader is looking
+   for the code, not for the animation. */
+.cm-flash {
+  background: var(--accent-soft);
+  box-shadow: inset 0 -1px 0 var(--accent-line);
+  border-radius: 3px;
+  animation: reading-flash var(--dur-slow) ease-out;
+}
+
+.cm-flash-line {
+  background: rgba(63, 178, 198, 0.1);
+}
+
+@keyframes reading-flash {
+  from {
+    background: rgba(63, 178, 198, 0.45);
+  }
+}
+
+/* ------------------------------------------------------------- responsive */
+
+/* Below 1280px the terminal has already moved under the editor, and there is
+   no width left to split. The material stacks above the code instead: still
+   both on screen, still scrolling separately, no column narrow enough to wrap
+   every line of Go. */
+@media (max-width: 1279px) {
+  #editor-pane.reading-on {
+    grid-template-columns: 168px minmax(0, 1fr);
+    grid-template-rows: var(--read-h, 34%) 6px minmax(0, 1fr);
+    grid-template-areas:
+      "tree reading"
+      "tree split"
+      "tree code";
+  }
+
+  #editor-pane.reading-on #filetree {
+    max-height: none;
+    border-right: 1px solid var(--line);
+    border-bottom: 0;
+  }
+
+  #editor-pane.reading-on #reading-split {
+    border-left: 0;
+    border-top: 1px solid var(--line);
+    cursor: row-resize;
+  }
+}
+
+@media (max-width: 1023px) {
+  #editor-pane.reading-on {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "reading"
+      "split"
+      "code";
+  }
+}

@@ -1,0 +1,96 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 790 540" width="790" height="540"
+     font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#57606a"/>
+    </marker>
+  </defs>
+
+  <rect width="790" height="540" fill="#fafbfc" rx="8"/>
+  <rect x="0" y="0" width="790" height="42" fill="#1f2937" rx="8"/>
+  <rect x="0" y="34" width="790" height="8" fill="#1f2937"/>
+  <text x="24" y="27" fill="#ffffff" font-size="15" font-weight="600">同一次工具调用，两条流上的帧顺序</text>
+  <text x="766" y="27" fill="#9ca3af" font-size="12" text-anchor="end">阶段 03</text>
+
+  <!-- column headers -->
+  <rect x="24" y="60" width="368" height="30" rx="5" fill="#eff6ff" stroke="#2563eb"/>
+  <text x="208" y="80" font-size="12.5" fill="#1e3a8a" text-anchor="middle">OpenAI：只有 data: 行，末尾有哨兵</text>
+  <rect x="404" y="60" width="362" height="30" rx="5" fill="#eff6ff" stroke="#2563eb"/>
+  <text x="585" y="80" font-size="12.5" fill="#1e3a8a" text-anchor="middle">Anthropic：event: + data:，没有哨兵</text>
+
+  <path d="M208 92 L208 104" stroke="#57606a" stroke-width="1.2" marker-end="url(#a)"/>
+  <path d="M585 92 L585 104" stroke="#57606a" stroke-width="1.2" marker-end="url(#a)"/>
+
+  <!-- left frames -->
+  <rect x="32" y="108" width="352" height="26" rx="4" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="42" y="125" font-size="11" fill="#1f2328" font-family="ui-monospace, Consolas, monospace">data:</text>
+  <text x="96" y="125" font-size="11.5" fill="#1f2328">开场帧，content 是空串</text>
+
+  <rect x="32" y="139" width="352" height="26" rx="4" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="42" y="156" font-size="11" fill="#1f2328" font-family="ui-monospace, Consolas, monospace">data:</text>
+  <text x="96" y="156" font-size="11.5" fill="#1f2328">tool_calls[0]：id 和 name 只在这一帧</text>
+
+  <rect x="32" y="170" width="352" height="26" rx="4" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="42" y="187" font-size="11" fill="#1f2328" font-family="ui-monospace, Consolas, monospace">data:</text>
+  <text x="96" y="187" font-size="11.5" fill="#1f2328">arguments 碎片 ×7，切在半个词上</text>
+
+  <rect x="32" y="201" width="352" height="26" rx="4" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="42" y="218" font-size="11" fill="#1f2328" font-family="ui-monospace, Consolas, monospace">data:</text>
+  <text x="96" y="218" font-size="11.5" fill="#1f2328">finish_reason 在这一帧</text>
+
+  <rect x="32" y="232" width="352" height="26" rx="4" fill="#fff7ed" stroke="#d97706" stroke-width="1.5"/>
+  <text x="42" y="249" font-size="11" fill="#92400e" font-family="ui-monospace, Consolas, monospace">data:</text>
+  <text x="96" y="249" font-size="11.5" fill="#92400e">usage 在这里，而 choices 是空数组</text>
+
+  <rect x="32" y="263" width="352" height="26" rx="4" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="42" y="280" font-size="11" fill="#1f2328" font-family="ui-monospace, Consolas, monospace">data: [DONE]</text>
+
+  <rect x="32" y="294" width="352" height="26" rx="4" fill="#fff7ed" stroke="#d97706" stroke-width="1.5"/>
+  <text x="42" y="311" font-size="11" fill="#92400e" font-family="ui-monospace, Consolas, monospace">data:</text>
+  <text x="96" y="311" font-size="11.5" fill="#92400e">哨兵之后还有一帧，装着 cost</text>
+
+  <!-- right frames -->
+  <rect x="412" y="108" width="346" height="26" rx="4" fill="#fff7ed" stroke="#d97706" stroke-width="1.5"/>
+  <text x="422" y="125" font-size="11" fill="#92400e" font-family="ui-monospace, Consolas, monospace">ping</text>
+  <text x="486" y="125" font-size="11.5" fill="#92400e">在 message_start 之前就到了</text>
+
+  <rect x="412" y="139" width="346" height="26" rx="4" fill="#fff7ed" stroke="#d97706" stroke-width="1.5"/>
+  <text x="422" y="156" font-size="11" fill="#92400e" font-family="ui-monospace, Consolas, monospace">message_start</text>
+  <text x="530" y="156" font-size="11.5" fill="#92400e">input_tokens 56 —— 错的</text>
+
+  <rect x="412" y="170" width="346" height="26" rx="4" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="422" y="187" font-size="11" fill="#1f2328" font-family="ui-monospace, Consolas, monospace">content_block_start</text>
+  <text x="566" y="187" font-size="11.5" fill="#1f2328">id 和 name 只在这里</text>
+
+  <rect x="412" y="201" width="346" height="26" rx="4" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="422" y="218" font-size="11" fill="#1f2328" font-family="ui-monospace, Consolas, monospace">content_block_delta</text>
+  <text x="566" y="218" font-size="11.5" fill="#1f2328">partial_json ×6</text>
+
+  <rect x="412" y="232" width="346" height="26" rx="4" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="422" y="249" font-size="11" fill="#1f2328" font-family="ui-monospace, Consolas, monospace">content_block_stop</text>
+
+  <rect x="412" y="263" width="346" height="26" rx="4" fill="#f0fdf4" stroke="#15803d" stroke-width="1.5"/>
+  <text x="422" y="280" font-size="11" fill="#14532d" font-family="ui-monospace, Consolas, monospace">message_delta</text>
+  <text x="530" y="280" font-size="11.5" fill="#14532d">停止原因和 usage，只有这里可信</text>
+
+  <rect x="412" y="294" width="346" height="26" rx="4" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="422" y="311" font-size="11" fill="#1f2328" font-family="ui-monospace, Consolas, monospace">message_stop</text>
+
+  <rect x="412" y="325" width="346" height="26" rx="4" fill="#fff7ed" stroke="#d97706" stroke-width="1.5"/>
+  <text x="422" y="342" font-size="11" fill="#92400e" font-family="ui-monospace, Consolas, monospace">ping</text>
+  <text x="486" y="342" font-size="11.5" fill="#92400e">在 message_stop 之后，装着 cost</text>
+
+  <!-- notes -->
+  <text x="32" y="380" font-size="11.5" fill="#57606a">写 choices[0] 的解析器，会在倒数第二帧上崩掉。</text>
+  <text x="32" y="400" font-size="11.5" fill="#57606a">读到 [DONE] 就收工的客户端，会把最后一帧扔掉。</text>
+
+  <text x="412" y="380" font-size="11.5" fill="#57606a">同一个请求：message_start 报 56，message_delta 报 291。</text>
+  <text x="412" y="400" font-size="11.5" fill="#57606a">缓存计数也只在 message_delta 上出现。</text>
+  <text x="412" y="420" font-size="11.5" fill="#57606a">没有哨兵：连接关掉，才是这条流的结束。</text>
+
+  <rect x="24" y="444" width="742" height="56" rx="6" fill="#eff6ff" stroke="#2563eb"/>
+  <text x="42" y="466" font-size="12.5" fill="#1e3a8a">sse.go 只做一件事：把字节切成一个个帧。它不知道 [DONE] 是什么意思。</text>
+  <text x="42" y="486" font-size="12" fill="#1e40af">哨兵是载荷的约定，不是分帧的约定 —— 把它写进读帧的代码里，这个读帧器就只能服务一种协议。</text>
+
+  <text x="24" y="524" font-size="11.5" fill="#57606a">两列的帧数、帧名、载荷字段全部不同；共用的只有「一行 field: value，空行分帧」这一条规则。</text>
+</svg>

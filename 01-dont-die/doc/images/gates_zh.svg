@@ -1,0 +1,83 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 530" width="700" height="530"
+     font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#57606a"/>
+    </marker>
+    <marker id="ab" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#2563eb"/>
+    </marker>
+    <marker id="ag" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#15803d"/>
+    </marker>
+  </defs>
+
+  <rect width="700" height="530" fill="#fafbfc" rx="8"/>
+  <rect x="0" y="0" width="700" height="42" fill="#1f2937" rx="8"/>
+  <rect x="0" y="34" width="700" height="8" fill="#1f2937"/>
+  <text x="24" y="27" fill="#ffffff" font-size="15" font-weight="600">一条命令要过的四道关</text>
+  <text x="676" y="27" fill="#9ca3af" font-size="12" text-anchor="end">阶段 01</text>
+
+  <!-- spine -->
+  <rect x="40" y="62" width="300" height="32" rx="6" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="190" y="83" font-size="13" fill="#1f2328" text-anchor="middle">模型这一轮的回复</text>
+  <path d="M190 94 L190 110" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
+
+  <rect x="40" y="112" width="300" height="38" rx="6" fill="#fff7ed" stroke="#d97706" stroke-width="1.5"/>
+  <text x="190" y="136" font-size="13" fill="#92400e" text-anchor="middle">finish_reason 说这句话被砍断了吗？</text>
+  <path d="M190 150 L190 166" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
+
+  <rect x="40" y="168" width="300" height="38" rx="6" fill="#fff7ed" stroke="#d97706" stroke-width="1.5"/>
+  <text x="190" y="192" font-size="13" fill="#92400e" text-anchor="middle">参数里真的有 command 这个字段吗？</text>
+  <path d="M190 206 L190 222" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
+
+  <rect x="40" y="224" width="300" height="38" rx="6" fill="#fff7ed" stroke="#d97706" stroke-width="1.5"/>
+  <text x="190" y="248" font-size="13" fill="#92400e" text-anchor="middle">闸门：这条命令跑吗？</text>
+  <path d="M190 262 L190 278" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
+
+  <rect x="40" y="280" width="300" height="48" rx="6" fill="#eff6ff" stroke="#2563eb" stroke-width="1.5"/>
+  <text x="190" y="300" font-size="13.5" fill="#1e3a8a" text-anchor="middle" font-weight="600">执行</text>
+  <text x="190" y="319" font-size="12" fill="#1e40af" text-anchor="middle">进程组装住整棵树，到点连孙进程一起杀</text>
+  <path d="M190 328 L190 344" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
+
+  <rect x="40" y="346" width="300" height="48" rx="6" fill="#eff6ff" stroke="#2563eb" stroke-width="1.5"/>
+  <text x="190" y="366" font-size="13.5" fill="#1e3a8a" text-anchor="middle" font-weight="600">清洗，然后掐掉中间</text>
+  <text x="190" y="385" font-size="12" fill="#1e40af" text-anchor="middle">去 ANSI／CRLF／非法字节，头尾都留</text>
+  <path d="M190 394 L190 412" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
+
+  <!-- the four side exits -->
+  <path d="M340 131 L396 131" stroke="#15803d" stroke-width="1.5" marker-end="url(#ag)"/>
+  <text x="368" y="125" font-size="11" fill="#15803d" text-anchor="middle">是</text>
+  <rect x="400" y="112" width="250" height="38" rx="6" fill="#f0fdf4" stroke="#15803d"/>
+  <text x="525" y="136" font-size="12.5" fill="#14532d" text-anchor="middle">不执行，回一条「你被截断了」</text>
+
+  <path d="M340 187 L396 187" stroke="#15803d" stroke-width="1.5" marker-end="url(#ag)"/>
+  <text x="368" y="181" font-size="11" fill="#15803d" text-anchor="middle">没有</text>
+  <rect x="400" y="168" width="250" height="38" rx="6" fill="#f0fdf4" stroke="#15803d"/>
+  <text x="525" y="192" font-size="12.5" fill="#14532d" text-anchor="middle">回一条「字段缺失，重发」</text>
+
+  <path d="M340 243 L396 243" stroke="#15803d" stroke-width="1.5" marker-end="url(#ag)"/>
+  <text x="368" y="237" font-size="11" fill="#15803d" text-anchor="middle">不跑</text>
+  <rect x="400" y="224" width="250" height="38" rx="6" fill="#f0fdf4" stroke="#15803d"/>
+  <text x="525" y="248" font-size="12.5" fill="#14532d" text-anchor="middle">回一条「用户拒绝了，别重试」</text>
+
+  <path d="M340 305 L396 305" stroke="#15803d" stroke-width="1.5" marker-end="url(#ag)"/>
+  <text x="368" y="299" font-size="11" fill="#15803d" text-anchor="middle">超时</text>
+  <rect x="400" y="286" width="250" height="38" rx="6" fill="#f0fdf4" stroke="#15803d"/>
+  <text x="525" y="310" font-size="12.5" fill="#14532d" text-anchor="middle">回一条「进程树已经杀掉」</text>
+
+  <!-- the four exits converge on the same thing -->
+  <path d="M650 131 L668 131" stroke="#15803d" stroke-width="1.5" fill="none"/>
+  <path d="M650 187 L668 187" stroke="#15803d" stroke-width="1.5" fill="none"/>
+  <path d="M650 243 L668 243" stroke="#15803d" stroke-width="1.5" fill="none"/>
+  <path d="M650 305 L668 305" stroke="#15803d" stroke-width="1.5" fill="none"/>
+  <path d="M668 131 L668 436" stroke="#15803d" stroke-width="1.5" fill="none"/>
+  <path d="M668 436 L556 436" stroke="#15803d" stroke-width="1.5" fill="none" marker-end="url(#ag)"/>
+
+  <rect x="150" y="414" width="400" height="46" rx="6" fill="#ffffff" stroke="#d0d7de" stroke-width="1.5"/>
+  <text x="350" y="433" font-size="13" fill="#1f2328" text-anchor="middle">不管走哪条路，都要往 messages 里追加一条</text>
+  <text x="350" y="452" font-size="12" fill="#57606a" text-anchor="middle" font-family="ui-monospace, Consolas, monospace">{role:"tool", tool_call_id}</text>
+
+  <text x="24" y="492" font-size="11.5" fill="#57606a">四条支路和主路的终点是同一件事：每一个 tool_call 都必须带回一条消息。</text>
+  <text x="24" y="512" font-size="11.5" fill="#57606a">少一条，下一次请求就会因为有调用悬空而被服务端拒绝。</text>
+</svg>

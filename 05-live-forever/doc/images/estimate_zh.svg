@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 520" width="700" height="520"
+     font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif">
+  <defs>
+    <marker id="e-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#57606a"/>
+    </marker>
+    <marker id="e-b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#2563eb"/>
+    </marker>
+    <marker id="e-g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#d97706"/>
+    </marker>
+  </defs>
+
+  <rect width="700" height="520" fill="#fafbfc" rx="8"/>
+  <rect x="0" y="0" width="700" height="42" fill="#1f2937" rx="8"/>
+  <rect x="0" y="34" width="700" height="8" fill="#1f2937"/>
+  <text x="24" y="27" fill="#ffffff" font-size="15" font-weight="600">那个比值是怎么校准出来的</text>
+  <text x="676" y="27" fill="#9ca3af" font-size="12" text-anchor="end">阶段 05 · 第 2 部分</text>
+
+  <rect x="150" y="64" width="400" height="46" rx="6" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="350" y="84" font-size="13" fill="#1f2328" text-anchor="middle">这次要发出去的全部内容</text>
+  <text x="350" y="102" font-size="11.5" fill="#57606a" text-anchor="middle">历史 + 系统提示 + 工具定义</text>
+  <path d="M350 110 L350 130" stroke="#57606a" stroke-width="1.5" marker-end="url(#e-a)"/>
+
+  <rect x="150" y="132" width="400" height="46" rx="6" fill="#eff6ff" stroke="#2563eb" stroke-width="1.5"/>
+  <text x="350" y="152" font-size="13" fill="#1e3a8a" text-anchor="middle" font-weight="600">发之前，先数字符</text>
+  <text x="350" y="170" font-size="11.5" fill="#1e40af" text-anchor="middle" font-family="ui-monospace, Consolas, monospace">sentChars = convChars(msgs) + base</text>
+  <path d="M350 178 L350 198" stroke="#57606a" stroke-width="1.5" marker-end="url(#e-a)"/>
+
+  <rect x="215" y="200" width="270" height="34" rx="6" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="350" y="222" font-size="13" fill="#1f2328" text-anchor="middle">POST，然后等响应</text>
+  <path d="M350 234 L350 254" stroke="#57606a" stroke-width="1.5" marker-end="url(#e-a)"/>
+
+  <rect x="150" y="256" width="400" height="46" rx="6" fill="#f0fdf4" stroke="#15803d" stroke-width="1.5"/>
+  <text x="350" y="276" font-size="13" fill="#14532d" text-anchor="middle" font-weight="600">发之后，服务端白送一个真值</text>
+  <text x="350" y="294" font-size="11.5" fill="#14532d" text-anchor="middle" font-family="ui-monospace, Consolas, monospace">usage.prompt = 2842</text>
+  <path d="M350 302 L350 322" stroke="#57606a" stroke-width="1.5" marker-end="url(#e-a)"/>
+
+  <rect x="120" y="324" width="460" height="62" rx="6" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="350" y="345" font-size="13" fill="#1f2328" text-anchor="middle">一次调用，一对数，喂给估算器</text>
+  <text x="350" y="365" font-size="11.5" fill="#57606a" text-anchor="middle" font-family="ui-monospace, Consolas, monospace">r = sentChars / 2842</text>
+  <text x="350" y="381" font-size="11.5" fill="#57606a" text-anchor="middle" font-family="ui-monospace, Consolas, monospace">ratio = 0.75*ratio + 0.25*r</text>
+  <path d="M350 386 L350 402" stroke="#57606a" stroke-width="1.5" marker-end="url(#e-a)"/>
+
+  <rect x="245" y="404" width="210" height="38" rx="19" fill="#fff7ed" stroke="#d97706" stroke-width="1.8"/>
+  <text x="350" y="428" font-size="13.5" fill="#92400e" text-anchor="middle" font-weight="600">ratio ≈ 3.7 字符 / token</text>
+
+  <path d="M580 355 L640 355 L640 87 L554 87" stroke="#2563eb" stroke-width="1.5" fill="none"
+        stroke-dasharray="5 4" marker-end="url(#e-b)"/>
+  <text x="658" y="230" font-size="11.5" fill="#2563eb" transform="rotate(-90 658 230)" text-anchor="middle">下一轮开始前，先用它估一次</text>
+
+  <rect x="30" y="404" width="200" height="38" rx="6" fill="#ffffff" stroke="#d97706"/>
+  <text x="130" y="421" font-size="12" fill="#92400e" text-anchor="middle">chars / ratio ≥</text>
+  <text x="130" y="436" font-size="12" fill="#92400e" text-anchor="middle">threshold × window ？</text>
+  <path d="M243 423 L236 423" stroke="#d97706" stroke-width="1.5" marker-end="url(#e-g)"/>
+
+  <text x="24" y="472" font-size="11.5" fill="#57606a">关键不在准，在一致：校准时量的是 convChars + base，之后被要求换算的也是 convChars + base。</text>
+  <text x="24" y="492" font-size="11.5" fill="#57606a">系统提示、工具 schema、JSON 外壳这些固定开销，被吸进那个 ratio 里，而不是攒成误差。</text>
+  <text x="24" y="512" font-size="11.5" fill="#b91c1c">会毁掉它的只有一件事：量一个东西，估另一个东西。所以 thinking 块两边都不算。</text>
+</svg>

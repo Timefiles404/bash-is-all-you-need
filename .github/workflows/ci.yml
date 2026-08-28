@@ -33,6 +33,10 @@ jobs:
       # else in this file would notice.
       - name: chapters quote real code
         run: python external/tools/quotecheck.py
+      # Thirteen chapters of hand-written relative breadcrumbs, six directory
+      # levels deep in places. A wrong one looks exactly like a right one.
+      - name: links and diagrams resolve
+        run: python external/tools/doclinks.py
       - name: browser levels match the stages
         run: python external/web/tools/build.py --check
 

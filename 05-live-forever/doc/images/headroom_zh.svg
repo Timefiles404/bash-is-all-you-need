@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 430" width="700" height="430"
+     font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif">
+  <rect width="700" height="430" fill="#fafbfc" rx="8"/>
+  <rect x="0" y="0" width="700" height="42" fill="#1f2937" rx="8"/>
+  <rect x="0" y="34" width="700" height="8" fill="#1f2937"/>
+  <text x="24" y="27" fill="#ffffff" font-size="15" font-weight="600">决定压缩频率的不是阈值，是那道空隙</text>
+  <text x="676" y="27" fill="#9ca3af" font-size="12" text-anchor="end">阶段 05 · 第 2 部分</text>
+
+  <text x="24" y="66" font-size="11.5" fill="#57606a">两根柱子是同一个窗口：--window 12000。柱底是 0，柱顶是 12000。</text>
+
+  <text x="175" y="94" font-size="13" fill="#1f2328" text-anchor="middle" font-weight="600">tight</text>
+  <text x="175" y="111" font-size="11.5" fill="#57606a" text-anchor="middle">--compact-at 0.5 --keep 0.25</text>
+
+  <rect x="130" y="124" width="90" height="240" fill="#ffffff" stroke="#d0d7de"/>
+  <rect x="130" y="244" width="90" height="60" fill="#fff7ed" stroke="#d97706" stroke-dasharray="4 3"/>
+  <path d="M130 244 L220 244" stroke="#d97706" stroke-width="1.8"/>
+  <path d="M130 304 L220 304" stroke="#57606a" stroke-width="1.8" stroke-dasharray="5 3"/>
+  <text x="124" y="248" font-size="11" fill="#92400e" text-anchor="end">0.50 → 6,000</text>
+  <text x="124" y="308" font-size="11" fill="#57606a" text-anchor="end">0.25 → 3,000</text>
+  <text x="175" y="279" font-size="12" fill="#92400e" text-anchor="middle" font-weight="600">空隙 3,000</text>
+
+  <rect x="232" y="260" width="26" height="44" fill="#eff6ff" stroke="#2563eb"/>
+  <text x="266" y="278" font-size="11" fill="#2563eb">一轮工具输出</text>
+  <text x="266" y="293" font-size="11" fill="#2563eb">≈ 2,200 token</text>
+  <text x="175" y="384" font-size="12" fill="#b91c1c" text-anchor="middle" font-weight="600">只装得下一轮 → 压了 3 次</text>
+
+  <path d="M350 124 L350 364" stroke="#d0d7de" stroke-width="1"/>
+
+  <text x="490" y="94" font-size="13" fill="#1f2328" text-anchor="middle" font-weight="600">roomy</text>
+  <text x="490" y="111" font-size="11.5" fill="#57606a" text-anchor="middle">--compact-at 0.85 --keep 0.35</text>
+
+  <rect x="445" y="124" width="90" height="240" fill="#ffffff" stroke="#d0d7de"/>
+  <rect x="445" y="160" width="90" height="120" fill="#fff7ed" stroke="#d97706" stroke-dasharray="4 3"/>
+  <path d="M445 160 L535 160" stroke="#d97706" stroke-width="1.8"/>
+  <path d="M445 280 L535 280" stroke="#57606a" stroke-width="1.8" stroke-dasharray="5 3"/>
+  <text x="439" y="164" font-size="11" fill="#92400e" text-anchor="end">0.85 → 10,200</text>
+  <text x="439" y="284" font-size="11" fill="#57606a" text-anchor="end">0.35 → 4,200</text>
+  <text x="490" y="225" font-size="12" fill="#92400e" text-anchor="middle" font-weight="600">空隙 6,000</text>
+
+  <rect x="547" y="236" width="26" height="44" fill="#eff6ff" stroke="#2563eb"/>
+  <text x="581" y="254" font-size="11" fill="#2563eb">同一个单位</text>
+  <text x="581" y="269" font-size="11" fill="#2563eb">≈ 2,200 token</text>
+  <text x="490" y="384" font-size="12" fill="#15803d" text-anchor="middle" font-weight="600">空隙是它的两倍 → 压了 1 次</text>
+
+  <text x="24" y="408" font-size="11.5" fill="#57606a">headroom = (threshold − keepRatio) × window。压完落到下面那条线，涨到上面那条线再压一次；</text>
+  <text x="24" y="424" font-size="11.5" fill="#57606a">中间这段能装几轮工具输出，压缩就多久来一次。单看阈值那一个数，什么也说明不了。</text>
+</svg>

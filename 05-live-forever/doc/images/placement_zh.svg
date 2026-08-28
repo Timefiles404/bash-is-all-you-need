@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 500" width="760" height="500"
+     font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif">
+  <rect width="760" height="500" fill="#fafbfc" rx="8"/>
+  <rect x="0" y="0" width="760" height="42" fill="#1f2937" rx="8"/>
+  <rect x="0" y="34" width="760" height="8" fill="#1f2937"/>
+  <text x="24" y="27" fill="#ffffff" font-size="15" font-weight="600">一段上下文该放在提示的哪里</text>
+  <text x="736" y="27" fill="#9ca3af" font-size="12" text-anchor="end">阶段 05 · 第 4 部分</text>
+
+  <text x="24" y="66" font-size="11.5" fill="#57606a">判据不是它是什么，是它多久变一次。</text>
+
+  <rect x="24" y="76" width="712" height="96" rx="6" fill="#eff6ff" stroke="#2563eb" stroke-width="1.8"/>
+  <text x="38" y="96" font-size="12.5" fill="#1e3a8a" font-weight="600">系统提示 —— 启动时算一次，整段会话逐字节不变</text>
+
+  <rect x="38" y="106" width="150" height="52" rx="4" fill="#ffffff" stroke="#93c5fd"/>
+  <text x="113" y="126" font-size="11.5" fill="#1e40af" text-anchor="middle">basePrompt</text>
+  <text x="113" y="142" font-size="10.5" fill="#57606a" text-anchor="middle">只有一个工具、shell 不持久</text>
+
+  <rect x="196" y="106" width="150" height="52" rx="4" fill="#ffffff" stroke="#93c5fd"/>
+  <text x="271" y="122" font-size="11.5" fill="#1e40af" text-anchor="middle" font-family="ui-monospace, Consolas, monospace">&lt;environment&gt;</text>
+  <text x="271" y="138" font-size="10.5" fill="#57606a" text-anchor="middle">os / shell / cwd</text>
+  <text x="271" y="152" font-size="10.5" fill="#57606a" text-anchor="middle">cwd 在这儿，因为 cd 移不动它</text>
+
+  <rect x="354" y="106" width="180" height="52" rx="4" fill="#ffffff" stroke="#93c5fd"/>
+  <text x="444" y="122" font-size="11.5" fill="#1e40af" text-anchor="middle" font-family="ui-monospace, Consolas, monospace">&lt;memory file="AGENTS.md"&gt;</text>
+  <text x="444" y="138" font-size="10.5" fill="#57606a" text-anchor="middle">人写的：约定、禁区、构建命令</text>
+  <text x="444" y="152" font-size="10.5" fill="#57606a" text-anchor="middle">agent 不改它</text>
+
+  <rect x="542" y="106" width="180" height="52" rx="4" fill="#ffffff" stroke="#93c5fd"/>
+  <text x="632" y="122" font-size="11.5" fill="#1e40af" text-anchor="middle" font-family="ui-monospace, Consolas, monospace">&lt;memory file="MEMORY.md"&gt;</text>
+  <text x="632" y="138" font-size="10.5" fill="#57606a" text-anchor="middle">agent 写给未来的自己</text>
+  <text x="632" y="152" font-size="10.5" fill="#57606a" text-anchor="middle">这一轮写的，下一次会话才读到</text>
+
+  <path d="M24 186 L736 186" stroke="#15803d" stroke-width="2" stroke-dasharray="7 4"/>
+  <text x="24" y="202" font-size="11.5" fill="#15803d" font-weight="600">缓存断点 —— 上面这一整段每次调用都命中，无论会话跑多久，它的 token 只付一次</text>
+
+  <text x="24" y="230" font-size="11.5" fill="#57606a">消息流 —— 只追加，不改写。会动的东西冻在创建它的那条消息里：</text>
+
+  <rect x="24" y="240" width="712" height="56" rx="6" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="38" y="258" font-size="11.5" fill="#1f2328" font-weight="600">第 1 轮 user</text>
+  <rect x="120" y="246" width="330" height="44" rx="4" fill="#fff7ed" stroke="#d97706"/>
+  <text x="132" y="263" font-size="10.5" fill="#92400e" font-family="ui-monospace, Consolas, monospace">&lt;now&gt;2026-08-27 04:38:53 +0800&lt;/now&gt;</text>
+  <text x="132" y="279" font-size="9.5" fill="#92400e" font-family="ui-monospace, Consolas, monospace">&lt;git branch="main" dirty="3"&gt;Stage 04: the cache&lt;/git&gt;</text>
+  <rect x="458" y="246" width="264" height="44" rx="4" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="590" y="272" font-size="11.5" fill="#1f2328" text-anchor="middle">你输入的那句话</text>
+
+  <rect x="24" y="304" width="712" height="28" rx="6" fill="#f6f8fa" stroke="#d0d7de"/>
+  <text x="38" y="323" font-size="11.5" fill="#57606a">assistant / tool_result / assistant …  这一轮剩下的往来，只追加</text>
+
+  <rect x="24" y="340" width="712" height="56" rx="6" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="38" y="358" font-size="11.5" fill="#1f2328" font-weight="600">第 2 轮 user</text>
+  <rect x="120" y="346" width="330" height="44" rx="4" fill="#fff7ed" stroke="#d97706"/>
+  <text x="132" y="363" font-size="10.5" fill="#92400e" font-family="ui-monospace, Consolas, monospace">&lt;now&gt; 这一轮按下回车的那一刻 &lt;/now&gt;</text>
+  <text x="132" y="379" font-size="10.5" fill="#92400e" font-family="ui-monospace, Consolas, monospace">&lt;git branch="…" dirty="…"&gt;…&lt;/git&gt;</text>
+  <rect x="458" y="346" width="264" height="44" rx="4" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="590" y="372" font-size="11.5" fill="#1f2328" text-anchor="middle">你输入的下一句话</text>
+
+  <text x="24" y="422" font-size="11.5" fill="#d97706" font-weight="600">橙色这两块的时间不一样，但它们是两条不同的、永久的行 —— 第 1 轮那块在第 2 轮请求里一个字节都没变。</text>
+
+  <text x="24" y="452" font-size="11.5" fill="#57606a">本能是每次请求都重算一遍时间戳，好让模型永远知道现在几点。那就是第 04 章 --break-cache 的做法，量出来 3.4 倍。</text>
+  <text x="24" y="472" font-size="11.5" fill="#57606a">而按下回车那一刻拍的快照，对它所属的那一整轮都是准确的 —— 新鲜和缓存同时拿到了。</text>
+  <text x="24" y="492" font-size="11.5" fill="#b91c1c">一句话：注入一次然后冻住，永远不要重算已经在前缀里的东西。</text>
+</svg>

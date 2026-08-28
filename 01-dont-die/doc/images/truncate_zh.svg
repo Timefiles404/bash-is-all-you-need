@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 350" width="700" height="350"
+     font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif">
+  <defs>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#b91c1c"/>
+    </marker>
+    <marker id="ag" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#15803d"/>
+    </marker>
+  </defs>
+
+  <rect width="700" height="350" fill="#fafbfc" rx="8"/>
+  <rect x="0" y="0" width="700" height="42" fill="#1f2937" rx="8"/>
+  <rect x="0" y="34" width="700" height="8" fill="#1f2937"/>
+  <text x="24" y="27" fill="#ffffff" font-size="15" font-weight="600">掐掉中间，而不是掐掉尾巴</text>
+  <text x="676" y="27" fill="#9ca3af" font-size="12" text-anchor="end">阶段 01</text>
+
+  <text x="40" y="72" font-size="12.5" fill="#57606a">只留开头 —— 最省事的写法</text>
+
+  <!-- bar 1: head only -->
+  <rect x="40" y="82" width="200" height="34" rx="4" fill="#eff6ff" stroke="#2563eb" stroke-width="1.5"/>
+  <text x="140" y="104" font-size="12" fill="#1e3a8a" text-anchor="middle">留下来的开头</text>
+  <rect x="240" y="82" width="400" height="34" rx="4" fill="#f3f4f6" stroke="#d0d7de" stroke-dasharray="5 4"/>
+  <text x="430" y="104" font-size="12" fill="#9ca3af" text-anchor="middle">丢掉</text>
+  <rect x="606" y="82" width="34" height="34" rx="4" fill="#fef2f2" stroke="#b91c1c" stroke-width="1.5"/>
+
+  <path d="M623 132 L623 120" stroke="#b91c1c" stroke-width="1.5" marker-end="url(#ar)"/>
+  <text x="640" y="146" font-size="11.5" fill="#b91c1c" text-anchor="end">你要的那一行在这里</text>
+
+  <text x="40" y="146" font-size="11.5" fill="#57606a">一次失败的构建，有价值的正是最后二十行。它刚好在被丢掉的那一段里。</text>
+
+  <text x="40" y="192" font-size="12.5" fill="#57606a">掐掉中间 —— truncate() 的做法</text>
+
+  <!-- bar 2: head + tail -->
+  <rect x="40" y="202" width="160" height="34" rx="4" fill="#eff6ff" stroke="#2563eb" stroke-width="1.5"/>
+  <text x="120" y="224" font-size="12" fill="#1e3a8a" text-anchor="middle">头（预算的 2/3）</text>
+  <rect x="200" y="202" width="360" height="34" rx="4" fill="#f3f4f6" stroke="#d0d7de" stroke-dasharray="5 4"/>
+  <text x="380" y="224" font-size="12" fill="#6b7280" text-anchor="middle" font-family="ui-monospace, Consolas, monospace">[... 1503 bytes elided ...]</text>
+  <rect x="560" y="202" width="80" height="34" rx="4" fill="#eff6ff" stroke="#2563eb" stroke-width="1.5"/>
+  <text x="600" y="224" font-size="11.5" fill="#1e3a8a" text-anchor="middle">尾（1/3）</text>
+  <rect x="606" y="202" width="34" height="34" rx="4" fill="#f0fdf4" stroke="#15803d" stroke-width="1.5"/>
+
+  <path d="M623 252 L623 240" stroke="#15803d" stroke-width="1.5" marker-end="url(#ag)"/>
+  <text x="640" y="266" font-size="11.5" fill="#15803d" text-anchor="end">同一行，活下来了</text>
+
+  <text x="40" y="266" font-size="11.5" fill="#57606a">中间省掉多少字节，直接写在省略标记里，模型自己就知道该换一条更窄的命令。</text>
+
+  <!-- the budget split -->
+  <text x="40" y="304" font-size="12.5" fill="#57606a">同一个 max-output 预算，两条流分开算：</text>
+  <rect x="300" y="290" width="226" height="22" rx="4" fill="#eff6ff" stroke="#2563eb"/>
+  <text x="413" y="305" font-size="11.5" fill="#1e3a8a" text-anchor="middle">stdout · 2/3</text>
+  <rect x="526" y="290" width="114" height="22" rx="4" fill="#fff7ed" stroke="#d97706"/>
+  <text x="583" y="305" font-size="11.5" fill="#92400e" text-anchor="middle">stderr · 1/3</text>
+
+  <text x="40" y="336" font-size="11.5" fill="#57606a">两个切点还要落在 UTF-8 的字符边界上：半个汉字是非法 UTF-8，有些 API 会直接拒收整个请求体。</text>
+</svg>

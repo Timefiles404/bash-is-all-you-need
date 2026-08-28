@@ -124,6 +124,7 @@ go vet ./...                               # must be clean
 GOOS=linux go build -o /dev/null ./06-the-composer/code   # platform files are real
 GOOS=darwin go build -o /dev/null ./06-the-composer/code
 python external/tools/quotecheck.py                       # chapters quote real code
+python external/tools/doclinks.py                         # links and diagrams resolve
 python external/web/tools/build.py --check                # the drift check
 ```
 

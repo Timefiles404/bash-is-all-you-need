@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 500" width="760" height="500"
+     font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif">
+  <defs>
+    <marker id="c-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#2563eb"/>
+    </marker>
+  </defs>
+
+  <rect width="760" height="500" fill="#fafbfc" rx="8"/>
+  <rect x="0" y="0" width="760" height="42" fill="#1f2937" rx="8"/>
+  <rect x="0" y="34" width="760" height="8" fill="#1f2937"/>
+  <text x="24" y="27" fill="#ffffff" font-size="15" font-weight="600">这一刀能落在哪儿</text>
+  <text x="736" y="27" fill="#9ca3af" font-size="12" text-anchor="end">阶段 05 · 第 1 部分</text>
+
+  <text x="24" y="66" font-size="11.5" fill="#57606a">下标 · 角色 · 这条消息里装着什么</text>
+  <text x="360" y="66" font-size="11.5" fill="#57606a">切在它前面，会怎么样</text>
+
+  <!-- 0 -->
+  <rect x="24" y="74" width="316" height="30" rx="5" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="36" y="94" font-size="12.5" fill="#1f2328"><tspan font-family="ui-monospace, Consolas, monospace">0  user</tspan>   你的问题</text>
+  <text x="360" y="94" font-size="12" fill="#b91c1c">不行 · user 消息，而摘要也是 user，会连着两条</text>
+
+  <!-- 1 -->
+  <rect x="24" y="110" width="316" height="30" rx="5" fill="#f0fdf4" stroke="#15803d"/>
+  <text x="36" y="130" font-size="12.5" fill="#14532d"><tspan font-family="ui-monospace, Consolas, monospace">1  assistant</tspan>   文字 + 两个 tool_call</text>
+  <text x="360" y="130" font-size="12" fill="#15803d">可以</text>
+
+  <!-- 2 -->
+  <rect x="24" y="146" width="316" height="30" rx="5" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="36" y="166" font-size="12.5" fill="#1f2328"><tspan font-family="ui-monospace, Consolas, monospace">2  user</tspan>   两条 tool_result</text>
+  <text x="360" y="166" font-size="12" fill="#b91c1c">不行 · 它们的调用在第 1 条，而第 1 条要被删掉</text>
+
+  <!-- 3 -->
+  <rect x="24" y="182" width="316" height="30" rx="5" fill="#f0fdf4" stroke="#15803d"/>
+  <text x="36" y="202" font-size="12.5" fill="#14532d"><tspan font-family="ui-monospace, Consolas, monospace">3  assistant</tspan>   文字 + 一个 tool_call</text>
+  <text x="360" y="202" font-size="12" fill="#15803d">可以</text>
+
+  <!-- 4 -->
+  <rect x="24" y="218" width="316" height="30" rx="5" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="36" y="238" font-size="12.5" fill="#1f2328"><tspan font-family="ui-monospace, Consolas, monospace">4  user</tspan>   一条 tool_result</text>
+  <text x="360" y="238" font-size="12" fill="#b91c1c">不行 · 同上，切完就是一条孤儿结果</text>
+
+  <!-- 5 -->
+  <rect x="24" y="254" width="316" height="30" rx="5" fill="#eff6ff" stroke="#2563eb" stroke-width="1.8"/>
+  <text x="36" y="274" font-size="12.5" fill="#1e3a8a" font-weight="600"><tspan font-family="ui-monospace, Consolas, monospace">5  assistant</tspan>   文字</text>
+  <text x="360" y="274" font-size="12" fill="#2563eb" font-weight="600">可以 · 落刀 —— safeCut 从想切的位置往后找到的第一个</text>
+
+  <!-- 6 -->
+  <rect x="24" y="290" width="316" height="30" rx="5" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="36" y="310" font-size="12.5" fill="#1f2328"><tspan font-family="ui-monospace, Consolas, monospace">6  user</tspan>   下一个问题</text>
+  <text x="360" y="310" font-size="12" fill="#b91c1c">不行 · user 消息</text>
+
+  <path d="M24 336 L736 336" stroke="#d0d7de" stroke-width="1"/>
+
+  <!-- result -->
+  <text x="24" y="362" font-size="12" fill="#57606a">切在 5 之前，数组变成 —— 前面全部换成一条打了标签的 user 消息：</text>
+
+  <rect x="24" y="374" width="230" height="42" rx="5" fill="#eff6ff" stroke="#2563eb" stroke-width="1.5"/>
+  <text x="139" y="391" font-size="12" fill="#1e3a8a" text-anchor="middle" font-weight="600">user</text>
+  <text x="139" y="408" font-size="11" fill="#1e40af" text-anchor="middle" font-family="ui-monospace, Consolas, monospace">&lt;session-summary&gt;…</text>
+
+  <path d="M258 395 L288 395" stroke="#2563eb" stroke-width="1.5" marker-end="url(#c-a)"/>
+
+  <rect x="292" y="374" width="120" height="42" rx="5" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="352" y="391" font-size="12" fill="#1f2328" text-anchor="middle">5 assistant</text>
+  <text x="352" y="408" font-size="11" fill="#57606a" text-anchor="middle">原样保留</text>
+
+  <rect x="420" y="374" width="120" height="42" rx="5" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="480" y="391" font-size="12" fill="#1f2328" text-anchor="middle">6 user</text>
+  <text x="480" y="408" font-size="11" fill="#57606a" text-anchor="middle">原样保留</text>
+
+  <rect x="548" y="374" width="120" height="42" rx="5" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="608" y="391" font-size="12" fill="#1f2328" text-anchor="middle">7 …</text>
+  <text x="608" y="408" font-size="11" fill="#57606a" text-anchor="middle">原样保留</text>
+
+  <text x="684" y="399" font-size="12" fill="#57606a">→</text>
+
+  <text x="24" y="446" font-size="11.5" fill="#57606a">摘要以 user 身份进历史，所以它右边第一条必须是 assistant —— 这就是「只能切在 assistant 之前」的来源。</text>
+  <text x="24" y="466" font-size="11.5" fill="#57606a">两种拒绝方式对应两条不同的协议规则，代码里分开检查：role 判断今天已经蕴含了另一项，明天不一定。</text>
+  <text x="24" y="486" font-size="11.5" fill="#b91c1c">切错的代价不是立刻报错，是两三轮之后由服务端拒绝，而错误信息指向拼请求的那个函数。</text>
+</svg>

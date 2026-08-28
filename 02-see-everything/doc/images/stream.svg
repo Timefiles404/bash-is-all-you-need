@@ -1,0 +1,96 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 560" width="700" height="560"
+     font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#57606a"/>
+    </marker>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#b91c1c"/>
+    </marker>
+    <marker id="ao" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#d97706"/>
+    </marker>
+    <marker id="ab" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#2563eb"/>
+    </marker>
+  </defs>
+
+  <rect width="700" height="560" fill="#fafbfc" rx="8"/>
+  <rect x="0" y="0" width="700" height="42" fill="#1f2937" rx="8"/>
+  <rect x="0" y="34" width="700" height="8" fill="#1f2937"/>
+  <text x="24" y="27" fill="#ffffff" font-size="15" font-weight="600">One streamed reply, frame by frame</text>
+  <text x="676" y="27" fill="#9ca3af" font-size="12" text-anchor="end">stage 02</text>
+
+  <text x="24" y="60" font-size="11" fill="#9ca3af">the data: frames the gateway sent, top to bottom</text>
+
+  <!-- time spine -->
+  <path d="M16 70 L16 470" stroke="#e5e7eb" stroke-width="2" marker-end="url(#a)"/>
+
+  <!-- 1. role opener -->
+  <rect x="28" y="68" width="286" height="30" rx="5" fill="#f3f4f6" stroke="#d0d7de"/>
+  <text x="40" y="88" font-size="11.5" fill="#6b7280" font-family="ui-monospace, Consolas, monospace">delta: {role:"assistant", content:""}</text>
+  <path d="M314 83 L332 83" stroke="#d97706" stroke-width="1.5" marker-end="url(#ao)"/>
+  <text x="338" y="80" font-size="11.5" fill="#92400e">No payload. It must not count as the first</text>
+  <text x="338" y="96" font-size="11.5" fill="#92400e">token — counting it turns TTFT into TTFB.</text>
+
+  <!-- 2. id + name -->
+  <rect x="28" y="108" width="286" height="30" rx="5" fill="#eff6ff" stroke="#2563eb" stroke-width="1.5"/>
+  <text x="40" y="128" font-size="11.5" fill="#1e3a8a" font-family="ui-monospace, Consolas, monospace">tool_calls[0]: {id, function.name}</text>
+  <path d="M314 123 L332 123" stroke="#2563eb" stroke-width="1.5" marker-end="url(#ab)"/>
+  <text x="338" y="120" font-size="11.5" fill="#1e40af">id and name appear in this frame only,</text>
+  <text x="338" y="136" font-size="11.5" fill="#b91c1c">and are null in every frame after. Latch them.</text>
+
+  <!-- 3..7 argument fragments -->
+  <rect x="28" y="150" width="286" height="26" rx="5" fill="#eff6ff" stroke="#93c5fd"/>
+  <text x="40" y="168" font-size="11.5" fill="#1e3a8a" font-family="ui-monospace, Consolas, monospace">arguments: {"command": </text>
+
+  <rect x="28" y="180" width="286" height="26" rx="5" fill="#eff6ff" stroke="#93c5fd"/>
+  <text x="40" y="198" font-size="11.5" fill="#1e3a8a" font-family="ui-monospace, Consolas, monospace">arguments: "</text>
+
+  <rect x="28" y="210" width="286" height="26" rx="5" fill="#eff6ff" stroke="#93c5fd"/>
+  <text x="40" y="228" font-size="11.5" fill="#1e3a8a" font-family="ui-monospace, Consolas, monospace">arguments: ls</text>
+
+  <rect x="28" y="240" width="286" height="26" rx="5" fill="#eff6ff" stroke="#93c5fd"/>
+  <text x="40" y="258" font-size="11.5" fill="#1e3a8a" font-family="ui-monospace, Consolas, monospace">arguments:  -la /srv</text>
+
+  <rect x="28" y="270" width="286" height="26" rx="5" fill="#eff6ff" stroke="#93c5fd"/>
+  <text x="40" y="288" font-size="11.5" fill="#1e3a8a" font-family="ui-monospace, Consolas, monospace">arguments: /app</text>
+
+  <!-- bracket over the fragments -->
+  <path d="M320 152 L328 152 L328 294 L320 294" stroke="#2563eb" stroke-width="1.5" fill="none"/>
+  <path d="M328 223 L344 223" stroke="#2563eb" stroke-width="1.5" marker-end="url(#ab)"/>
+  <text x="350" y="196" font-size="11.5" fill="#1e40af">Split mid-word and mid-path.</text>
+  <text x="350" y="214" font-size="11.5" fill="#b91c1c">No fragment is valid JSON,</text>
+  <text x="350" y="232" font-size="11.5" fill="#b91c1c">so never parse one.</text>
+  <text x="350" y="252" font-size="11.5" fill="#1e40af">Accumulate raw bytes by index, parse once.</text>
+
+  <!-- 8. finish_reason -->
+  <rect x="28" y="308" width="286" height="30" rx="5" fill="#eff6ff" stroke="#2563eb" stroke-width="1.5"/>
+  <text x="40" y="328" font-size="11.5" fill="#1e3a8a" font-family="ui-monospace, Consolas, monospace">finish_reason: …</text>
+  <path d="M314 323 L332 323" stroke="#2563eb" stroke-width="1.5" marker-end="url(#ab)"/>
+  <text x="338" y="327" font-size="11.5" fill="#1e40af">Same again: null in every frame before it.</text>
+
+  <!-- 9. usage -->
+  <rect x="28" y="348" width="286" height="30" rx="5" fill="#fef2f2" stroke="#b91c1c" stroke-width="1.5"/>
+  <text x="40" y="368" font-size="11.5" fill="#7f1d1d" font-family="ui-monospace, Consolas, monospace">usage: {…}, "choices": []</text>
+  <path d="M314 363 L332 363" stroke="#b91c1c" stroke-width="1.5" marker-end="url(#ar)"/>
+  <text x="338" y="360" font-size="11.5" fill="#7f1d1d" font-weight="600">choices[0] panics here, out of range.</text>
+  <text x="338" y="376" font-size="11.5" fill="#7f1d1d">Use range: an empty array just skips.</text>
+
+  <!-- 10. DONE -->
+  <rect x="28" y="388" width="286" height="30" rx="5" fill="#fff7ed" stroke="#d97706" stroke-width="1.5"/>
+  <text x="40" y="408" font-size="11.5" fill="#92400e" font-family="ui-monospace, Consolas, monospace">data: [DONE]</text>
+  <path d="M314 403 L332 403" stroke="#d97706" stroke-width="1.5" marker-end="url(#ao)"/>
+  <text x="338" y="407" font-size="11.5" fill="#92400e">Skip it and keep reading. Not a stop signal.</text>
+
+  <!-- 11. post-DONE -->
+  <rect x="28" y="428" width="286" height="30" rx="5" fill="#fef2f2" stroke="#b91c1c" stroke-width="1.5"/>
+  <text x="40" y="448" font-size="11.5" fill="#7f1d1d" font-family="ui-monospace, Consolas, monospace">{"choices":[],"cost":"0"}</text>
+  <path d="M314 443 L332 443" stroke="#b91c1c" stroke-width="1.5" marker-end="url(#ar)"/>
+  <text x="338" y="440" font-size="11.5" fill="#7f1d1d">A client that stops at [DONE] discards this,</text>
+  <text x="338" y="456" font-size="11.5" fill="#7f1d1d">and leaves the body unread, so no keep-alive.</text>
+
+  <line x1="24" y1="484" x2="676" y2="484" stroke="#e5e7eb" stroke-width="1"/>
+  <text x="24" y="508" font-size="11.5" fill="#57606a">Not one `event:` line in the whole stream: the protocol has the field, this endpoint never uses it.</text>
+  <text x="24" y="530" font-size="11.5" fill="#57606a">None of the five errors out: a panic, a lost id, mangled arguments, a wrong latency, an extra handshake.</text>
+</svg>

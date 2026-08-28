@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 780 480" width="780" height="480"
+     font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif">
+  <defs>
+    <marker id="ab" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#2563eb"/>
+    </marker>
+    <marker id="ag" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#15803d"/>
+    </marker>
+  </defs>
+
+  <rect width="780" height="480" fill="#fafbfc" rx="8"/>
+  <rect x="0" y="0" width="780" height="42" fill="#1f2937" rx="8"/>
+  <rect x="0" y="34" width="780" height="8" fill="#1f2937"/>
+  <text x="24" y="27" fill="#ffffff" font-size="15" font-weight="600">One subagent: what crosses the boundary</text>
+  <text x="756" y="27" fill="#9ca3af" font-size="12" text-anchor="end">stage 07</text>
+
+  <text x="28" y="62" font-size="12.5" fill="#1f2328" font-weight="600">the parent's []Msg</text>
+  <text x="438" y="62" font-size="12.5" fill="#1f2328" font-weight="600">the child's []Msg — created inside spawn</text>
+
+  <!-- the parent's array -->
+  <rect x="28" y="72" width="210" height="28" rx="5" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="133" y="91" font-size="11.5" fill="#1f2328" text-anchor="middle">system + stable</text>
+
+  <rect x="28" y="106" width="210" height="28" rx="5" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="133" y="125" font-size="11.5" fill="#1f2328" text-anchor="middle">user: three docs, 3 lines each</text>
+
+  <rect x="28" y="140" width="210" height="34" rx="5" fill="#eff6ff" stroke="#2563eb" stroke-width="1.5"/>
+  <text x="133" y="161" font-size="11.5" fill="#1e3a8a" text-anchor="middle" font-weight="600">assistant: one task call</text>
+
+  <rect x="28" y="182" width="210" height="42" rx="5" fill="#f0fdf4" stroke="#15803d" stroke-width="1.5"/>
+  <text x="133" y="200" font-size="11.5" fill="#14532d" text-anchor="middle" font-weight="600">user: one tool_result block</text>
+  <text x="133" y="217" font-size="11" fill="#14532d" text-anchor="middle">the report, 707 B</text>
+
+  <rect x="28" y="232" width="210" height="28" rx="5" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="133" y="251" font-size="11.5" fill="#1f2328" text-anchor="middle">assistant: three sentences</text>
+
+  <!-- the child's array, and the dashed box is the whole point -->
+  <rect x="430" y="64" width="330" height="228" rx="6" fill="none" stroke="#9ca3af" stroke-width="1.5" stroke-dasharray="5 4"/>
+
+  <rect x="438" y="72" width="314" height="26" rx="5" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="595" y="90" font-size="11.5" fill="#1f2328" text-anchor="middle">subagentSystem + the same stable</text>
+
+  <rect x="438" y="104" width="314" height="26" rx="5" fill="#eff6ff" stroke="#2563eb" stroke-width="1.5"/>
+  <text x="595" y="122" font-size="11.5" fill="#1e3a8a" text-anchor="middle">user: the prompt the parent wrote</text>
+
+  <rect x="438" y="136" width="314" height="24" rx="5" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="595" y="152" font-size="11" fill="#1f2328" text-anchor="middle">assistant: cat a.md</text>
+
+  <rect x="438" y="166" width="314" height="24" rx="5" fill="#f6f8fa" stroke="#d0d7de"/>
+  <text x="595" y="182" font-size="11" fill="#1f2328" text-anchor="middle">tool_result: twenty-odd kB of text</text>
+
+  <rect x="438" y="196" width="314" height="24" rx="5" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="595" y="212" font-size="11" fill="#1f2328" text-anchor="middle">assistant: one wrong turn, backed out</text>
+
+  <rect x="438" y="226" width="314" height="24" rx="5" fill="#f6f8fa" stroke="#d0d7de"/>
+  <text x="595" y="242" font-size="11" fill="#1f2328" text-anchor="middle">tool_result: …</text>
+
+  <rect x="438" y="256" width="314" height="32" rx="5" fill="#f0fdf4" stroke="#15803d" stroke-width="1.5"/>
+  <text x="595" y="277" font-size="11.5" fill="#14532d" text-anchor="middle" font-weight="600">assistant: final report, 707 B</text>
+
+  <text x="438" y="310" font-size="11.5" fill="#57606a">The moment spawn returns, this column is gone.</text>
+  <text x="438" y="328" font-size="11.5" fill="#57606a">What crosses is a copy of that last piece of text.</text>
+
+  <!-- what crosses, in each direction -->
+  <path d="M238 157 L300 157 L300 117 L432 117" stroke="#2563eb" stroke-width="1.5" fill="none" marker-end="url(#ab)"/>
+  <text x="306" y="110" font-size="11" fill="#2563eb">prompt</text>
+
+  <path d="M438 272 L400 272 L400 202 L244 202" stroke="#15803d" stroke-width="1.5" fill="none" marker-end="url(#ag)"/>
+  <text x="320" y="240" font-size="11.5" fill="#15803d" text-anchor="middle" font-weight="600">only this text crosses</text>
+
+  <!-- shared -->
+  <rect x="28" y="350" width="724" height="62" rx="6" fill="#eff6ff" stroke="#2563eb" stroke-width="1.5"/>
+  <text x="44" y="372" font-size="12.5" fill="#1e3a8a" font-weight="600">What both sides share is one of, not two of</text>
+  <text x="44" y="394" font-size="12" fill="#1e40af">provider · HTTP client · the gate · shell config and cwd · the bus core (one ordered trace for the tree)</text>
+
+  <text x="28" y="436" font-size="11.5" fill="#57606a">The child's record does not cross: every tool call, every output, every wrong turn stays in that column.</text>
+  <text x="28" y="456" font-size="11.5" fill="#57606a">The parent's context grows by one report — so what it saves is not tokens, it is context.</text>
+</svg>

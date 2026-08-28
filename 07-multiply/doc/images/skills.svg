@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 460" width="760" height="460"
+     font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif">
+  <defs>
+    <marker id="ag" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#15803d"/>
+    </marker>
+  </defs>
+
+  <rect width="760" height="460" fill="#fafbfc" rx="8"/>
+  <rect x="0" y="0" width="760" height="42" fill="#1f2937" rx="8"/>
+  <rect x="0" y="34" width="760" height="8" fill="#1f2937"/>
+  <text x="24" y="27" fill="#ffffff" font-size="15" font-weight="600">Two placements: the bodies in the prompt, or the index</text>
+  <text x="736" y="27" fill="#9ca3af" font-size="12" text-anchor="end">stage 07</text>
+
+  <text x="24" y="62" font-size="12.5" fill="#57606a" font-weight="600">all three bodies into the system prompt</text>
+  <text x="392" y="62" font-size="12.5" fill="#1e3a8a" font-weight="600">only the index into the system prompt</text>
+
+  <!-- left: the bodies live in the prefix -->
+  <rect x="24" y="72" width="344" height="170" rx="6" fill="#ffffff" stroke="#d0d7de" stroke-width="1.5"/>
+  <text x="38" y="92" font-size="11.5" fill="#57606a">system prompt (cached prefix)</text>
+
+  <rect x="38" y="100" width="316" height="40" rx="5" fill="#f6f8fa" stroke="#d0d7de"/>
+  <text x="196" y="125" font-size="11.5" fill="#1f2328" text-anchor="middle">the mutation-test body</text>
+
+  <rect x="38" y="146" width="316" height="40" rx="5" fill="#f6f8fa" stroke="#d0d7de"/>
+  <text x="196" y="171" font-size="11.5" fill="#1f2328" text-anchor="middle">the new-stage body</text>
+
+  <rect x="38" y="192" width="316" height="40" rx="5" fill="#f6f8fa" stroke="#d0d7de"/>
+  <text x="196" y="217" font-size="11.5" fill="#1f2328" text-anchor="middle">the wire-probe body</text>
+
+  <rect x="24" y="256" width="104" height="30" rx="5" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="76" y="275" font-size="10.5" fill="#57606a" text-anchor="middle">req 1 · 6.1 kB</text>
+  <rect x="136" y="256" width="104" height="30" rx="5" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="188" y="275" font-size="10.5" fill="#57606a" text-anchor="middle">req 2 · 6.1 kB</text>
+  <rect x="248" y="256" width="104" height="30" rx="5" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="300" y="275" font-size="10.5" fill="#57606a" text-anchor="middle">req N · 6.1 kB</text>
+
+  <text x="24" y="306" font-size="11.5" fill="#57606a">Requests with nothing to do with skills pay it too.</text>
+
+  <rect x="24" y="320" width="344" height="42" rx="6" fill="#f6f8fa" stroke="#d0d7de"/>
+  <text x="196" y="338" font-size="11.5" fill="#57606a" text-anchor="middle">There is no "only this turn" tier</text>
+  <text x="196" y="355" font-size="11" fill="#57606a" text-anchor="middle">in the prefix means in every turn</text>
+
+  <!-- right: only the index lives in the prefix -->
+  <rect x="392" y="72" width="344" height="88" rx="6" fill="#eff6ff" stroke="#2563eb" stroke-width="1.5"/>
+  <text x="406" y="92" font-size="11.5" fill="#1e40af">system prompt (cached prefix)</text>
+  <text x="406" y="112" font-size="10.5" fill="#1e3a8a" font-family="ui-monospace, Consolas, monospace">skills/mutation-test/SKILL.md · one line</text>
+  <text x="406" y="130" font-size="10.5" fill="#1e3a8a" font-family="ui-monospace, Consolas, monospace">skills/new-stage/SKILL.md · one line</text>
+  <text x="406" y="148" font-size="10.5" fill="#1e3a8a" font-family="ui-monospace, Consolas, monospace">skills/wire-probe/SKILL.md · one line</text>
+
+  <rect x="392" y="172" width="104" height="30" rx="5" fill="#eff6ff" stroke="#2563eb"/>
+  <text x="444" y="191" font-size="10.5" fill="#1e40af" text-anchor="middle">req 1 · 738 B</text>
+  <rect x="504" y="172" width="104" height="30" rx="5" fill="#eff6ff" stroke="#2563eb"/>
+  <text x="556" y="191" font-size="10.5" fill="#1e40af" text-anchor="middle">req 2 · 738 B</text>
+  <rect x="616" y="172" width="104" height="30" rx="5" fill="#eff6ff" stroke="#2563eb"/>
+  <text x="668" y="191" font-size="10.5" fill="#1e40af" text-anchor="middle">req N · 738 B</text>
+
+  <rect x="392" y="210" width="344" height="80" rx="6" fill="#ffffff" stroke="#d0d7de" stroke-width="1.5"/>
+  <text x="406" y="228" font-size="11.5" fill="#57606a">on disk, 6.1 kB total, never in the prefix</text>
+  <text x="406" y="248" font-size="10.5" fill="#1f2328" font-family="ui-monospace, Consolas, monospace">skills/mutation-test/SKILL.md</text>
+  <text x="406" y="264" font-size="10.5" fill="#1f2328" font-family="ui-monospace, Consolas, monospace">skills/new-stage/SKILL.md</text>
+  <text x="406" y="280" font-size="10.5" fill="#1f2328" font-family="ui-monospace, Consolas, monospace">skills/wire-probe/SKILL.md</text>
+
+  <path d="M500 290 L500 314" stroke="#15803d" stroke-width="1.5" marker-end="url(#ag)"/>
+  <text x="512" y="306" font-size="11" fill="#15803d">cat: only on the turn it is needed</text>
+
+  <rect x="392" y="320" width="344" height="42" rx="6" fill="#f0fdf4" stroke="#15803d" stroke-width="1.5"/>
+  <text x="564" y="338" font-size="11.5" fill="#14532d" text-anchor="middle" font-weight="600">this turn's conversation (after the breakpoint)</text>
+  <text x="564" y="355" font-size="11" fill="#14532d" text-anchor="middle">one body, and only that one</text>
+
+  <text x="24" y="404" font-size="11.5" fill="#57606a">The index is not free: 738 B sits in the prefix of every request, all session. It is only cheaper.</text>
+  <text x="24" y="424" font-size="11.5" fill="#57606a">The body goes into the conversation, not the prefix — so it costs nothing until the turn that read it.</text>
+</svg>

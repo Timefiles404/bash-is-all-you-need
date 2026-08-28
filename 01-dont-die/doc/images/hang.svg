@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 330" width="700" height="330"
+     font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#57606a"/>
+    </marker>
+    <marker id="ab" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#2563eb"/>
+    </marker>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#b91c1c"/>
+    </marker>
+  </defs>
+
+  <rect width="700" height="330" fill="#fafbfc" rx="8"/>
+  <rect x="0" y="0" width="700" height="42" fill="#1f2937" rx="8"/>
+  <rect x="0" y="34" width="700" height="8" fill="#1f2937"/>
+  <text x="24" y="27" fill="#ffffff" font-size="15" font-weight="600">Wait() is not waiting for the process. It waits for the pipe.</text>
+  <text x="676" y="27" fill="#9ca3af" font-size="12" text-anchor="end">stage 01</text>
+
+  <!-- the two writers -->
+  <rect x="24" y="78" width="176" height="48" rx="6" fill="#f3f4f6" stroke="#d0d7de"/>
+  <text x="112" y="99" font-size="13" fill="#6b7280" text-anchor="middle" font-family="ui-monospace, Consolas, monospace">bash -c "…"</text>
+  <text x="112" y="117" font-size="11.5" fill="#6b7280" text-anchor="middle">this is what you killed</text>
+
+  <rect x="24" y="158" width="176" height="48" rx="6" fill="#eff6ff" stroke="#2563eb" stroke-width="1.5"/>
+  <text x="112" y="179" font-size="13" fill="#1e3a8a" text-anchor="middle">the background child</text>
+  <text x="112" y="197" font-size="11.5" fill="#1e40af" text-anchor="middle">nobody killed it; alive</text>
+
+  <path d="M200 102 L276 102" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
+  <path d="M200 182 L276 182" stroke="#2563eb" stroke-width="1.5" marker-end="url(#ab)"/>
+
+  <!-- the pipe -->
+  <rect x="278" y="76" width="164" height="132" rx="6" fill="#ffffff" stroke="#57606a" stroke-width="1.5"/>
+  <text x="360" y="100" font-size="13.5" fill="#1f2328" text-anchor="middle" font-weight="600">the stdout pipe</text>
+  <text x="360" y="126" font-size="12" fill="#6b7280" text-anchor="middle">writer 1: closed</text>
+  <text x="360" y="148" font-size="12" fill="#1e40af" text-anchor="middle">writer 2: still open</text>
+  <line x1="296" y1="162" x2="424" y2="162" stroke="#e5e7eb" stroke-width="1"/>
+  <text x="360" y="186" font-size="12" fill="#b91c1c" text-anchor="middle">so EOF never comes</text>
+
+  <!-- the copier -->
+  <path d="M442 142 L494 142" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
+  <rect x="496" y="112" width="180" height="60" rx="6" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="586" y="135" font-size="12.5" fill="#1f2328" text-anchor="middle">os/exec's copy goroutine</text>
+  <text x="586" y="155" font-size="11.5" fill="#57606a" text-anchor="middle">it ends only at EOF</text>
+
+  <path d="M586 172 L586 216" stroke="#b91c1c" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#ar)"/>
+  <text x="596" y="198" font-size="11.5" fill="#b91c1c">never ends</text>
+
+  <rect x="466" y="218" width="210" height="58" rx="6" fill="#fef2f2" stroke="#b91c1c" stroke-width="1.5"/>
+  <text x="571" y="240" font-size="13" fill="#7f1d1d" text-anchor="middle" font-family="ui-monospace, Consolas, monospace">cmd.Wait()</text>
+  <text x="571" y="260" font-size="11.5" fill="#7f1d1d" text-anchor="middle">waits for exit and the goroutine</text>
+
+  <text x="24" y="240" font-size="11.5" fill="#57606a">A pipe signals EOF when</text>
+  <text x="24" y="260" font-size="11.5" fill="#57606a" font-weight="600">every writer has closed.</text>
+  <text x="24" y="280" font-size="11.5" fill="#57606a">Killing the shell closed one.</text>
+
+  <text x="24" y="314" font-size="11.5" fill="#57606a">So that select branch never receives done: the timeout is hung by the thing it was escaping.</text>
+</svg>

@@ -1,0 +1,80 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 530" width="700" height="530"
+     font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#57606a"/>
+    </marker>
+    <marker id="ag" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#15803d"/>
+    </marker>
+  </defs>
+
+  <rect width="700" height="530" fill="#fafbfc" rx="8"/>
+  <rect x="0" y="0" width="700" height="42" fill="#1f2937" rx="8"/>
+  <rect x="0" y="34" width="700" height="8" fill="#1f2937"/>
+  <text x="24" y="27" fill="#ffffff" font-size="15" font-weight="600">The four gates one command passes</text>
+  <text x="676" y="27" fill="#9ca3af" font-size="12" text-anchor="end">stage 01</text>
+
+  <!-- spine -->
+  <rect x="40" y="62" width="300" height="32" rx="6" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="190" y="83" font-size="13" fill="#1f2328" text-anchor="middle">the model's reply this turn</text>
+  <path d="M190 94 L190 110" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
+
+  <rect x="40" y="112" width="300" height="38" rx="6" fill="#fff7ed" stroke="#d97706" stroke-width="1.5"/>
+  <text x="190" y="136" font-size="13" fill="#92400e" text-anchor="middle">did finish_reason say it was cut off?</text>
+  <path d="M190 150 L190 166" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
+
+  <rect x="40" y="168" width="300" height="38" rx="6" fill="#fff7ed" stroke="#d97706" stroke-width="1.5"/>
+  <text x="190" y="192" font-size="13" fill="#92400e" text-anchor="middle">is there actually a command field?</text>
+  <path d="M190 206 L190 222" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
+
+  <rect x="40" y="224" width="300" height="38" rx="6" fill="#fff7ed" stroke="#d97706" stroke-width="1.5"/>
+  <text x="190" y="248" font-size="13" fill="#92400e" text-anchor="middle">the gate: do we run this?</text>
+  <path d="M190 262 L190 278" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
+
+  <rect x="40" y="280" width="300" height="48" rx="6" fill="#eff6ff" stroke="#2563eb" stroke-width="1.5"/>
+  <text x="190" y="300" font-size="13.5" fill="#1e3a8a" text-anchor="middle" font-weight="600">execute</text>
+  <text x="190" y="319" font-size="12" fill="#1e40af" text-anchor="middle">the process group kills grandchildren too</text>
+  <path d="M190 328 L190 344" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
+
+  <rect x="40" y="346" width="300" height="48" rx="6" fill="#eff6ff" stroke="#2563eb" stroke-width="1.5"/>
+  <text x="190" y="366" font-size="13.5" fill="#1e3a8a" text-anchor="middle" font-weight="600">sanitise, then cut the middle out</text>
+  <text x="190" y="385" font-size="12" fill="#1e40af" text-anchor="middle">strip ANSI and CRLF, keep both ends</text>
+  <path d="M190 394 L190 412" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
+
+  <!-- the four side exits -->
+  <path d="M340 131 L396 131" stroke="#15803d" stroke-width="1.5" marker-end="url(#ag)"/>
+  <text x="368" y="125" font-size="11" fill="#15803d" text-anchor="middle">yes</text>
+  <rect x="400" y="112" width="250" height="38" rx="6" fill="#f0fdf4" stroke="#15803d"/>
+  <text x="525" y="136" font-size="12.5" fill="#14532d" text-anchor="middle">reply: your call was cut off</text>
+
+  <path d="M340 187 L396 187" stroke="#15803d" stroke-width="1.5" marker-end="url(#ag)"/>
+  <text x="368" y="181" font-size="11" fill="#15803d" text-anchor="middle">absent</text>
+  <rect x="400" y="168" width="250" height="38" rx="6" fill="#f0fdf4" stroke="#15803d"/>
+  <text x="525" y="192" font-size="12.5" fill="#14532d" text-anchor="middle">reply: command field missing</text>
+
+  <path d="M340 243 L396 243" stroke="#15803d" stroke-width="1.5" marker-end="url(#ag)"/>
+  <text x="368" y="237" font-size="11" fill="#15803d" text-anchor="middle">no</text>
+  <rect x="400" y="224" width="250" height="38" rx="6" fill="#f0fdf4" stroke="#15803d"/>
+  <text x="525" y="248" font-size="12.5" fill="#14532d" text-anchor="middle">reply: the user denied it</text>
+
+  <path d="M340 305 L396 305" stroke="#15803d" stroke-width="1.5" marker-end="url(#ag)"/>
+  <text x="368" y="299" font-size="11" fill="#15803d" text-anchor="middle">timeout</text>
+  <rect x="400" y="286" width="250" height="38" rx="6" fill="#f0fdf4" stroke="#15803d"/>
+  <text x="525" y="310" font-size="12.5" fill="#14532d" text-anchor="middle">reply: the tree was killed</text>
+
+  <!-- the four exits converge on the same thing -->
+  <path d="M650 131 L668 131" stroke="#15803d" stroke-width="1.5" fill="none"/>
+  <path d="M650 187 L668 187" stroke="#15803d" stroke-width="1.5" fill="none"/>
+  <path d="M650 243 L668 243" stroke="#15803d" stroke-width="1.5" fill="none"/>
+  <path d="M650 305 L668 305" stroke="#15803d" stroke-width="1.5" fill="none"/>
+  <path d="M668 131 L668 436" stroke="#15803d" stroke-width="1.5" fill="none"/>
+  <path d="M668 436 L556 436" stroke="#15803d" stroke-width="1.5" fill="none" marker-end="url(#ag)"/>
+
+  <rect x="150" y="414" width="400" height="46" rx="6" fill="#ffffff" stroke="#d0d7de" stroke-width="1.5"/>
+  <text x="350" y="433" font-size="13" fill="#1f2328" text-anchor="middle">whichever path it took, one message goes back</text>
+  <text x="350" y="452" font-size="12" fill="#57606a" text-anchor="middle" font-family="ui-monospace, Consolas, monospace">{role:"tool", tool_call_id}</text>
+
+  <text x="24" y="492" font-size="11.5" fill="#57606a">Every branch ends in the same place: each tool_call comes back with a message.</text>
+  <text x="24" y="512" font-size="11.5" fill="#57606a">Leave one out and the next request is rejected for having a call left dangling.</text>
+</svg>

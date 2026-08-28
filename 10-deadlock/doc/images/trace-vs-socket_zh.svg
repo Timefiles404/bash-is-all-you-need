@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 456" width="760" height="456"
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 516" width="760" height="516"
      font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif">
   <defs>
     <marker id="ab" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
@@ -9,7 +9,7 @@
     </marker>
   </defs>
 
-  <rect width="760" height="456" fill="#fafbfc" rx="8"/>
+  <rect width="760" height="516" fill="#fafbfc" rx="8"/>
   <rect x="0" y="0" width="760" height="42" fill="#1f2937" rx="8"/>
   <rect x="0" y="34" width="760" height="8" fill="#1f2937"/>
   <text x="24" y="27" fill="#ffffff" font-size="15" font-weight="600">同一段时间，三种量法</text>
@@ -76,7 +76,10 @@
   <path d="M298 348 L418 348" stroke="#2563eb" stroke-width="1.5" marker-start="url(#ab)" marker-end="url(#ab)"/>
   <text x="358" y="340" font-size="12" fill="#1e40af" text-anchor="middle" font-weight="600">最宽 5001 ms</text>
 
-  <text x="24" y="400" font-size="12" fill="#57606a">量法二从 TTFT 反推，结论是窗口必须大于 16.4 秒。前提是错的：TTFT 量的是「内容什么时候出现」，看门狗看的是「socket 上什么时候被读到」。</text>
-  <text x="24" y="422" font-size="12" fill="#1f2328">同样这 14 次调用里，TTFT 最大 4157 ms，字节级最宽静默 5001 ms —— 流中间比第一个 token 之前更安静，两个量甚至不是 trace 暗示的那个顺序。</text>
-  <text x="24" y="444" font-size="11.5" fill="#57606a">一份 trace 里只有适配器选择转成事件的那些帧。它答不出这个问题，不是因为它记漏了，而是因为它记的从来就不是这个东西。</text>
+  <text x="24" y="396" font-size="12" fill="#57606a">量法二从 TTFT 反推，结论是窗口必须大于 16.4 秒。前提是错的：</text>
+  <text x="24" y="414" font-size="12" fill="#57606a">TTFT 量的是「内容什么时候出现」，看门狗看的是「socket 上什么时候被读到」。</text>
+  <text x="24" y="440" font-size="12" fill="#1f2328">同样这 14 次调用里，TTFT 最大 4157 ms，字节级最宽静默 5001 ms。</text>
+  <text x="24" y="458" font-size="12" fill="#1f2328">流中间比第一个 token 之前更安静 —— 两个量甚至不是 trace 暗示的那个顺序。</text>
+  <text x="24" y="484" font-size="11.5" fill="#57606a">一份 trace 里只有适配器选择转成事件的那些帧。它答不出这个问题，</text>
+  <text x="24" y="500" font-size="11.5" fill="#57606a">不是因为它记漏了，而是因为它记的从来就不是这个东西。</text>
 </svg>

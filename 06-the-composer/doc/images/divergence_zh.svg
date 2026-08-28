@@ -24,16 +24,16 @@
   <!-- events: keeps climbing -->
   <path d="M100 282 L320 180 L540 96" stroke="#2563eb" stroke-width="2.2" fill="none"/>
   <circle cx="320" cy="180" r="3.4" fill="#2563eb"/>
-  <text x="552" y="94" font-size="12" fill="#2563eb">events happened so far</text>
-  <text x="552" y="110" font-size="11" fill="#2563eb">发生过的事，只增不减</text>
+  <text x="544" y="94" font-size="11.5" fill="#2563eb">events happened so far</text>
+  <text x="544" y="110" font-size="11" fill="#2563eb">发生过的事，只增不减</text>
 
   <!-- messages: drops back -->
   <path d="M100 282 L320 186" stroke="#15803d" stroke-width="2.2" fill="none"/>
   <path d="M320 186 L320 256" stroke="#15803d" stroke-width="2.2" stroke-dasharray="4 3"/>
   <path d="M320 256 L540 206" stroke="#15803d" stroke-width="2.2" fill="none"/>
   <circle cx="320" cy="256" r="3.4" fill="#15803d"/>
-  <text x="552" y="204" font-size="12" fill="#15803d">the model can see</text>
-  <text x="552" y="220" font-size="11" fill="#15803d">它现在还看得见几条</text>
+  <text x="544" y="204" font-size="12" fill="#15803d">the model can see</text>
+  <text x="544" y="220" font-size="11" fill="#15803d">它现在还看得见几条</text>
 
   <!-- the gap -->
   <path d="M480 119 L480 220" stroke="#cf222e" stroke-width="1.2" stroke-dasharray="3 3"/>

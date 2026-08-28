@@ -37,6 +37,10 @@ jobs:
       # levels deep in places. A wrong one looks exactly like a right one.
       - name: links and diagrams resolve
         run: python external/tools/doclinks.py
+      # A diagram can be perfectly well-formed and still have a label hanging
+      # off the right edge. Four of the first thirty-eight did.
+      - name: diagrams fit inside their own canvas
+        run: python external/tools/svgcheck.py
       - name: browser levels match the stages
         run: python external/web/tools/build.py --check
 

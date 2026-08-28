@@ -43,30 +43,62 @@ import (
 	"mvdan.cc/sh/v3/syntax"
 )
 
+// sandbox 就是策略和审计记录，树里的每个 Agent 共用这一个。
+//
+// 它故意不持有总线。哪个 Agent 正在跑一条命令，是这次*调用*的属性，不是
+// 沙箱的属性——这和 render.go 的深度取自事件、而不是取自渲染器自己的状
+// 态，是同一个道理。一个沙箱同时服务父 Agent 和每一个子 Agent，所以存在
+// 这里的总线只会是碰巧造出它的那个 Agent 的那条，于是树里每一次 exec、每
+// 一次 open、每一次拒绝，都会被报成那个 Agent 干的。阶段 07 让这棵树并发
+// 起来了；而一份 trace 之所以会标错名字、又一点不像标错，正是因为这样一
+// 个字段。
 type sandbox struct {
-	root string
-	bus  *Bus
-
 	// enforce=false 把它变成观察者：报告每一次 exec、每一次 open，什么都不
 	// 拦。这值得单独做成一种模式——这里大半的价值就在于看清一条 shell 命令
-	// 究竟做了什么，而这份价值并不需要拒绝任何东西。
+	// 究竟做了什么，而这份价值并不需要拒绝任何东西。造出来的时候写一次，之
+	// 后再不改。
 	enforce bool
 
-	mu      sync.Mutex
+	mu   sync.Mutex
+	root string // 命令在哪里跑；/open 会挪它
+
 	execs   []string // 看到的每个 argv，展开之后的
 	opens   []string // shell 打开过的每个路径
 	blocked []string
 }
 
-func newSandbox(root string, bus *Bus, enforce bool) *sandbox {
-	return &sandbox{root: root, bus: bus, enforce: enforce}
+func newSandbox(root string, enforce bool) *sandbox {
+	return &sandbox{root: root, enforce: enforce}
 }
 
-// run 在嵌入的解释器里执行一条命令。
+// setRoot 挪的是命令跑的地方。只有 /open 会调它，别处都不该调。
+//
+// 放在互斥锁里，是因为 run 会读它，而这两件事可以在不同的 goroutine 上。
+// 今天它们不在——外壳不会在一个 turn 跑着的时候派发 /open——可那是三个文
+// 件之外一个状态机的性质，而一个被整棵树共用的结构体，不该要人跑去读那份
+// 代码，才能确定自己是安全的。
+func (s *sandbox) setRoot(dir string) {
+	s.mu.Lock()
+	s.root = dir
+	s.mu.Unlock()
+}
+
+func (s *sandbox) dir() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.root
+}
+
+// run 在嵌入的解释器里执行一条命令，并报到发起这次调用的那个 Agent 的总
+// 线上。
 //
 // 它返回和 runBash 一样的 execResult，所以 Agent 的其余部分分辨不出差别
 // ——这正是从阶段 01 起就把 exec.go 的"跑命令"和"渲染结果"分开的意义。
-func (s *sandbox) run(command string, timeout time.Duration) execResult {
+//
+// 总线是参数而不是字段，理由就写在结构体上：一个沙箱服务整棵 Agent 树，
+// 而"这条命令是谁跑的"，答案每次调用都不一样。反正这里每次都要新建一个解
+// 释器，所以它拿到的那些 handler 顺手就把那个答案闭包进去，不花什么代价。
+func (s *sandbox) run(command string, timeout time.Duration, bus *Bus) execResult {
 	started := time.Now()
 
 	file, err := syntax.NewParser().Parse(strings.NewReader(command), "cmd")
@@ -83,11 +115,11 @@ func (s *sandbox) run(command string, timeout time.Duration) execResult {
 
 	var stdout, stderr bytes.Buffer
 	runner, err := interp.New(
-		interp.Dir(s.root),
+		interp.Dir(s.dir()),
 		interp.StdIO(nil, &stdout, &stderr),
 		interp.Env(expand.ListEnviron(os.Environ()...)),
-		interp.ExecHandlers(s.execMiddleware),
-		interp.OpenHandler(s.open),
+		interp.ExecHandlers(s.execHandler(bus)),
+		interp.OpenHandler(s.openHandler(bus)),
 	)
 	if err != nil {
 		return execResult{Stderr: "sandbox: " + err.Error(), ExitCode: -1, Duration: time.Since(started)}
@@ -129,61 +161,72 @@ func (s *sandbox) run(command string, timeout time.Duration) execResult {
 	return res
 }
 
-// execMiddleware 包住解释器默认的 exec handler。
+// execHandler 包住解释器默认的 exec handler，一次调用一份。
 //
-// 这里的 `args` 就是成品参数向量。shell 打算对源文本做的一切都已经做完
+// 里面的 `args` 就是成品参数向量。shell 打算对源文本做的一切都已经做完
 // 了，这正是为什么只有站在这里，策略才站得住。
-func (s *sandbox) execMiddleware(next interp.ExecHandlerFunc) interp.ExecHandlerFunc {
-	return func(ctx context.Context, args []string) error {
-		if len(args) == 0 {
+//
+// 一个方法返回一个闭包，那个闭包再返回一个闭包——比解释器要的多出一层，
+// 而多出来的这层带的正是总线。中间那个函数才是 interp.ExecHandlers 要的
+// 中间件形状，最里面那个是 handler 本身。两个都看得见 bus，因为它是它们
+// 所在那个方法的参数——这就是全部的门道，也是总线不必待在沙箱上的原因：
+// 待在那里，它就会被一群并不共用同一条总线的 Agent 共用。
+func (s *sandbox) execHandler(bus *Bus) func(interp.ExecHandlerFunc) interp.ExecHandlerFunc {
+	return func(next interp.ExecHandlerFunc) interp.ExecHandlerFunc {
+		return func(ctx context.Context, args []string) error {
+			if len(args) == 0 {
+				return next(ctx, args)
+			}
+			joined := strings.Join(args, " ")
+
+			s.mu.Lock()
+			s.execs = append(s.execs, joined)
+			s.mu.Unlock()
+
+			// **每一次** exec 都会发出事件，包括模型根本没写过的那些——管道、
+			// 循环、别名或 `eval` 产出来的那些。这是本章"逐进程拦截"的那一
+			// 半；读它的 trace，是搞清一条 shell 命令究竟做了什么的最快办
+			// 法。
+			bus.Emit(Event{Kind: KindSandboxExec, Command: joined})
+
+			if r := s.checkArgv(args); r != nil {
+				s.mu.Lock()
+				s.blocked = append(s.blocked, joined)
+				s.mu.Unlock()
+				bus.Emit(Event{Kind: KindSandboxBlock, Command: joined, Text: r.Error()})
+				if s.enforce {
+					return r
+				}
+			}
 			return next(ctx, args)
 		}
-		joined := strings.Join(args, " ")
-
-		s.mu.Lock()
-		s.execs = append(s.execs, joined)
-		s.mu.Unlock()
-
-		// **每一次** exec 都会发出事件，包括模型根本没写过的那些——管道、
-		// 循环、别名或 `eval` 产出来的那些。这是本章"逐进程拦截"的那一半；
-		// 读它的 trace，是搞清一条 shell 命令究竟做了什么的最快办法。
-		s.bus.Emit(Event{Kind: KindSandboxExec, Command: joined})
-
-		if r := s.checkArgv(args); r != nil {
-			s.mu.Lock()
-			s.blocked = append(s.blocked, joined)
-			s.mu.Unlock()
-			s.bus.Emit(Event{Kind: KindSandboxBlock, Command: joined, Text: r.Error()})
-			if s.enforce {
-				return r
-			}
-		}
-		return next(ctx, args)
 	}
 }
 
-// shell 自己打开的每个文件都会调到 open：也就是重定向。
+// shell 自己打开的每个文件都会调到 openHandler：也就是重定向。
 //
 // shell 跑起来的那些*程序*打开的文件不走这里——解释器看不见另一个进程的
 // 系统调用，要看见就得上 ptrace、seccomp-bpf 或者文件系统 namespace，那
 // 就是本章结尾落到的操作系统层答案。
-func (s *sandbox) open(ctx context.Context, path string, flag int, perm os.FileMode) (io.ReadWriteCloser, error) {
-	s.mu.Lock()
-	s.opens = append(s.opens, path)
-	s.mu.Unlock()
-	s.bus.Emit(Event{Kind: KindSandboxOpen, Path: path})
-
-	if isSecretPath(path) {
-		r := &refusal{Level: "sandbox/open", What: path, Why: "a redirect targets " + secretName}
+func (s *sandbox) openHandler(bus *Bus) interp.OpenHandlerFunc {
+	return func(ctx context.Context, path string, flag int, perm os.FileMode) (io.ReadWriteCloser, error) {
 		s.mu.Lock()
-		s.blocked = append(s.blocked, "< "+path)
+		s.opens = append(s.opens, path)
 		s.mu.Unlock()
-		s.bus.Emit(Event{Kind: KindSandboxBlock, Command: "redirect " + path, Text: r.Error()})
-		if s.enforce {
-			return nil, r
+		bus.Emit(Event{Kind: KindSandboxOpen, Path: path})
+
+		if isSecretPath(path) {
+			r := &refusal{Level: "sandbox/open", What: path, Why: "a redirect targets " + secretName}
+			s.mu.Lock()
+			s.blocked = append(s.blocked, "< "+path)
+			s.mu.Unlock()
+			bus.Emit(Event{Kind: KindSandboxBlock, Command: "redirect " + path, Text: r.Error()})
+			if s.enforce {
+				return nil, r
+			}
 		}
+		return interp.DefaultOpenHandler()(ctx, path, flag, perm)
 	}
-	return interp.DefaultOpenHandler()(ctx, path, flag, perm)
 }
 
 // checkArgv 就是策略本身，作用在成品参数向量上。

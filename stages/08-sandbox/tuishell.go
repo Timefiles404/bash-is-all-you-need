@@ -640,13 +640,13 @@ func (s *shellSession) open(dir string) (string, error) {
 	a.memoryDir = dir
 	// 解释器有它自己的目录，而 os.Chdir 挪不动它。
 	//
-	// interp.Dir(s.root) 在 runner 建起来的时候就定死了，所以少了这一行，
+	// 根目录是建 runner 的时候读的，所以少了这一行，
 	// /open 挪的是进程、记忆文件、技能索引和系统提示词——而把每一条命令都留在
 	// 旧目录里跑。那比没有 /open 更糟：模型被一段提示词告知自己在哪里，而这
 	// 段提示词跟 `pwd` 的回答对不上，于是它对一棵自己看不见的树给出的答案，
 	// 既自信又错误。
 	if a.sb != nil {
-		a.sb.root = dir
+		a.sb.setRoot(dir)
 	}
 	sys, stable := s.assemble(a.cfg.shell, dir)
 	a.system, a.stable = sys, stable

@@ -48,8 +48,8 @@ var bypassCases = []bypassCase{
 // 去、沙箱有没有拦下什么。
 func runIn(t *testing.T, dir, command string, enforce bool) (leaked, blocked bool, out string) {
 	t.Helper()
-	sb := newSandbox(dir, NewBus(), enforce)
-	r := sb.run(command, 10*time.Second)
+	sb := newSandbox(dir, enforce)
+	r := sb.run(command, 10*time.Second, NewBus())
 	out = r.Stdout + r.Stderr
 	return strings.Contains(r.Stdout, canary), len(sb.blocked) > 0, out
 }
@@ -195,8 +195,8 @@ func TestExpansionBeatsParsing(t *testing.T) {
 // 的策略，沙箱也不例外——除非沙箱连文件打开也管。`cat < .env` 跑起
 // cat 来，压根没有任何参数。
 func TestRedirectIsNotVisibleInArgv(t *testing.T) {
-	sb := newSandbox(bypassDir(t), NewBus(), true)
-	_ = sb.run("cat < .env", 10*time.Second)
+	sb := newSandbox(bypassDir(t), true)
+	_ = sb.run("cat < .env", 10*time.Second, NewBus())
 
 	for _, argv := range sb.execs {
 		if strings.Contains(argv, secretName) {
@@ -279,14 +279,15 @@ func TestASubagentRunsInsideTheParentsSandbox(t *testing.T) {
 
 	// 有真 bash 就用真 bash，好让被测的那条分支是生产环境里的那条——一个
 	// 子 Agent 跑着一个真正不受限的 shell——而不是环境凑出来的假象。底下
-	// 的代码其实不需要它：沙箱在 execMiddleware 里就把这条命令拒了，压根
+	// 的代码其实不需要它：沙箱在 execHandler 里就把这条命令拒了，压根
 	// 轮不到它去 PATH 上找 `cat`。
 	shell, _ := findBash()
 
-	parent, _ := mulAgent(&gate{yolo: true}, shell)
-	parent.sb = newSandbox(dir, parent.bus, true)
+	parent, rec := mulAgent(&gate{yolo: true}, shell)
+	parent.sb = newSandbox(dir, true)
 
-	child := parent.newChild("read the config#1", func() string { return "child system" })
+	const childID = "read the config#1"
+	child := parent.newChild(childID, func() string { return "child system" })
 	out := child.runCommand(1, "call_1", "cat "+secretName)
 
 	if strings.Contains(out, canary) {
@@ -301,5 +302,28 @@ func TestASubagentRunsInsideTheParentsSandbox(t *testing.T) {
 		t.Error("the parent's sandbox recorded nothing, so report() describes a fraction of the session while " +
 			"reading as though it described all of it: the exec, the open and the refusal counts a human is shown " +
 			"at the end would cover only the commands the parent happened to run itself")
+	}
+
+	// 而事件会说出这是谁干的。
+	//
+	// 现在一个沙箱服务整棵树，所以能回答"这条命令是哪个 Agent 跑的"的，
+	// 只有这次调用是从哪条总线上来的。做成字段，它就会是造出这个沙箱的
+	// 那个 Agent——也就是根——于是子 Agent 产生的每一次 exec、每一次
+	// open、每一次拒绝，都会被标上深度 0、Agent 名字为空，而这份 trace
+	// 的其余部分完整、顺序也正确。这是一个 bug 最糟的形状：什么都没
+	// 少，什么都是错的。
+	seen := 0
+	for _, e := range rec.events {
+		switch e.Kind {
+		case KindSandboxExec, KindSandboxOpen, KindSandboxBlock:
+			seen++
+			if e.Depth != 1 || e.Agent != childID {
+				t.Errorf("%s from the subagent is stamped depth %d agent %q, expected depth 1 agent %q",
+					e.Kind, e.Depth, e.Agent, childID)
+			}
+		}
+	}
+	if seen == 0 {
+		t.Fatal("no sandbox events reached the bus at all, so this test proves nothing about who they name")
 	}
 }

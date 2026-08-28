@@ -171,8 +171,9 @@ func (a *agent) nextChild() int {
 // 录"，而子 Agent 产生的每一次 exec、每一次 open、每一次拒绝，都会从
 // main 在会话结束时打出的那份 report() 里、以及 /status 在会话进行中显示
 // 的那份里，一并消失。一个沙箱在并发的子 Agent 之间共用是安全的，因为
-// run 每次调用都新建一个解释器，而这个结构体上唯一可变的状态就是那几个审
-// 计切片，往它们里面的每一次 append 都在它那把锁底下。
+// run 每次调用都新建一个解释器，而这个结构体上所有可变的东西——那几个审计
+// 切片，还有 /open 会挪的 root——都在它那把锁后面。总线根本不在上面，理由
+// 写在那边：这条总线是谁的，每次调用都不一样。
 //
 // 一个字段一个字段写出来，而不是写 `child := *a`——后者更短，而且 `go
 // vet` 拒得没错：agent 里有 sync.Mutex，复制含互斥锁的结构体，副本拿到的
@@ -357,7 +358,7 @@ func (a *agent) runCommand(turn int, callID, command string) string {
 	// 做。
 	var r execResult
 	if a.sb != nil {
-		r = a.sb.run(command, a.cfg.timeout)
+		r = a.sb.run(command, a.cfg.timeout, a.bus)
 	} else {
 		r = runBash(a.cfg.shell, command, a.cfg.timeout)
 	}

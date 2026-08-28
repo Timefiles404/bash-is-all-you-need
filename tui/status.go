@@ -77,43 +77,72 @@ func pad(n int) int {
 	return n
 }
 
-// segments joins status-bar fields, dropping from the right until the line
-// fits.
+// segmentsFit picks which status fields fit in w columns, dropping from the
+// right until the line does.
 //
 // Dropping rather than truncating, and from the right rather than the left,
-// because the fields are given most-important-first: a status bar that has to
+// because the fields are given most-important-first: a status row that has to
 // lose something should lose the token count, not which provider is answering.
-func segments(fields []string, w int, sep string) string {
-	var keep []string
-	var first string
-	for _, f := range fields {
+//
+// It returns indices rather than the fields themselves because the caller draws
+// each field differently — a label dim, a value in a colour that depends on what
+// it means — and the fit has to be decided on the plain text. Styled strings
+// carry escape sequences that occupy no columns, so measuring those would fit a
+// row by counting characters nobody can see.
+func segmentsFit(fields []string, w int, sep string) []int {
+	var keep []int
+	first := -1
+	var joined string
+	for i, f := range fields {
 		if f == "" {
 			continue
 		}
-		if first == "" {
-			first = f
+		if first < 0 {
+			first = i
 		}
-		// Not append(keep, f): that writes into keep's spare capacity, which is
-		// harmless here only by accident and is the classic way a slice shared
-		// with a caller acquires a value nobody assigned.
-		try := make([]string, len(keep), len(keep)+1)
-		copy(try, keep)
-		try = append(try, f)
-		if term.DispWidth(strings.Join(try, sep)) > w {
+		try := f
+		if joined != "" {
+			try = joined + sep + f
+		}
+		if term.DispWidth(try) > w {
 			break
 		}
-		keep = try
+		// Not append(keep, i): that writes into keep's spare capacity, which is
+		// harmless here only by accident and is the classic way a slice shared
+		// with a caller acquires a value nobody assigned.
+		next := make([]int, len(keep), len(keep)+1)
+		copy(next, keep)
+		keep, joined = append(next, i), try
 	}
 	if len(keep) == 0 {
-		// Everything is too wide for the window. Show the first field cut to
-		// fit rather than an empty bar: on a very narrow terminal the provider
-		// name half-visible is still the answer to the question the bar exists
-		// to answer. The first *non-empty* field — fields[0] is the host's
-		// title, which is an ordinary optional string, and a host that leaves it
-		// blank was getting a blank bar from the line that exists to prevent one.
-		return term.TruncCols(first, w)
+		if first < 0 {
+			return nil
+		}
+		// Everything is too wide for the window. Naming the first field and
+		// leaving the caller to cut it is better than an empty row: on a very
+		// narrow terminal the provider name half-visible is still the answer to
+		// the question the row exists to answer. The first *non-empty* field —
+		// fields[0] is the host's title, which is an ordinary optional string,
+		// and a host that leaves it blank was getting a blank row from the line
+		// that exists to prevent one.
+		return []int{first}
 	}
-	return strings.Join(keep, sep)
+	return keep
+}
+
+// segments is segmentsFit joined up, for a caller that wants one plain string.
+func segments(fields []string, w int, sep string) string {
+	keep := segmentsFit(fields, w, sep)
+	if len(keep) == 0 {
+		return ""
+	}
+	out := make([]string, 0, len(keep))
+	for _, i := range keep {
+		out = append(out, fields[i])
+	}
+	// Only the give-up case above can be over width, and it is over by
+	// definition, so the cut belongs here rather than inside the fitting.
+	return term.TruncCols(strings.Join(out, sep), w)
 }
 
 // RenderRows lays out one ungrouped list of rows.

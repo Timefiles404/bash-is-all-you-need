@@ -165,11 +165,11 @@ func TestScrollingDoesNotEraseTheNoteItWasSentToRead(t *testing.T) {
 // chunk boundary is wherever a network read landed, so nothing about this is
 // exotic — and the comment above the code claimed it could not happen.
 func TestALineEndingSplitAcrossTwoWritesIsStillOneLineEnding(t *testing.T) {
-	one := newScrollback(64)
+	one := newScrollback(64, style{})
 	one.Write([]byte("hello\r\n"))
 	rowsA, _, _ := one.view(20, 4, 0)
 
-	two := newScrollback(64)
+	two := newScrollback(64, style{})
 	two.Write([]byte("hello\r"))
 	two.Write([]byte("\n"))
 	rowsB, _, _ := two.view(20, 4, 0)
@@ -187,7 +187,7 @@ func TestALineEndingSplitAcrossTwoWritesIsStillOneLineEnding(t *testing.T) {
 // follows is not a newline. Holding the CR must not turn a rewrite into an
 // append.
 func TestACarriageReturnAtAChunkBoundaryStillRewritesTheLine(t *testing.T) {
-	s := newScrollback(64)
+	s := newScrollback(64, style{})
 	s.Write([]byte("50%\r"))
 	// Before the next write the line is unchanged, which is also what a terminal
 	// shows at this moment: the cursor has moved, nothing has been overwritten.
@@ -203,7 +203,7 @@ func TestACarriageReturnAtAChunkBoundaryStillRewritesTheLine(t *testing.T) {
 
 // A CR that is never followed by anything leaves the line readable.
 func TestATrailingCarriageReturnAloneLosesNothing(t *testing.T) {
-	s := newScrollback(64)
+	s := newScrollback(64, style{})
 	s.Write([]byte("done\r"))
 	rows, _, _ := s.view(20, 4, 0)
 	if len(rows) != 1 || rows[0] != "done" {

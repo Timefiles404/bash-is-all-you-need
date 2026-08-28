@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 	"sync"
 
@@ -15,7 +16,40 @@ import (
 // the only place the cost is paid once.
 const maxLineBytes = 64 << 10
 
-// scrollback is the pane above the status bar: an io.Writer that any goroutine
+// Class says what a line is, which decides two things: whether the compact view
+// shows it, and whether it is read as prose.
+//
+// The classification does not come from looking at the text. The host sets it
+// from its own event stream just before the renderer writes, which is the only
+// place the answer is actually known — see App.SetClass. Guessing from the
+// rendered characters would work today and would quietly stop working the first
+// time somebody changed a prefix in the renderer, and nothing would fail.
+type Class uint8
+
+const (
+	// ClassPlain is the default: the shell's own output, command echoes,
+	// anything written outside a classified region. Always shown, never
+	// touched. Being the zero value is deliberate — a line nobody classified
+	// is a line that stays visible.
+	ClassPlain Class = iota
+
+	// ClassProse is text the model wrote. Always shown, and rendered as
+	// Markdown.
+	ClassProse
+
+	// ClassDetail is instrumentation: the per-call panel, raw command output,
+	// retry and cache bookkeeping. Correct, occasionally vital, and most of the
+	// screen. The compact view folds it away.
+	ClassDetail
+)
+
+// sbLine is one logical line and what kind of line it is.
+type sbLine struct {
+	text string
+	cls  Class
+}
+
+// scrollback is the pane above the composer: an io.Writer that any goroutine
 // may write to, and a windowed view of it that the render loop reads.
 //
 // The host program's existing renderer writes here unchanged, which is the
@@ -26,9 +60,21 @@ const maxLineBytes = 64 << 10
 type scrollback struct {
 	mu sync.Mutex
 
-	lines   []string // complete logical lines, oldest first
+	lines   []sbLine // complete logical lines, oldest first
 	partial string   // written but not yet terminated by a newline
 	dropped int      // logical lines discarded to stay under maxLines
+
+	// cur is the class the next completed line will be given, and md renders
+	// the ones that come out as prose. Both are written by the host's event
+	// sink and read by whatever goroutine happens to be writing, so both live
+	// under the same mutex as everything else here.
+	cur Class
+	md  *md
+	st  style
+
+	// detail is the view mode: false folds ClassDetail runs into one row each,
+	// true shows everything. It is the state Ctrl-O toggles.
+	detail bool
 
 	// cr records that the previous write ended on a carriage return, so what it
 	// means is not decided yet. See add.
@@ -41,16 +87,74 @@ type scrollback struct {
 	// wraps one line, not the whole pane. Streaming a reply writes hundreds of
 	// times a second, and re-wrapping five thousand lines each time is the
 	// difference between a UI and a space heater.
-	w       int
-	rows    []string
-	wrapped int
+	//
+	// rowDetail is the view mode the cache was built for. Toggling the mode
+	// changes what every row is, so it invalidates the cache exactly the way a
+	// width change does.
+	w         int
+	rows      []string
+	wrapped   int
+	rowDetail bool
+
+	// The open fold, while folding. run is the index in rows of the placeholder
+	// standing in for the current run of detail lines, or -1 when the last line
+	// was not folded; runN is how many lines it is standing in for. Keeping the
+	// index means a new detail line rewrites one row instead of re-wrapping the
+	// pane, which is what lets the cache stay incremental in both modes.
+	run  int
+	runN int
+
+	// detailN is how many of lines are ClassDetail. See folded.
+	detailN int
 }
 
-func newScrollback(maxLines int) *scrollback {
+func newScrollback(maxLines int, st style) *scrollback {
 	if maxLines < 16 {
 		maxLines = 16
 	}
-	return &scrollback{maxLines: maxLines}
+	return &scrollback{maxLines: maxLines, st: st, md: newMD(st), run: -1}
+}
+
+// setClass says what the lines written from now on are. Called by the host's
+// event sink immediately before the renderer writes the lines in question.
+func (s *scrollback) setClass(c Class) {
+	s.mu.Lock()
+	s.cur = c
+	s.mu.Unlock()
+}
+
+// setDetail chooses the view mode and reports whether it changed.
+func (s *scrollback) setDetail(on bool) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.detail == on {
+		return false
+	}
+	s.detail = on
+	return true
+}
+
+func (s *scrollback) detailed() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.detail
+}
+
+// folded reports how many lines the compact view is currently hiding, for the
+// indicator that tells you they are there. A count of zero and a mode that
+// hides nothing look the same to the reader, which is the honest outcome.
+//
+// Counted as lines arrive rather than by walking the pane, because this is read
+// once per frame — thirty times a second, against five thousand lines — and a
+// loop there is work done continuously to answer a question that changes once
+// per line.
+func (s *scrollback) folded() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.detail {
+		return 0
+	}
+	return s.detailN
 }
 
 func (s *scrollback) Write(p []byte) (int, error) {
@@ -122,21 +226,27 @@ func (s *scrollback) add(text string) {
 
 // push moves partial into lines. Caller holds mu.
 func (s *scrollback) push() {
-	line := s.partial
+	line := sbLine{text: s.partial, cls: s.cur}
 	s.partial = ""
-	if len(line) > maxLineBytes {
-		line = line[:maxLineBytes] + " …(line truncated)"
+	if len(line.text) > maxLineBytes {
+		line.text = line.text[:maxLineBytes] + " …(line truncated)"
+	}
+	// Markdown is applied here, once, rather than per frame: a line is styled
+	// the moment it is complete and then never again, and the pane redraws
+	// thirty times a second. It happens before the line is stored so that
+	// everything downstream — wrapping, the transcript reprint, the width
+	// arithmetic — sees one kind of string.
+	if line.cls == ClassProse && s.md != nil {
+		line.text = s.md.line(line.text)
 	}
 	s.lines = append(s.lines, line)
+	if line.cls == ClassDetail {
+		s.detailN++
+	}
 	if len(s.lines) <= s.maxLines {
-		// Only extend the cache once a width is known. Before the first frame
-		// there is none — the banner is written before the terminal is even
-		// open — and appending nothing while incrementing the count would leave
-		// the cache claiming to cover a line it had skipped.
-		if s.w > 0 {
-			s.rows = append(s.rows, wrapLine(line, s.w)...)
-			s.wrapped++
-		}
+		// The cache is extended lazily, by syncRows, and not here. Both would
+		// work; only one has to get the fold bookkeeping right, and a second
+		// copy of it maintained in a different function is how the two drift.
 		return
 	}
 	// Dropping the oldest line shifts every index the wrap cache is built on,
@@ -147,9 +257,14 @@ func (s *scrollback) push() {
 	if cut < 1 {
 		cut = 1
 	}
-	s.lines = append([]string(nil), s.lines[cut:]...)
+	for _, l := range s.lines[:cut] {
+		if l.cls == ClassDetail {
+			s.detailN--
+		}
+	}
+	s.lines = append([]sbLine(nil), s.lines[cut:]...)
 	s.dropped += cut
-	s.rows, s.wrapped = nil, 0
+	s.rows, s.wrapped, s.run = nil, 0, -1
 }
 
 // wrapLine wraps one logical line, and never returns nothing.
@@ -170,14 +285,50 @@ func wrapLine(line string, w int) []string {
 }
 
 // syncRows brings the wrap cache up to date. Caller holds mu.
+//
+// This is where folding happens, and it happens here rather than at the view
+// layer for one reason: `up` is an offset in rows. If the rows a scroll offset
+// counts were not the rows on the screen, every key that moves the pane would
+// have to convert between two coordinate systems, and Ctrl-O would leave the
+// reader somewhere unrelated to where they were looking.
 func (s *scrollback) syncRows(w int) {
-	if w != s.w {
-		s.w, s.rows, s.wrapped = w, nil, 0
+	if w != s.w || s.detail != s.rowDetail {
+		s.w, s.rowDetail = w, s.detail
+		s.rows, s.wrapped, s.run = nil, 0, -1
 	}
 	for s.wrapped < len(s.lines) {
-		s.rows = append(s.rows, wrapLine(s.lines[s.wrapped], w)...)
+		line := s.lines[s.wrapped]
 		s.wrapped++
+		if s.detail || line.cls != ClassDetail {
+			s.run = -1
+			s.rows = append(s.rows, wrapLine(line.text, w)...)
+			continue
+		}
+		// A run of hidden lines leaves one row behind saying how many. Hiding
+		// them silently would be worse than showing them: output that stops
+		// mid-way with no mark reads as the program having failed, and the
+		// reader has no way to learn that a key would bring it back.
+		if s.run < 0 {
+			s.run, s.runN = len(s.rows), 0
+			s.rows = append(s.rows, "")
+		}
+		s.runN++
+		s.rows[s.run] = s.foldRow(s.runN, w)
 	}
+}
+
+// foldRow is the placeholder a folded run collapses to.
+//
+// Dimmed, because it is the shell talking rather than the session, and it says
+// which key brings the lines back. A placeholder that only said how many lines
+// were missing would leave a reader to guess, and the guess most people make is
+// that the program lost them.
+func (s *scrollback) foldRow(n, w int) string {
+	word := "lines"
+	if n == 1 {
+		word = "line"
+	}
+	return term.TruncCols("  "+s.st.dim(fmt.Sprintf("⋯ %d %s hidden · ctrl-o", n, word)), w)
 }
 
 // view returns the rows to draw in a pane w columns wide and h rows tall,
@@ -200,7 +351,11 @@ func (s *scrollback) view(w, h, up int) (rows []string, total, clamped int) {
 	// an allocation to be wrong.
 	var tail []string
 	if s.partial != "" {
-		tail = wrapLine(s.partial, w)
+		text := s.partial
+		if s.cur == ClassProse && s.md != nil {
+			text = s.md.preview(text)
+		}
+		tail = wrapLine(text, w)
 	}
 	total = len(s.rows) + len(tail)
 	at := func(i int) string {
@@ -235,6 +390,13 @@ func (s *scrollback) view(w, h, up int) (rows []string, total, clamped int) {
 func (s *scrollback) clear() {
 	s.mu.Lock()
 	s.lines, s.partial, s.rows, s.wrapped, s.cr = nil, "", nil, 0, false
+	s.run, s.runN, s.detailN = -1, 0, 0
+	// The Markdown reader's only state is whether a fenced block is open, and
+	// the line that would have closed it has just been deleted. Left alone, the
+	// rest of the session would be rendered as code.
+	if s.md != nil {
+		s.md.reset()
+	}
 	s.mu.Unlock()
 }
 

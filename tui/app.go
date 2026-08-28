@@ -41,12 +41,14 @@ type Config struct {
 	// reads has to be safe to read while a turn is in flight.
 	Status func() []Section
 
-	// Segments supplies the status-bar fields after Title, most important
-	// first; the bar drops them from the right until the line fits. Called on
-	// every frame, so it must be cheap and must not block. Plain text only:
-	// the bar styles the whole line, and an escape sequence inside it ends the
-	// styling early.
-	Segments func() []string
+	// Segments supplies the status fields after Title, most important first;
+	// the status row drops them from the right until the line fits. Called on
+	// every frame, so it must be cheap and must not block.
+	//
+	// Plain text in the Label and Value: this row applies its own colour, and
+	// an escape sequence arriving inside a field would end that colour early
+	// and leave the rest of the line in whatever state it chose.
+	Segments func() []Segment
 
 	// Ready reports whether a turn can run at all, and if not, what the user
 	// should do about it. This is the path a double-clicked binary takes: no
@@ -102,6 +104,51 @@ type Config struct {
 
 	// MaxScrollback is how many logical lines the pane keeps. Default 5000.
 	MaxScrollback int
+}
+
+// Segment is one field of the status row under the composer.
+//
+// Split into a label and a value because they want different weights: the label
+// is furniture you read once and then stop seeing, the value is the thing you
+// are actually checking. A single pre-formatted string cannot express that, and
+// a row where "model" and "mimo-v2.5" are equally loud is a row nobody reads.
+type Segment struct {
+	Label string // dim, and omitted when empty
+	Value string
+	Tone  Tone
+}
+
+// Tone is what a status value means, not what colour it is.
+//
+// The host says "this is a warning"; the shell decides what a warning looks
+// like. That indirection earns its keep in one place — a host that hard-coded
+// escape sequences would have to know whether colour is on at all, which is a
+// question only this package can answer.
+type Tone uint8
+
+const (
+	ToneNormal Tone = iota
+	ToneAccent      // the thing that identifies this session
+	ToneGood
+	ToneWarn
+	ToneBad
+	ToneMuted
+)
+
+func (s style) tone(t Tone, text string) string {
+	switch t {
+	case ToneAccent:
+		return s.cyan(text)
+	case ToneGood:
+		return s.green(text)
+	case ToneWarn:
+		return s.yellow(text)
+	case ToneBad:
+		return s.red(text)
+	case ToneMuted:
+		return s.dim(text)
+	}
+	return text
 }
 
 type runState int
@@ -203,10 +250,11 @@ func New(cfg Config) *App {
 	if cfg.MaxScrollback <= 0 {
 		cfg.MaxScrollback = 5000
 	}
+	st := style{on: colorEnabled(cfg.Out)}
 	a := &App{
 		cfg:    cfg,
-		st:     style{on: colorEnabled(cfg.Out)},
-		back:   newScrollback(cfg.MaxScrollback),
+		st:     st,
+		back:   newScrollback(cfg.MaxScrollback, st),
 		ed:     newEditor(),
 		in:     cfg.In,
 		out:    cfg.Out,
@@ -228,6 +276,20 @@ func New(cfg Config) *App {
 // io.Writer, which is why the shell can host a renderer written six stages
 // earlier without either of them knowing about the other.
 func (a *App) Out() io.Writer { return appWriter{a} }
+
+// SetClass says what the lines written next are, so the compact view knows what
+// it may fold and the pane knows what to read as prose.
+//
+// The host calls this from a subscriber on its own event stream, registered
+// ahead of the renderer, so that by the time the renderer writes anything the
+// answer is already in place. That ordering is the whole contract: this is not
+// a classification of what has been written, it is a declaration about what is
+// about to be.
+//
+// Nothing breaks if a host never calls it. Every line then arrives as
+// ClassPlain, the compact view folds nothing, and the shell behaves exactly as
+// it did before folding existed.
+func (a *App) SetClass(c Class) { a.back.setClass(c) }
 
 type appWriter struct{ a *App }
 
@@ -320,8 +382,14 @@ func (a *App) shutdown() {
 // reading what the agent did, losing the transcript at exit is the wrong
 // trade, so it is written back out.
 func (a *App) dumpTranscript(w io.Writer) {
+	// Everything, including what the compact view was folding away. The
+	// reprint is the record of the session, and a record that leaves out
+	// whatever happened to be hidden when the window closed is not one.
 	a.back.mu.Lock()
-	lines := append([]string(nil), a.back.lines...)
+	lines := make([]string, 0, len(a.back.lines)+1)
+	for _, l := range a.back.lines {
+		lines = append(lines, l.text)
+	}
 	if a.back.partial != "" {
 		lines = append(lines, a.back.partial)
 	}
@@ -573,6 +641,9 @@ func (a *App) key(ctx context.Context, k term.Key) error {
 		a.note, a.noteBad = "", false
 	}
 
+	if a.detailKey(k) {
+		return nil
+	}
 	if a.scrollKey(k) {
 		return nil
 	}
@@ -585,6 +656,35 @@ func (a *App) key(ctx context.Context, k term.Key) error {
 	default:
 		return a.idleKey(ctx, k)
 	}
+}
+
+// detailKey handles Ctrl-O, which switches the pane between the compact view
+// and the full one.
+//
+// It is checked before the state machine, so it works while a turn is running
+// and while a permission prompt is waiting. That is deliberate and it is most of
+// the value: the moment you want the detail is the moment something is going
+// wrong in front of you, and a key that only worked at an idle prompt would ask
+// you to wait for the thing you are trying to watch.
+//
+// The scroll offset is left where it is rather than being reset. It counts rows
+// and the rows have just changed underneath it, so the pane does move — but it
+// moves by roughly the amount of detail that was folded near where you were
+// looking, which keeps you in the same part of the session. Resetting to the
+// bottom would be predictable and would throw away the reason you pressed the
+// key.
+func (a *App) detailKey(k term.Key) bool {
+	if k.Kind != term.KeyRune || !k.Ctrl || k.Rune != 'o' {
+		return false
+	}
+	on := !a.back.detailed()
+	a.back.setDetail(on)
+	if on {
+		a.setNote("showing everything · ctrl-o to fold it again", false)
+	} else {
+		a.setNote("compact view · ctrl-o to show everything", false)
+	}
+	return true
 }
 
 // scrollKey handles the bindings that mean the same thing in every state.
@@ -937,9 +1037,17 @@ func (a *App) setSize(w, h int) {
 func (a *App) width() int  { return int(a.cols.Load()) }
 func (a *App) height() int { return int(a.rows.Load()) }
 
+// boxPad is what the composer's border costs in columns: "│ " down the left and
+// " │" down the right.
+const boxPad = 4
+
+// chromeRows is the border, the status row and the hint row — everything under
+// the pane when the window has room for all of it.
+const chromeRows = 4
+
 func (a *App) paneHeight() int {
 	rows, _, _ := a.inputRows()
-	h := a.height() - 2 - rows
+	h := a.height() - chromeRows - rows
 	if h < 1 {
 		h = 1
 	}
@@ -948,9 +1056,20 @@ func (a *App) paneHeight() int {
 
 func (a *App) inputRows() (int, int, int) {
 	prompt, cont := a.promptFor()
-	rows, cr, cc := a.ed.render(prompt, cont, a.width(), a.maskFrom())
+	rows, cr, cc := a.ed.render(prompt, cont, a.innerWidth(), a.maskFrom())
 	rows, cr = window(rows, cr, composerRows(a.height()))
 	return len(rows), cr, cc
+}
+
+// innerWidth is how wide the composer's text may be, once the border has taken
+// its columns. Floored rather than allowed to go negative, because the editor
+// divides by it.
+func (a *App) innerWidth() int {
+	w := a.width() - boxPad
+	if w < 4 {
+		w = 4
+	}
+	return w
 }
 
 // composerRows is how tall the composer may be in a window h rows tall.
@@ -1018,23 +1137,33 @@ func (a *App) frame() (lines []string, caretRow, caretCol int, showCaret bool) {
 		h = 3
 	}
 
+	inner := w - boxPad
+	if inner < 4 {
+		inner = 4
+	}
 	prompt, cont := a.promptFor()
-	irows, cr, cc := a.ed.render(prompt, cont, w, a.maskFrom())
+	irows, cr, cc := a.ed.render(prompt, cont, inner, a.maskFrom())
 	irows, cr = window(irows, cr, composerRows(h))
 
-	// Chrome is the status bar, the composer and the hint row. On a window too
-	// short for all three the hint goes first and the status bar second: the
-	// composer is the only one you cannot work without.
-	hint := true
-	bar := true
-	paneH := h - len(irows) - 2
+	// Chrome is the composer's border, the status row and the hint row, and a
+	// short window gives them up in that order: the hint, then the border, then
+	// the status row. The composer is the only one you cannot work without.
+	//
+	// The border goes before the status row even though it is drawn closer to
+	// the input, because it costs two rows and the status row costs one, and
+	// what the border says — this is where you type — is the one thing about a
+	// five-row window that was never in doubt. The status row is still telling
+	// you which model is about to get what you type.
+	hint, status, box := true, true, true
+	paneH := h - len(irows) - chromeRows
 	if paneH < 1 {
-		hint = false
-		paneH = h - len(irows) - 1
+		hint, paneH = false, h-len(irows)-chromeRows+1
 	}
 	if paneH < 1 {
-		bar = false
-		paneH = h - len(irows)
+		box, paneH = false, h-len(irows)-1
+	}
+	if paneH < 1 {
+		status, paneH = false, h-len(irows)
 	}
 	if paneH < 0 {
 		paneH = 0
@@ -1050,32 +1179,101 @@ func (a *App) frame() (lines []string, caretRow, caretCol int, showCaret bool) {
 		lines = append(lines, "")
 	}
 	lines = append(lines, rows...)
-	if bar {
-		lines = append(lines, a.statusBar(w, total, up))
+
+	caretCol = cc
+	if box {
+		lines = append(lines, a.st.dim(rule('╭', '╮', w, a.boxTag(total, up))))
+		caretCol += 2
 	}
 	base := len(lines)
-	lines = append(lines, irows...)
+	for _, r := range irows {
+		if box {
+			r = a.st.dim("│ ") + term.PadCols(r, inner) + a.st.dim(" │")
+		}
+		lines = append(lines, r)
+	}
+	if box {
+		lines = append(lines, a.st.dim(rule('╰', '╯', w, "")))
+	}
+	if status {
+		lines = append(lines, a.statusRow(w))
+	}
 	if hint {
 		lines = append(lines, a.hintRow(w))
 	}
-	return lines, base + cr, cc, a.state != stRunning
+	return lines, base + cr, caretCol, a.state != stRunning
 }
 
-func (a *App) statusBar(w, total, up int) string {
-	fields := []string{a.cfg.Title}
+// rule draws one horizontal border, with an optional tag inset near the right
+// end. The tag is where the pane's own state goes — how far up the scrollback
+// is, and how much the compact view is hiding — because the border is already
+// furniture, and a reader who does not care about either can stop seeing the
+// whole row at once.
+func rule(left, right rune, w int, tag string) string {
+	if w < 2 {
+		return strings.Repeat("─", max(0, w))
+	}
+	mid := w - 2
+	if tag == "" || term.DispWidth(tag)+6 > mid {
+		return string(left) + strings.Repeat("─", mid) + string(right)
+	}
+	tw := term.DispWidth(tag)
+	return string(left) + strings.Repeat("─", mid-tw-3) + " " + tag + " ─" + string(right)
+}
+
+// boxTag is what the composer's top border reports about the pane above it.
+func (a *App) boxTag(total, up int) string {
+	var parts []string
+	if up > 0 {
+		parts = append(parts, fmt.Sprintf("%d/%d ↓", total-up, total))
+	}
+	if n := a.back.folded(); n > 0 {
+		parts = append(parts, fmt.Sprintf("⋯%d", n))
+	}
+	return strings.Join(parts, " · ")
+}
+
+// statusRow is the line under the composer: what this session is, in colour.
+//
+// It sits below the input rather than above it because that is where the eye
+// already is. Everything on this row answers a question you ask *about what you
+// are typing* — which model will get it, which directory it will run in, how
+// much of the window is left — and putting those above the box separates them
+// from the thing they qualify by the height of the composer.
+func (a *App) statusRow(w int) string {
+	fields := []Segment{{Value: a.cfg.Title, Tone: ToneAccent}}
 	if a.cfg.Segments != nil {
 		fields = append(fields, a.cfg.Segments()...)
 	}
-	right := ""
-	if up > 0 {
-		right = fmt.Sprintf("%d/%d ↓", total-up, total)
+
+	// Measured plain and styled afterwards. Escape sequences have no width, so
+	// dropping fields to fit has to be decided on the text alone — deciding it
+	// on the styled strings would fit a line by counting characters nobody can
+	// see, and the row would run off the edge.
+	plain := make([]string, 0, len(fields))
+	for _, f := range fields {
+		plain = append(plain, f.text())
 	}
-	left := segments(fields, w-term.DispWidth(right)-2, " · ")
-	gap := w - term.DispWidth(left) - term.DispWidth(right)
-	if gap < 1 {
-		gap = 1
+	keep := segmentsFit(plain, w-2, " · ")
+	out := make([]string, 0, len(keep))
+	for _, i := range keep {
+		out = append(out, fields[i].render(a.st))
 	}
-	return a.st.bar(" " + left + strings.Repeat(" ", gap-1) + right)
+	return term.TruncCols("  "+strings.Join(out, a.st.dim(" · ")), w)
+}
+
+func (s Segment) text() string {
+	if s.Label == "" {
+		return s.Value
+	}
+	return s.Label + " " + s.Value
+}
+
+func (s Segment) render(st style) string {
+	if s.Label == "" {
+		return st.tone(s.Tone, s.Value)
+	}
+	return st.dim(s.Label) + " " + st.tone(s.Tone, s.Value)
 }
 
 func (a *App) hintRow(w int) string {

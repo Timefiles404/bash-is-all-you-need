@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -230,15 +232,26 @@ func (s *shell) shot() shot {
 func (f shot) shows(text string) bool { return strings.Contains(f.text, text) }
 
 // hasRow reports whether some row is exactly want, ignoring the trailing spaces
-// a truncated line is padded with.
+// a truncated line is padded with — and ignoring the composer's border, so that
+// a test which cares what is in the prompt can say so without also restating
+// how the prompt is framed.
 func (f shot) hasRow(want string) bool {
 	want = strings.TrimRight(want, " ")
 	for _, r := range f.rows {
-		if strings.TrimRight(r, " ") == want {
+		if strings.TrimRight(unbox(r), " ") == want {
 			return true
 		}
 	}
 	return false
+}
+
+// unbox strips the composer's border from a row, if it has one.
+func unbox(r string) string {
+	if !strings.HasPrefix(r, "│ ") {
+		return r
+	}
+	r = strings.TrimPrefix(r, "│ ")
+	return strings.TrimSuffix(strings.TrimRight(r, " "), " │")
 }
 
 // hasRowExactly keeps the trailing spaces, for the one claim that is about them.
@@ -249,6 +262,24 @@ func (f shot) hasRowExactly(want string) bool {
 		}
 	}
 	return false
+}
+
+// caretAt returns the 1-based row and column the frame parks the cursor at.
+//
+// The composer's border pads every row to the full width, so a claim about a
+// trailing space in the prompt can no longer be made against the text of a row.
+// Where the caret is says the same thing and says it more directly.
+var caretEsc = regexp.MustCompile(`\x1b\[(\d+);(\d+)H`)
+
+func (f shot) caretAt() (row, col int, ok bool) {
+	m := caretEsc.FindAllStringSubmatch(f.raw, -1)
+	if len(m) == 0 {
+		return 0, 0, false
+	}
+	last := m[len(m)-1]
+	row, _ = strconv.Atoi(last[1])
+	col, _ = strconv.Atoi(last[2])
+	return row, col, true
 }
 
 // A hidden cursor is how the loop says the keyboard is not going into the
@@ -889,8 +920,24 @@ func TestTabCompletesAUniqueCommandAndLeavesRoomForTheArgument(t *testing.T) {
 
 	// The trailing space is the point: Tab on a command that takes an argument
 	// should leave the caret where the argument goes.
+	//
+	// Asserted on the caret rather than on the row, because the composer's
+	// border pads every row out to the full width and a trailing space is no
+	// longer distinguishable from the padding. Where the caret actually is was
+	// the claim all along.
 	s.send("/dep\t")
-	s.waitFor("the completion", func() bool { return s.shot().hasRowExactly("> /deploy ") })
+	s.waitFor("the completion", func() bool { return s.hasRow("> /deploy") })
+
+	f := s.shot()
+	_, col, ok := f.caretAt()
+	if !ok {
+		t.Fatalf("the frame does not place the caret:\n%s", f.text)
+	}
+	// The caret escape is 1-based, so the column after everything drawn to the
+	// left of the caret is that width plus one.
+	if want := term.DispWidth("│ > /deploy ") + 1; col != want {
+		t.Errorf("the caret is at column %d, expected %d — Tab did not leave room for the argument:\n%s", col, want, f.text)
+	}
 }
 
 func TestTabOnASharedPrefixInsertsWhatTheyAgreeOnAndListsTheRest(t *testing.T) {
@@ -1089,7 +1136,7 @@ func TestCtrlDLeavesOnAnEmptyPromptAndDeletesForwardOnAFullOne(t *testing.T) {
 // Scrolling
 // ---------------------------------------------------------------------------
 
-func TestPageUpScrollsThePaneAndTheStatusBarSaysWhereYouAre(t *testing.T) {
+func TestPageUpScrollsThePaneAndTheComposerBorderSaysWhereYouAre(t *testing.T) {
 	s := newShell(t, Config{Title: "stage 12"})
 	s.start()
 
@@ -1099,7 +1146,7 @@ func TestPageUpScrollsThePaneAndTheStatusBarSaysWhereYouAre(t *testing.T) {
 	s.waitFor("the newest line", func() bool { return s.shows("line 59") })
 
 	s.send("\x1b[5~") // page up
-	s.waitFor("the pane to scroll and the bar to say so", func() bool {
+	s.waitFor("the pane to scroll and the border to say so", func() bool {
 		f := s.shot()
 		return !f.shows("line 59") && f.shows("↓")
 	})
@@ -1350,25 +1397,31 @@ func TestThePaneIsPaddedAboveTheOutputRatherThanBelowIt(t *testing.T) {
 	if len(lines) != 12 {
 		t.Fatalf("frame produced %d lines for a 12-row window:\n%s", len(lines), strings.Join(lines, "\n"))
 	}
-	// 12 rows = 9 of pane + the bar + the composer + the hint.
-	if lines[8] != "the only line" {
-		t.Errorf("the line is at row %d of the pane, expected the bottom one:\n%s", 8, strings.Join(lines, "\n"))
+	// 12 rows = 7 of pane + the composer's two border rows + the composer +
+	// the status row + the hint.
+	if lines[6] != "the only line" {
+		t.Errorf("the line is at row %d of the pane, expected the bottom one:\n%s", 6, strings.Join(lines, "\n"))
 	}
-	for i := 0; i < 8; i++ {
+	for i := 0; i < 6; i++ {
 		if lines[i] != "" {
 			t.Errorf("row %d is %q, expected the padding above the output to be blank", i, lines[i])
 		}
 	}
 }
 
-// On a window too short for all three the hint goes first and the status bar
-// second: the composer is the only one you cannot work without.
-func TestOnAWindowTooShortForTheChromeTheHintGoesFirstAndTheBarSecond(t *testing.T) {
+// A short window gives the chrome up in order: the hint, then the composer's
+// border, then the status row.
+//
+// The border goes before the status row because it costs two rows to say
+// something a five-row window makes obvious anyway.
+func TestOnAShortWindowTheHintGoesFirstThenTheBorderThenTheStatusRow(t *testing.T) {
 	tall := newTestApp(t, Config{Title: "stage 12"})
 	tall.setSize(40, 12)
 	all := strings.Join(mustFrame(t, tall), "\n")
-	if !strings.Contains(all, "enter send") || !strings.Contains(all, "stage 12") {
-		t.Fatalf("a 12-row window is missing part of the chrome:\n%s", all)
+	for _, want := range []string{"enter send", "stage 12", "╭", "╰"} {
+		if !strings.Contains(all, want) {
+			t.Fatalf("a 12-row window is missing %q from the chrome:\n%s", want, all)
+		}
 	}
 
 	short := newTestApp(t, Config{Title: "stage 12"})
@@ -1378,14 +1431,18 @@ func TestOnAWindowTooShortForTheChromeTheHintGoesFirstAndTheBarSecond(t *testing
 	if strings.Contains(got, "enter send") {
 		t.Errorf("a 3-row window still draws the hint row:\n%s", got)
 	}
+	if strings.Contains(got, "╭") {
+		t.Errorf("a 3-row window still draws the composer's border:\n%s", got)
+	}
 	if !strings.Contains(got, "stage 12") {
-		t.Errorf("a 3-row window dropped the status bar before the hint:\n%s", got)
+		t.Errorf("a 3-row window dropped the status row before the border:\n%s", got)
 	}
 	if !hasPrefixRow(out, "> ") {
 		t.Errorf("a 3-row window dropped the composer:\n%s", got)
 	}
 
-	// Two rows of composer on a three-row window, and the bar has to go too.
+	// Two rows of composer on a three-row window, and the status row has to go
+	// too.
 	tiny := newTestApp(t, Config{Title: "stage 12"})
 	tiny.setSize(40, 3)
 	tiny.ed.insert("one\ntwo")
@@ -1413,44 +1470,74 @@ func mustFrame(t *testing.T, a *App) []string {
 
 func hasPrefixRow(lines []string, prefix string) bool {
 	for _, l := range lines {
-		if strings.HasPrefix(l, prefix) {
+		if strings.HasPrefix(unbox(l), prefix) {
 			return true
 		}
 	}
 	return false
 }
 
-// The bar styles the whole line, so the fields have to be plain text and the
+// The row applies its own colour, so the fields have to be plain text, and the
 // title is the field that must survive a narrow window.
-func TestTheStatusBarKeepsTheTitleAndDropsTheHostsFieldsFromTheRight(t *testing.T) {
+func TestTheStatusRowKeepsTheTitleAndDropsTheHostsFieldsFromTheRight(t *testing.T) {
 	a := newTestApp(t, Config{
-		Title:    "stage 12",
-		Segments: func() []string { return []string{"openai", "gpt-4o", "12345 tokens"} },
+		Title: "stage 12",
+		Segments: func() []Segment {
+			return []Segment{{Value: "openai"}, {Value: "gpt-4o"}, {Label: "ctx", Value: "12345 tokens"}}
+		},
 	})
 
 	a.setSize(60, 12)
-	wide := a.statusBar(60, 0, 0)
+	wide := a.statusRow(60)
 	for _, want := range []string{"stage 12", "openai", "gpt-4o"} {
 		if !strings.Contains(wide, want) {
-			t.Errorf("a 60-column bar leaves out %q: %q", want, wide)
+			t.Errorf("a 60-column status row leaves out %q: %q", want, wide)
 		}
 	}
-	if term.DispWidth(wide) != 60 {
-		t.Errorf("the bar is %d columns wide, expected exactly 60: %q", term.DispWidth(wide), wide)
+	if w := term.DispWidth(wide); w > 60 {
+		t.Errorf("the status row is %d columns wide, expected at most 60: %q", w, wide)
 	}
 
-	narrow := a.statusBar(14, 0, 0)
+	narrow := a.statusRow(14)
 	if !strings.Contains(narrow, "stage 12") {
-		t.Errorf("a 14-column bar dropped the title: %q", narrow)
+		t.Errorf("a 14-column status row dropped the title: %q", narrow)
 	}
 	if strings.Contains(narrow, "12345") {
-		t.Errorf("a 14-column bar kept the token count: %q", narrow)
+		t.Errorf("a 14-column status row kept the token count: %q", narrow)
+	}
+}
+
+// The pane's own state lives on the composer's top border rather than in the
+// status row, so this is where the scroll position has to show up.
+func TestTheComposerBorderReportsTheScrollPositionAndWhatIsFolded(t *testing.T) {
+	a := newTestApp(t, Config{Title: "stage 12"})
+	a.setSize(60, 12)
+
+	if tag := a.boxTag(100, 40); !strings.Contains(tag, "60/100") {
+		t.Errorf("the border does not report the scroll position: %q", tag)
+	}
+	if tag := a.boxTag(100, 0); tag != "" {
+		t.Errorf("an unscrolled pane should say nothing: %q", tag)
 	}
 
-	// Scrolled up, the bar says where you are, on the right.
-	scrolled := a.statusBar(60, 100, 40)
-	if !strings.Contains(scrolled, "60/100 ↓") {
-		t.Errorf("the bar does not report the scroll position: %q", scrolled)
+	a.back.setClass(ClassDetail)
+	for i := 0; i < 3; i++ {
+		a.back.Write([]byte("panel\n"))
+	}
+	if tag := a.boxTag(100, 0); !strings.Contains(tag, "3") {
+		t.Errorf("the border does not report the folded lines: %q", tag)
+	}
+	a.back.setDetail(true)
+	if tag := a.boxTag(100, 0); tag != "" {
+		t.Errorf("nothing is folded once the full view is on: %q", tag)
+	}
+
+	// The rule must be exactly as wide as the window whether it carries a tag
+	// or not: it is drawn straight into a fixed-width frame.
+	for _, tag := range []string{"", "60/100 ↓", "60/100 ↓ · ⋯12"} {
+		if got := term.DispWidth(rule('╭', '╮', 60, tag)); got != 60 {
+			t.Errorf("rule(%q) is %d columns, expected 60", tag, got)
+		}
 	}
 }
 
@@ -1490,7 +1577,7 @@ func TestEveryFrameFitsTheWindowItWasBuiltFor(t *testing.T) {
 	newApp := func(typed string) *App {
 		a := newTestApp(t, Config{
 			Title:    "stage 12",
-			Segments: func() []string { return []string{"openai", "gpt-4o"} },
+			Segments: func() []Segment { return []Segment{{Value: "openai"}, {Value: "gpt-4o"}} },
 		})
 		a.Printf("%s\n", strings.Repeat("wide output ", 40))
 		a.ed.insert(typed)
@@ -1680,7 +1767,7 @@ func TestElapsedReadsAsAClockAtEveryScale(t *testing.T) {
 func TestThePaneCanBeWrittenFromEveryDirectionAtOnce(t *testing.T) {
 	s := newShell(t, Config{
 		Title:    "stage 12",
-		Segments: func() []string { return []string{"openai"} },
+		Segments: func() []Segment { return []Segment{{Value: "openai"}} },
 		Commands: []Command{{
 			Name: "/report",
 			Run: func(_ context.Context, _ string, w io.Writer) error {

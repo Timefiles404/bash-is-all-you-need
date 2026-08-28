@@ -333,6 +333,7 @@ func (a *App) shellStatus() []Section {
 		{Name: "window", Value: fmt.Sprintf("%d×%d", a.width(), a.height())},
 		{Name: "colour", Value: yesNo(a.st.on)},
 		{Name: "output pane", Value: fmt.Sprintf("%d lines", lines), Note: droppedNote(dropped)},
+		{Name: "view", Value: viewMode(a.back.detailed()), Note: foldNote(a.back.folded())},
 		{Name: "platform", Value: runtime.GOOS + "/" + runtime.GOARCH},
 	}
 	if a.cfg.Settings != nil {
@@ -346,6 +347,23 @@ func droppedNote(n int) string {
 		return ""
 	}
 	return fmt.Sprintf("%d older lines dropped", n)
+}
+
+func viewMode(detail bool) string {
+	if detail {
+		return "everything"
+	}
+	return "compact"
+}
+
+// foldNote says how to get the hidden lines back, not only that they are hidden.
+// This row is most likely to be read by somebody who has just noticed output
+// going missing and has come to /status to find out why.
+func foldNote(n int) string {
+	if n == 0 {
+		return ""
+	}
+	return fmt.Sprintf("%d lines folded away · ctrl-o shows them", n)
 }
 
 func yesNo(b bool) string {
@@ -363,6 +381,7 @@ func keymap(st style, w int) []string {
 		{"ctrl-c", "interrupt; twice on an empty prompt to leave"},
 		{"ctrl-d", "leave, on an empty prompt"},
 		{"tab", "complete a slash command"},
+		{"ctrl-o", "fold the instruments away, or bring them back"},
 		{"up / down", "history, or move between lines of a multi-line prompt"},
 		{"pgup / pgdn", "scroll the output pane"},
 		{"shift-up / shift-down", "scroll one line"},

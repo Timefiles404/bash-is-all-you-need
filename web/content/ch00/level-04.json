@@ -1,0 +1,168 @@
+{
+  "id": "ch00-l04",
+  "chapter": "ch00",
+  "title": {
+    "zh": "账单是二次增长的",
+    "en": ""
+  },
+  "objective": {
+    "zh": "把六轮的 prompt 列加出来,让「会话有多大」和「你付了多少」变成两个数字。",
+    "en": ""
+  },
+  "brief": {
+    "zh": "每一次请求都要把整个消息数组重发一遍,所以第 6 轮的时候,第 1 轮的内容是第六次被计费。\n这一关重现 docs/00-loop.md 里那张表。跑完你会看到两个数:一个是这段对话最后有多大,另一个是你实际付掉的钱。它们不是一回事,而且随着轮数增加,差距只会越拉越大。",
+    "en": ""
+  },
+  "hint": {
+    "zh": "先分清两个变量在回答什么问题:history 回答「现在数组多大」,billed 回答「一共发生过多少次收费」。",
+    "en": ""
+  },
+  "entry": "main.go",
+  "files": [
+    {
+      "path": "main.go",
+      "readonly": false,
+      "template": "// 关卡 04 · 账单是二次增长的\n//\n// docs/00-loop.md 里那次真实运行:六轮,最后消息数组是 1192 tokens。\n// 这一关把「你被计了多少费」算出来,并且把它和「这段对话有多大」分开。\npackage main\n\nimport \"fmt\"\n\nfunc main() {\n\thistory := 0 // 消息数组现在有多大\n\tbilled := 0  // 到目前为止一共付了多少\n\n\tfmt.Println(\"turn  what it did                   prompt\")\n\tfmt.Println(\"----  ----------------------------  ------\")\n\n\tfor _, t := range turns {\n\t\thistory += t.Grew\n\n\t\t// 这一轮的账单\n\t\t[[1]]\n\n\t\tfmt.Printf(\"%4d  %-28s  %6d\\n\", t.N, t.What, [[2]])\n\t}\n\n\tfmt.Println()\n\tfmt.Printf(\"最终会话大小: %5d tokens\\n\", history)\n\tfmt.Printf(\"实际账单:     %5d tokens\\n\", billed)\n\tfmt.Printf(\"倍数:         %5.1fx\\n\", [[3]])\n}\n"
+    },
+    {
+      "path": "turns.go",
+      "readonly": true,
+      "template": "package main\n\n// docs/00-loop.md 里那次真实运行:找 bug、读文件、跑一遍、打补丁、再读、验证。\n// Grew 是这一轮往消息数组里添了多少 token。\ntype turn struct {\n\tN    int\n\tWhat string\n\tGrew int\n}\n\nvar turns = []turn{\n\t{1, \"ls -la\", 429},\n\t{2, \"cat README.md; cat stats.py\", 184},\n\t{3, \"python stats.py -> traceback\", 124},\n\t{4, \"sed -i ... (patch)\", 195},\n\t{5, \"cat stats.py\", 147},\n\t{6, \"python stats.py -> clean\", 113},\n}\n"
+    }
+  ],
+  "holes": [
+    {
+      "id": "1",
+      "label": {
+        "zh": "这一轮的账单怎么累加",
+        "en": ""
+      },
+      "options": [
+        {
+          "id": "a",
+          "text": "billed = history",
+          "correct": false,
+          "why": {
+            "zh": "这算出来的是最后一轮的数组大小,也就是你以为自己在付的钱。它永远等于 history。",
+            "en": ""
+          }
+        },
+        {
+          "id": "b",
+          "text": "billed += t.Grew",
+          "correct": false,
+          "why": {
+            "zh": "这加出来正好是会话最终的大小。它回答的是「这段对话有多大」,不是「收了几次费」。",
+            "en": ""
+          }
+        },
+        {
+          "id": "c",
+          "text": "billed += history",
+          "correct": true,
+          "why": {
+            "zh": "这一轮请求带上去的是整个数组,所以这一轮的费用就是当时数组的全部大小。逐轮累加,得到的才是账单。",
+            "en": ""
+          }
+        }
+      ]
+    },
+    {
+      "id": "2",
+      "label": {
+        "zh": "表格里这一列该打印什么",
+        "en": ""
+      },
+      "options": [
+        {
+          "id": "a",
+          "text": "history",
+          "correct": true,
+          "why": {
+            "zh": "这一列是「这次请求带上去多少」,而请求里带的是整个数组。",
+            "en": ""
+          }
+        },
+        {
+          "id": "b",
+          "text": "t.Grew",
+          "correct": false,
+          "why": {
+            "zh": "那是这一轮新增的部分。协议里没有「增量」这回事,每次都是全量。",
+            "en": ""
+          }
+        },
+        {
+          "id": "c",
+          "text": "billed",
+          "correct": false,
+          "why": {
+            "zh": "那是累计花费,不是某一次请求的大小。这一列会变成一条一路涨上去的曲线,和实际请求对不上。",
+            "en": ""
+          }
+        }
+      ]
+    },
+    {
+      "id": "3",
+      "label": {
+        "zh": "倍数怎么算",
+        "en": ""
+      },
+      "options": [
+        {
+          "id": "a",
+          "text": "float64(billed / history)",
+          "correct": false,
+          "why": {
+            "zh": "括号里先做了整数除法,4.18 在转成 float64 之前就被截成 4 了。",
+            "en": ""
+          }
+        },
+        {
+          "id": "b",
+          "text": "float64(history) / float64(billed)",
+          "correct": false,
+          "why": {
+            "zh": "倒过来了,算出来是 0.2x,读起来像省了钱。",
+            "en": ""
+          }
+        },
+        {
+          "id": "c",
+          "text": "float64(billed) / float64(history)",
+          "correct": true,
+          "why": {
+            "zh": "付掉的除以最后剩下的。六轮是 4.2 倍,而这个比值会随着轮数一直往上走。",
+            "en": ""
+          }
+        }
+      ]
+    }
+  ],
+  "run": {
+    "argv": [],
+    "stdin": "",
+    "stdout": [
+      "turn  what it did                   prompt",
+      "----  ----------------------------  ------",
+      "   1  ls -la                           429",
+      "   2  cat README.md; cat stats.py      613",
+      "   3  python stats.py -> traceback     737",
+      "   4  sed -i ... (patch)               932",
+      "   5  cat stats.py                    1079",
+      "   6  python stats.py -> clean        1192",
+      "",
+      "最终会话大小:  1192 tokens",
+      "实际账单:      4982 tokens",
+      "倍数:           4.2x"
+    ],
+    "expect": {
+      "stdoutIncludes": [
+        "最终会话大小:  1192 tokens",
+        "实际账单:      4982 tokens",
+        "倍数:           4.2x"
+      ]
+    }
+  }
+}

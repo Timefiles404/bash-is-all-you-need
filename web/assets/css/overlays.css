@@ -1,0 +1,455 @@
+/* Everything that sits on top of the three panes: sheets, the command
+   palette, the level-clear card, the quiz, the diff stepper, toasts and the
+   degradation banner. */
+
+/* ---------------------------------------------------------------- overlays */
+
+.scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  background: rgba(6, 8, 10, 0.72);
+  display: grid;
+  place-items: center;
+  padding: var(--sp-5);
+}
+
+.sheet {
+  width: min(760px, 100%);
+  max-height: min(82vh, 760px);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-1);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-2);
+  overflow: hidden;
+}
+
+.sheet-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  border-bottom: 1px solid var(--line);
+}
+
+.sheet-head h2 {
+  margin: 0;
+  font-size: var(--fs-lg);
+  font-weight: 600;
+}
+
+.sheet-head .spacer {
+  flex: 1 1 auto;
+}
+
+.sheet-body {
+  padding: var(--sp-4);
+  overflow-y: auto;
+}
+
+.sheet-foot {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-4);
+  border-top: 1px solid var(--line);
+}
+
+.sheet-body h3 {
+  margin: var(--sp-4) 0 var(--sp-2);
+  font-size: var(--fs-md);
+  font-weight: 600;
+  color: var(--fg-0);
+}
+
+.sheet-body h3:first-child {
+  margin-top: 0;
+}
+
+.sheet-body p {
+  margin: 0 0 var(--sp-3);
+  color: var(--fg-1);
+}
+
+/* help overlay */
+.key-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: var(--sp-2) var(--sp-5);
+}
+
+.key-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-1) 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.key-row .desc {
+  flex: 1 1 auto;
+  color: var(--fg-1);
+}
+
+/* command palette */
+.palette {
+  width: min(620px, 100%);
+  align-self: start;
+  margin-top: 12vh;
+}
+
+.palette input {
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  color: var(--fg-0);
+  font: var(--fs-lg) / 1 var(--font-sans);
+  padding: var(--sp-4);
+}
+
+.palette input:focus {
+  outline: none;
+}
+
+.cmd-list {
+  list-style: none;
+  margin: 0;
+  padding: var(--sp-1);
+  max-height: 46vh;
+  overflow-y: auto;
+}
+
+.cmd {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  width: 100%;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--radius);
+  text-align: left;
+}
+
+.cmd:hover,
+.cmd.cursor {
+  background: var(--bg-3);
+}
+
+.cmd .desc {
+  flex: 1 1 auto;
+}
+
+/* level clear */
+.clear-card {
+  width: min(420px, 100%);
+  text-align: center;
+  padding: var(--sp-6) var(--sp-5);
+  background: var(--bg-1);
+  border: 1px solid var(--accent-line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-2);
+  animation: rise var(--dur-slow) cubic-bezier(0.2, 0.9, 0.3, 1);
+}
+
+@keyframes rise {
+  from { transform: translateY(10px); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+
+.clear-card .mark {
+  width: 56px;
+  height: 56px;
+  margin: 0 auto var(--sp-4);
+  color: var(--accent);
+}
+
+.clear-card .mark circle,
+.clear-card .mark path {
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.clear-card .mark circle {
+  stroke-dasharray: 151;
+  stroke-dashoffset: 151;
+  animation: draw 520ms ease forwards;
+}
+
+.clear-card .mark path {
+  stroke-dasharray: 26;
+  stroke-dashoffset: 26;
+  animation: draw 260ms ease 380ms forwards;
+}
+
+@keyframes draw {
+  to { stroke-dashoffset: 0; }
+}
+
+.clear-card h2 {
+  margin: 0 0 var(--sp-1);
+  font-size: var(--fs-xl);
+}
+
+.clear-card .sub {
+  color: var(--fg-1);
+  margin-bottom: var(--sp-5);
+}
+
+.clear-card .row {
+  display: flex;
+  gap: var(--sp-2);
+  justify-content: center;
+}
+
+/* quiz */
+.q {
+  margin-bottom: var(--sp-5);
+  padding-bottom: var(--sp-4);
+  border-bottom: 1px solid var(--line);
+}
+
+.q:last-child {
+  border-bottom: 0;
+}
+
+.q .stem {
+  margin-bottom: var(--sp-3);
+  color: var(--fg-0);
+}
+
+.q .stem .n {
+  font-family: var(--font-mono);
+  color: var(--fg-2);
+  margin-right: var(--sp-2);
+}
+
+.q .stem pre {
+  margin: var(--sp-2) 0 0;
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--bg-inset);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  font: var(--fs-sm) / 1.6 var(--font-mono);
+  overflow-x: auto;
+}
+
+.q-opt {
+  display: flex;
+  gap: var(--sp-3);
+  width: 100%;
+  text-align: left;
+  padding: var(--sp-2) var(--sp-3);
+  margin-bottom: var(--sp-1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--fg-1);
+}
+
+.q-opt:hover:not(:disabled) {
+  background: var(--bg-2);
+  color: var(--fg-0);
+}
+
+.q-opt .mk {
+  font: var(--fs-sm) / 1.6 var(--font-mono);
+  color: var(--fg-2);
+  flex: 0 0 auto;
+}
+
+.q-opt[data-verdict="right"] {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+  color: var(--fg-0);
+}
+
+.q-opt[data-verdict="wrong"] {
+  border-color: var(--warn-line);
+  background: var(--warn-soft);
+  color: var(--fg-0);
+}
+
+.q-why {
+  margin: var(--sp-2) 0 0;
+  padding-left: var(--sp-3);
+  border-left: 2px solid var(--line-strong);
+  font-size: var(--fs-sm);
+  color: var(--fg-1);
+}
+
+.q-score {
+  font-family: var(--font-mono);
+  color: var(--accent-bright);
+}
+
+/* closing panel */
+.closing-list {
+  list-style: none;
+  margin: 0 0 var(--sp-4);
+  padding: 0;
+}
+
+.closing-list li {
+  padding: var(--sp-2) 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.closing-list li:last-child {
+  border-bottom: 0;
+}
+
+.closing-list .t {
+  color: var(--fg-0);
+  display: block;
+}
+
+.closing-list a.t {
+  color: var(--accent-bright);
+  text-decoration: none;
+}
+
+.closing-list a.t:hover {
+  text-decoration: underline;
+}
+
+.closing-list .n {
+  color: var(--fg-1);
+  font-size: var(--fs-sm);
+}
+
+/* diff stepper */
+.diff-shell {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.diff-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--fs-sm);
+  color: var(--fg-1);
+}
+
+.diff-bar .step-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.diff-code {
+  margin: 0;
+  padding: var(--sp-3);
+  background: var(--bg-inset);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  font: var(--fs-sm) / 1.55 var(--font-mono);
+  overflow: auto;
+  max-height: 46vh;
+  white-space: pre;
+}
+
+.diff-code .ln {
+  display: block;
+  padding: 0 var(--sp-2);
+  margin: 0 calc(-1 * var(--sp-2));
+  color: var(--fg-1);
+}
+
+.diff-code .ln.add {
+  background: var(--accent-soft);
+  color: var(--fg-0);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.diff-code .ln.gap {
+  color: var(--fg-2);
+}
+
+/* ---------------------------------------------------------------- toast */
+
+#toasts {
+  position: fixed;
+  right: var(--sp-4);
+  bottom: var(--sp-4);
+  z-index: 90;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  max-width: 380px;
+}
+
+.toast {
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--line-strong);
+  border-left-width: 2px;
+  border-radius: var(--radius);
+  background: var(--bg-2);
+  box-shadow: var(--shadow-1);
+  font-size: var(--fs-sm);
+  color: var(--fg-1);
+  animation: rise var(--dur) ease;
+}
+
+.toast.ok {
+  border-left-color: var(--accent);
+}
+
+.toast.warn {
+  border-left-color: var(--warn);
+}
+
+.toast.bad {
+  border-left-color: var(--danger);
+}
+
+/* ---------------------------------------------------------------- banners */
+
+/* Bottom left, not top centre: the top of the window is the editor toolbar,
+   and a banner that covers the save button to say the CDN is down is its own
+   small disaster. The toasts live bottom right, so the two never meet. */
+#banner {
+  position: fixed;
+  left: var(--sp-4);
+  bottom: var(--sp-4);
+  z-index: 95;
+  cursor: pointer;
+  max-width: min(560px, calc(100vw - 32px));
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--warn-line);
+  border-radius: var(--radius);
+  background: var(--bg-2);
+  color: var(--fg-1);
+  font-size: var(--fs-sm);
+  box-shadow: var(--shadow-2);
+  display: none;
+}
+
+#banner.on {
+  display: block;
+}
+
+#banner b {
+  color: var(--warn);
+  font-weight: 600;
+}
+
+#banner code {
+  font-family: var(--font-mono);
+  color: var(--fg-0);
+  background: var(--bg-0);
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+
+.hidden {
+  display: none !important;
+}
+

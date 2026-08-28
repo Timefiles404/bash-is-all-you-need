@@ -1,0 +1,176 @@
+{
+  "id": "ch00-l03",
+  "chapter": "ch00",
+  "title": {
+    "zh": "非零退出是一次观察",
+    "en": ""
+  },
+  "objective": {
+    "zh": "把 runBash 的返回值整理成模型真正需要的东西:两股输出都要,失败不吞,空输出说清楚。",
+    "en": ""
+  },
+  "brief": {
+    "zh": "这十行里最常见的初学者写法是:命令失败就 return err。\n一条退出码非零的命令并没有弄坏你的程序,它产出了信息,而该对这条信息作出反应的是模型,不是你。\n四条命令会跑过去:一条正常,一条成功但没有输出,一条失败且没有输出,一条失败并把 traceback 写在 stderr 上。三个空各自决定模型能看到其中的哪一部分。",
+    "en": ""
+  },
+  "hint": {
+    "zh": "最后一条命令是关键。它的退出码只是 1,而你真正要交给模型的东西在 stderr 里。",
+    "en": ""
+  },
+  "entry": "main.go",
+  "files": [
+    {
+      "path": "main.go",
+      "readonly": false,
+      "template": "// 关卡 03 · 非零退出是一次观察,不是一次异常\n//\n// runBash 只有十行,里面有三个决定会一路影响 agent 的行为。\n// 真实的 stage 00 在这里调用 exec.Command(shell, \"-c\", command);\n// 这一关把执行换成 fakeExec,好让你只盯着返回值的形状。\npackage main\n\nimport (\n\t\"fmt\"\n\t\"strings\"\n)\n\n// runBash 跑一条命令,返回模型应该看到的东西。\nfunc runBash(command string) string {\n\tres := fakeExec(command)\n\n\t// 模型该看到哪几股输出\n\tresult := [[1]]\n\n\tif res.Err != nil {\n\t\t// 命令以非零退出收场了\n\t\t[[2]]\n\t}\n\n\tif strings.TrimSpace(result) == \"\" {\n\t\t[[3]]\n\t}\n\n\treturn result\n}\n\nfunc main() {\n\tfor _, cmd := range []string{\n\t\t\"ls\",\n\t\t\"mkdir -p out\",\n\t\t\"grep tool_call_id README.md\",\n\t\t\"python stats.py\",\n\t} {\n\t\tfmt.Printf(\"$ %s\\n%s\\n\\n\", cmd, indent(runBash(cmd)))\n\t}\n}\n"
+    },
+    {
+      "path": "exec.go",
+      "readonly": true,
+      "template": "package main\n\nimport (\n\t\"errors\"\n\t\"strings\"\n)\n\n// result 是 fakeExec 的返回值。真实代码里 cmd.CombinedOutput() 一次就把\n// 两股输出拼好了;这里把它们分开,好让第一个决定真的成为一个决定。\ntype result struct {\n\tStdout string\n\tStderr string\n\tErr    error\n}\n\nfunc fakeExec(command string) result {\n\tswitch command {\n\tcase \"ls\":\n\t\treturn result{Stdout: \"README.md\\nmain.go\\nstats.py\\n\"}\n\tcase \"mkdir -p out\":\n\t\t// 成功,而且一个字都不打印。这种命令比你以为的多。\n\t\treturn result{}\n\tcase \"grep tool_call_id README.md\":\n\t\t// grep 没找到东西的时候退出码是 1,并且什么都不输出。\n\t\treturn result{Err: errors.New(\"exit status 1\")}\n\tcase \"python stats.py\":\n\t\treturn result{\n\t\t\tStderr: \"Traceback (most recent call last):\\n\" +\n\t\t\t\t\"  File \\\"stats.py\\\", line 7, in <module>\\n\" +\n\t\t\t\t\"    print(total / len(rows))\\n\" +\n\t\t\t\t\"ZeroDivisionError: division by zero\\n\",\n\t\t\tErr: errors.New(\"exit status 1\"),\n\t\t}\n\t}\n\treturn result{Err: errors.New(\"exit status 127\")}\n}\n\nfunc indent(s string) string {\n\ts = strings.TrimRight(s, \"\\n\")\n\treturn \"  | \" + strings.ReplaceAll(s, \"\\n\", \"\\n  | \")\n}\n"
+    }
+  ],
+  "holes": [
+    {
+      "id": "1",
+      "label": {
+        "zh": "模型该看到哪几股输出",
+        "en": ""
+      },
+      "options": [
+        {
+          "id": "a",
+          "text": "res.Stdout",
+          "correct": false,
+          "why": {
+            "zh": "traceback 走的是 stderr。模型会拿到一片空白,然后开始猜 —— 而它猜的正是你本来可以直接给它的东西。",
+            "en": ""
+          }
+        },
+        {
+          "id": "b",
+          "text": "res.Stdout + res.Stderr",
+          "correct": true,
+          "why": {
+            "zh": "两股都要。真实代码里这一行就是 cmd.CombinedOutput():模型需要的是这条命令在终端里的完整样子。",
+            "en": ""
+          }
+        },
+        {
+          "id": "c",
+          "text": "res.Stderr",
+          "correct": false,
+          "why": {
+            "zh": "反过来了。ls 成功的时候它什么都看不到,于是以为命令没跑。",
+            "en": ""
+          }
+        }
+      ]
+    },
+    {
+      "id": "2",
+      "label": {
+        "zh": "命令非零退出的时候",
+        "en": ""
+      },
+      "options": [
+        {
+          "id": "a",
+          "text": "result += fmt.Sprintf(\"\\n[exit: %v]\", res.Err)",
+          "correct": true,
+          "why": {
+            "zh": "输出照给,后面补一行退出状态。失败没有被吞掉,也没有盖住 traceback。",
+            "en": ""
+          }
+        },
+        {
+          "id": "b",
+          "text": "result = fmt.Sprintf(\"命令执行失败: %v\", res.Err)",
+          "correct": false,
+          "why": {
+            "zh": "退出码几乎不含信息,traceback 才是定位 bug 的依据 —— 而这一行正好把 traceback 盖掉了。",
+            "en": ""
+          }
+        },
+        {
+          "id": "c",
+          "text": "panic(res.Err)",
+          "correct": false,
+          "why": {
+            "zh": "一条 grep 没匹配上就带走整个 agent。非零退出在 shell 里是家常便饭,不是异常。",
+            "en": ""
+          }
+        }
+      ]
+    },
+    {
+      "id": "3",
+      "label": {
+        "zh": "命令成功了,但一个字都没输出",
+        "en": ""
+      },
+      "options": [
+        {
+          "id": "a",
+          "text": "// 什么都不做,让它是空串",
+          "correct": false,
+          "why": {
+            "zh": "空结果在对话里看起来像「这一轮什么都没发生」。模型分不清「跑了没输出」和「没跑」,于是把同一条命令再要一遍。",
+            "en": ""
+          }
+        },
+        {
+          "id": "b",
+          "text": "result = res.Err.Error()",
+          "correct": false,
+          "why": {
+            "zh": "走到这里说明命令是成功的,res.Err 是 nil,这一行直接 panic。",
+            "en": ""
+          }
+        },
+        {
+          "id": "c",
+          "text": "result = \"[no output]\"",
+          "correct": true,
+          "why": {
+            "zh": "一句明确的「跑过了,没有输出」。这是模型和空白之间唯一的区别。",
+            "en": ""
+          }
+        }
+      ]
+    }
+  ],
+  "run": {
+    "argv": [],
+    "stdin": "",
+    "stdout": [
+      "$ ls",
+      "  | README.md",
+      "  | main.go",
+      "  | stats.py",
+      "",
+      "$ mkdir -p out",
+      "  | [no output]",
+      "",
+      "$ grep tool_call_id README.md",
+      "  | ",
+      "  | [exit: exit status 1]",
+      "",
+      "$ python stats.py",
+      "  | Traceback (most recent call last):",
+      "  |   File \"stats.py\", line 7, in <module>",
+      "  |     print(total / len(rows))",
+      "  | ZeroDivisionError: division by zero",
+      "  | ",
+      "  | [exit: exit status 1]",
+      ""
+    ],
+    "expect": {
+      "stdoutIncludes": [
+        "  | [no output]",
+        "ZeroDivisionError: division by zero",
+        "  | [exit: exit status 1]"
+      ]
+    }
+  }
+}

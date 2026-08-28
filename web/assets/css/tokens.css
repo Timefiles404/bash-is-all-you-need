@@ -1,0 +1,79 @@
+/* The whole palette lives here. Changing the product's look should mean
+   editing this file and nothing else, so no other stylesheet is allowed to
+   write a raw colour. */
+
+:root {
+  /* Surfaces. Near-black rather than #000: pure black makes hairline borders
+     invisible and turns every panel edge into a guess. */
+  --bg-0: #0b0d10;   /* the page behind the panes */
+  --bg-1: #101317;   /* a pane */
+  --bg-2: #161a20;   /* something raised on a pane: toolbar, popover, chip */
+  --bg-3: #1e242b;   /* hover / pressed */
+  --bg-inset: #0e1114;
+
+  --line: #232a31;         /* hairline between things that are equal */
+  --line-strong: #333c45;  /* hairline that has to survive on --bg-2 */
+
+  --fg-0: #e3e8ec;   /* body text */
+  --fg-1: #9aa5ae;   /* labels, secondary */
+  --fg-2: #68727b;   /* disabled, locked, timestamps */
+
+  /* One accent hue. Progress and success are the same colour on purpose: the
+     eye should learn a single "this went well" signal. */
+  --accent: #3fb2c6;
+  --accent-bright: #6fd3e4;
+  --accent-soft: rgba(63, 178, 198, 0.15);
+  --accent-line: rgba(63, 178, 198, 0.42);
+
+  /* A second hue, for anything the learner has to look at twice. */
+  --warn: #d3854f;
+  --warn-soft: rgba(211, 133, 79, 0.14);
+  --warn-line: rgba(211, 133, 79, 0.45);
+  --danger: #d4614f;
+  --danger-soft: rgba(212, 97, 79, 0.14);
+
+  /* System stacks only. A webfont download is a blank pane on a slow link, and
+     this site has to work behind a firewall. */
+  --font-sans: system-ui, -apple-system, "Segoe UI", "PingFang SC",
+    "Hiragino Sans GB", "Microsoft YaHei", Roboto, sans-serif;
+  --font-mono: ui-monospace, "Cascadia Code", "JetBrains Mono", "SF Mono",
+    Menlo, Consolas, "Liberation Mono", monospace;
+
+  --fs-xs: 11px;
+  --fs-sm: 12px;
+  --fs-md: 13px;
+  --fs-lg: 15px;
+  --fs-xl: 19px;
+
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+
+  --radius: 4px;
+  --radius-lg: 8px;
+
+  /* Two elevation levels, and that is all. */
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-2: 0 8px 28px rgba(0, 0, 0, 0.55);
+
+  --rail-w: 268px;
+  --rail-w-collapsed: 52px;
+  --term-w: 34%;
+
+  --dur-fast: 90ms;
+  --dur: 160ms;
+  --dur-slow: 420ms;
+}
+
+/* Respecting this is cheap and the level-clear animation is the one place the
+   site moves on its own. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-fast: 0ms;
+    --dur: 0ms;
+    --dur-slow: 0ms;
+  }
+}

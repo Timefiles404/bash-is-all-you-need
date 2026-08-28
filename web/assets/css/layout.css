@@ -1,0 +1,179 @@
+/* The three-pane frame, and the two ways it gives up gracefully:
+   the rail collapses to a strip, and under 1280px the terminal drops below the
+   editor instead of being squeezed to a column of wrapped characters. */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg-0);
+  color: var(--fg-0);
+  font: var(--fs-md) / 1.55 var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+#app {
+  display: grid;
+  grid-template-columns: var(--rail-w) minmax(0, 1fr) var(--term-w);
+  /* minmax(0, 1fr) rather than 1fr: an auto row grows to its tallest child, so
+     without this the editor pushes the status strip past the bottom of the
+     window and the whole page scrolls. */
+  grid-template-rows: minmax(0, 1fr);
+  grid-template-areas: "rail editor term";
+  height: 100vh;
+  transition: grid-template-columns var(--dur) ease;
+}
+
+#app.rail-collapsed {
+  grid-template-columns: var(--rail-w-collapsed) minmax(0, 1fr) var(--term-w);
+}
+
+.pane {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-1);
+}
+
+#rail {
+  grid-area: rail;
+  border-right: 1px solid var(--line);
+  overflow: hidden;
+}
+
+#editor-pane {
+  grid-area: editor;
+  display: grid;
+  grid-template-columns: 200px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  grid-template-areas: "tree code";
+  background: var(--bg-1);
+  min-width: 0;
+  min-height: 0;
+}
+
+#filetree {
+  grid-area: tree;
+  border-right: 1px solid var(--line);
+  overflow-y: auto;
+  background: var(--bg-1);
+}
+
+#code-col {
+  grid-area: code;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+#editor-host {
+  flex: 1 1 auto;
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
+  background: var(--bg-inset);
+}
+
+#term-pane {
+  grid-area: term;
+  border-left: 1px solid var(--line);
+  min-width: 0;
+}
+
+#term-host {
+  flex: 1 1 auto;
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
+  background: var(--bg-inset);
+  padding: var(--sp-2);
+}
+
+/* A pane's header: one row, 34px, the same everywhere so the three panes line
+   up across the top of the window. */
+.pane-head {
+  flex: 0 0 auto;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 0 var(--sp-2) 0 var(--sp-3);
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-1);
+  font-size: var(--fs-xs);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fg-2);
+  user-select: none;
+}
+
+.pane-head .spacer {
+  flex: 1 1 auto;
+}
+
+/* The pane heading is a label and gets small caps; the open file's name is not
+   a label, and upper-casing it would misspell it. */
+#open-file-name {
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: var(--fs-sm);
+  color: var(--fg-1);
+}
+
+/* At the narrow end of the three-column layout the code column is what runs
+   out first, so the file list gives up width before the editor does. */
+@media (max-width: 1439px) {
+  #editor-pane {
+    grid-template-columns: 168px minmax(0, 1fr);
+  }
+}
+
+/* Below 1280px the terminal moves under the editor. Squeezing a terminal into
+   a narrow column makes every line wrap, which is worse than not seeing it. */
+@media (max-width: 1279px) {
+  #app {
+    grid-template-columns: var(--rail-w) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) 260px;
+    grid-template-areas:
+      "rail editor"
+      "rail term";
+  }
+
+  #app.rail-collapsed {
+    grid-template-columns: var(--rail-w-collapsed) minmax(0, 1fr);
+  }
+
+  #term-pane {
+    border-left: 0;
+    border-top: 1px solid var(--line);
+  }
+}
+
+@media (max-width: 1023px) {
+  #editor-pane {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "code";
+  }
+
+  /* The file tree becomes a strip of tabs above the editor rather than a
+     column narrow enough to truncate every name. */
+  #filetree {
+    display: none;
+  }
+
+  #app {
+    grid-template-columns: var(--rail-w-collapsed) minmax(0, 1fr);
+  }
+}

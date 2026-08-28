@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+    <title>Bash Is All You Need — 动手写一个编码 agent</title>
+
+    <!-- The two CDNs this page will try. Nothing here is required: if either is
+         unreachable the editor falls back to a textarea and the terminal to a
+         log, and a banner says so. -->
+    <link rel="preconnect" href="https://esm.sh" crossorigin />
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/css/xterm.css"
+    />
+
+    <link rel="stylesheet" href="./assets/css/tokens.css" />
+    <link rel="stylesheet" href="./assets/css/layout.css" />
+    <link rel="stylesheet" href="./assets/css/components.css" />
+    <link rel="stylesheet" href="./assets/css/workbench.css" />
+    <link rel="stylesheet" href="./assets/css/overlays.css" />
+  </head>
+  <body>
+    <div id="banner" role="status"></div>
+
+    <div id="app">
+      <!-- ------------------------------------------------ left: chapter rail -->
+      <aside id="rail" class="pane" aria-label="chapters">
+        <div class="rail-top">
+          <div class="brand">
+            <b>Bash Is All You Need</b>
+          </div>
+          <div class="progress-readout">
+            <span id="progress-text"></span>
+            <b id="progress-count">0 / 0</b>
+          </div>
+          <div class="track"><i id="progress-fill" style="width: 0%"></i></div>
+        </div>
+        <div id="rail-mini">
+          <div class="track"><i id="progress-fill-mini" style="height: 0%"></i></div>
+        </div>
+        <nav class="chapters" id="chapters"></nav>
+      </aside>
+
+      <!-- ------------------------------------------------- middle: the editor -->
+      <section id="editor-pane" aria-label="editor">
+        <div id="filetree" aria-label="files"></div>
+
+        <div id="code-col">
+          <div class="pane-head">
+            <span id="open-file-name" class="mono">—</span>
+            <span class="spacer"></span>
+            <button class="btn icon-only" id="btn-rail" data-tip="rail"></button>
+            <button class="btn" id="btn-format" data-tip="format"></button>
+            <button class="btn" id="btn-save" data-tip="save"></button>
+            <button class="btn warn" id="btn-reveal" data-tip="reveal"></button>
+            <button class="btn icon-only" id="btn-help" data-tip="help"></button>
+          </div>
+
+          <div id="editor-host"></div>
+          <div id="hole-fallback"></div>
+
+          <div id="statusstrip">
+            <span class="seg" id="st-check"></span>
+            <span class="seg" id="st-dirty"></span>
+            <span class="seg" id="st-holes"></span>
+            <span class="objective" id="st-objective"></span>
+          </div>
+        </div>
+      </section>
+
+      <!-- --------------------------------------------------- right: terminal -->
+      <section id="term-pane" class="pane" aria-label="terminal">
+        <div class="pane-head">
+          <div class="tabs" role="tablist">
+            <button class="tab" id="tab-run" role="tab" aria-selected="true"></button>
+            <button class="tab" id="tab-shell" role="tab" aria-selected="false"></button>
+          </div>
+          <span class="spacer"></span>
+          <button class="btn" id="btn-run" data-tip="run"></button>
+          <button class="btn icon-only" id="btn-stop" data-tip="stop"></button>
+          <button class="btn icon-only" id="btn-clear" data-tip="clear"></button>
+        </div>
+        <div id="term-host"></div>
+        <div class="pane-head" id="rt-status" style="border-top: 1px solid var(--line); border-bottom: 0"></div>
+      </section>
+    </div>
+
+    <div id="toasts" aria-live="polite"></div>
+    <div id="overlay-root"></div>
+
+    <!-- A classic script, on purpose: it has to run even when the module graph
+         below cannot be fetched at all, which is exactly the file:// case. -->
+    <script>
+      (function () {
+        if (location.protocol !== "file:") return;
+        var b = document.getElementById("banner");
+        b.className = "on";
+        b.innerHTML =
+          "<b>需要通过 HTTP 打开</b> — 浏览器不允许 file:// 页面加载 ES 模块，" +
+          "所以这个页面在双击打开时只能显示到这一层。在 <code>web/</code> 目录里运行 " +
+          "<code>python -m http.server 8080</code>，然后访问 " +
+          "<code>http://localhost:8080/</code>。";
+      })();
+    </script>
+    <script type="module" src="./assets/js/main.js"></script>
+  </body>
+</html>

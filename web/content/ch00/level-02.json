@@ -1,0 +1,168 @@
+{
+  "id": "ch00-l02",
+  "chapter": "ch00",
+  "title": {
+    "zh": "参数是一段 JSON 字符串",
+    "en": ""
+  },
+  "objective": {
+    "zh": "把 arguments 解出来,并让两种失败 —— 参数畸形、工具名不认识 —— 都变成一条能回给模型的结果。",
+    "en": ""
+  },
+  "brief": {
+    "zh": "arguments 这个字段的值是一个字符串,字符串的内容才是 JSON。也就是说你要的东西藏在第二层编码后面,它有自己的引号和反斜杠。\n这一关会跑四次调用:两次正常,一次参数被截断,一次工具名不存在。三个空决定了后两次会发生什么。",
+    "en": ""
+  },
+  "hint": {
+    "zh": "盯着 call_2 那一行。它的 command 里带引号,而引号在外层被转义过一次。",
+    "en": ""
+  },
+  "entry": "main.go",
+  "files": [
+    {
+      "path": "main.go",
+      "readonly": false,
+      "template": "// 关卡 02 · 参数是一段 JSON 字符串\n//\n// tool_calls[].function.arguments 是一个 string,里面装的还是 JSON。\n// 这一关只做两件事:把它拆开,以及决定拆不开的时候怎么办。\npackage main\n\nimport (\n\t\"encoding/json\"\n\t\"fmt\"\n)\n\n// handle 处理一次工具调用,返回的字符串就是要回给模型的那条 tool 结果。\nfunc handle(call toolCall) string {\n\tif call.Name != \"bash\" {\n\t\t// 模型要了一个不存在的工具,而它仍然在等一条结果。\n\t\t[[1]]\n\t}\n\n\tvar args struct {\n\t\tCommand string `json:\"command\"`\n\t}\n\n\t// 从 call.Arguments 里取出 command\n\tif err := [[2]]; err != nil {\n\t\t[[3]]\n\t}\n\n\treturn fakeBash(args.Command)\n}\n\nfunc main() {\n\tfor _, call := range transcript {\n\t\tfmt.Printf(\"%s %s(%s)\\n\", call.ID, call.Name, call.Arguments)\n\t\tfmt.Printf(\"  -> %s\\n\\n\", handle(call))\n\t}\n}\n"
+    },
+    {
+      "path": "transcript.go",
+      "readonly": true,
+      "template": "package main\n\nimport (\n\t\"fmt\"\n\t\"strings\"\n)\n\ntype toolCall struct {\n\tID   string\n\tName string\n\n\t// 注意类型。这是一个 string,不是一个对象 —— 接口就是这么送的,\n\t// 里面那层 JSON 有它自己的一套转义。\n\tArguments string\n}\n\n// 四次调用。后两次是真实模型每天都会送来的东西。\nvar transcript = []toolCall{\n\t{ID: \"call_1\", Name: \"bash\", Arguments: `{\"command\":\"ls\"}`},\n\t{ID: \"call_2\", Name: \"bash\", Arguments: `{\"command\":\"grep -n \\\"tool_call_id\\\" main.go\"}`},\n\t{ID: \"call_3\", Name: \"bash\", Arguments: `{\"command\":`},\n\t{ID: \"call_4\", Name: \"read_file\", Arguments: `{\"path\":\"main.go\"}`},\n}\n\nfunc fakeBash(command string) string {\n\tswitch command {\n\tcase \"ls\":\n\t\treturn \"main.go  transcript.go\"\n\tcase `grep -n \"tool_call_id\" main.go`:\n\t\treturn \"main.go:16:\\tToolCallID string\"\n\t}\n\treturn \"bash: 不认识这条命令: \" + command\n}\n\n// matchCommand 用字符串匹配去取 command 的值,不解 JSON。\n// 它在 call_1 上是对的。放它进来就是为了让你看见它在 call_2 上会怎么样。\nfunc matchCommand(raw string, out *string) error {\n\tconst key = `\"command\":\"`\n\ti := strings.Index(raw, key)\n\tif i < 0 {\n\t\treturn fmt.Errorf(\"找不到 command: %s\", raw)\n\t}\n\trest := raw[i+len(key):]\n\tj := strings.Index(rest, `\"`)\n\tif j < 0 {\n\t\treturn fmt.Errorf(\"command 没有收尾: %s\", raw)\n\t}\n\t*out = rest[:j]\n\treturn nil\n}\n"
+    }
+  ],
+  "holes": [
+    {
+      "id": "1",
+      "label": {
+        "zh": "模型要了一个不存在的工具",
+        "en": ""
+      },
+      "options": [
+        {
+          "id": "a",
+          "text": "return fmt.Sprintf(\"no such tool: %s\", call.Name)",
+          "correct": true,
+          "why": {
+            "zh": "它仍然是一条结果,配对不会断,而且模型读得懂发生了什么,下一轮就会改用 bash。",
+            "en": ""
+          }
+        },
+        {
+          "id": "b",
+          "text": "panic(\"unknown tool: \" + call.Name)",
+          "correct": false,
+          "why": {
+            "zh": "模型拼错一个工具名就带走整个进程。小模型每天都会拼错。",
+            "en": ""
+          }
+        },
+        {
+          "id": "c",
+          "text": "return \"\"",
+          "correct": false,
+          "why": {
+            "zh": "空结果:模型看不出出了什么事,只知道自己什么也没得到,于是原样再要一次。",
+            "en": ""
+          }
+        }
+      ]
+    },
+    {
+      "id": "2",
+      "label": {
+        "zh": "怎么从 call.Arguments 里取出 command",
+        "en": ""
+      },
+      "options": [
+        {
+          "id": "a",
+          "text": "matchCommand(call.Arguments, &args.Command)",
+          "correct": false,
+          "why": {
+            "zh": "字符串匹配。它在你试过的那个例子上能对,然后 command 里出现一个引号,它就悄悄取到半截 —— 不报错,只是取错。这一层编码是真的,必须解开。",
+            "en": ""
+          }
+        },
+        {
+          "id": "b",
+          "text": "json.Unmarshal([]byte(call.Arguments), &args)",
+          "correct": true,
+          "why": {
+            "zh": "解第二层 JSON。转义、引号、换行都由它负责,你拿到的是一个结构体。",
+            "en": ""
+          }
+        },
+        {
+          "id": "c",
+          "text": "json.Unmarshal([]byte(call.Arguments), args)",
+          "correct": false,
+          "why": {
+            "zh": "传的是值不是指针。Unmarshal 会返回 InvalidUnmarshalError,args.Command 永远是空的。",
+            "en": ""
+          }
+        }
+      ]
+    },
+    {
+      "id": "3",
+      "label": {
+        "zh": "参数解不开的时候",
+        "en": ""
+      },
+      "options": [
+        {
+          "id": "a",
+          "text": "return \"[no output]\"",
+          "correct": false,
+          "why": {
+            "zh": "在假装命令跑过了而且没有输出。模型会以为自己成功了,接着往下走 —— 这比崩掉更难查。",
+            "en": ""
+          }
+        },
+        {
+          "id": "b",
+          "text": "panic(err)",
+          "correct": false,
+          "why": {
+            "zh": "参数畸形是模型的问题,不是你崩溃的理由。把错误交回去,它下一轮通常自己就修好了。",
+            "en": ""
+          }
+        },
+        {
+          "id": "c",
+          "text": "return fmt.Sprintf(\"could not parse tool arguments: %v\", err)",
+          "correct": true,
+          "why": {
+            "zh": "把解析错误当成这次调用的结果送回去。配对完好,而且模型拿到了修复所需的全部线索。",
+            "en": ""
+          }
+        }
+      ]
+    }
+  ],
+  "run": {
+    "argv": [],
+    "stdin": "",
+    "stdout": [
+      "call_1 bash({\"command\":\"ls\"})",
+      "  -> main.go  transcript.go",
+      "",
+      "call_2 bash({\"command\":\"grep -n \\\"tool_call_id\\\" main.go\"})",
+      "  -> main.go:16:\tToolCallID string",
+      "",
+      "call_3 bash({\"command\":)",
+      "  -> could not parse tool arguments: unexpected end of JSON input",
+      "",
+      "call_4 read_file({\"path\":\"main.go\"})",
+      "  -> no such tool: read_file",
+      ""
+    ],
+    "expect": {
+      "stdoutIncludes": [
+        "could not parse tool arguments: unexpected end of JSON input",
+        "no such tool: read_file",
+        "main.go:16:\tToolCallID string"
+      ]
+    }
+  }
+}

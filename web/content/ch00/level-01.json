@@ -1,0 +1,168 @@
+{
+  "id": "ch00-l01",
+  "chapter": "ch00",
+  "title": {
+    "zh": "一次往返",
+    "en": ""
+  },
+  "objective": {
+    "zh": "把内层循环补完整:回写助手这一轮、判断该不该停、把每条命令的结果配回去。",
+    "en": ""
+  },
+  "brief": {
+    "zh": "整个 agent 就是这个循环:把消息数组发出去,模型要么说话要么要工具,要了工具就去跑,跑完把结果追加回数组,再发一次。\n这一关有三个空。它们对应 docs/00-loop.md 里那两条不变量:消息数组只增不减,每一个 tool_call 都必须有一条结果。",
+    "en": ""
+  },
+  "hint": {
+    "zh": "先想清楚:下一次请求发出去的时候,数组里必须有什么,才能让接口认得出这次对话。",
+    "en": ""
+  },
+  "entry": "main.go",
+  "files": [
+    {
+      "path": "main.go",
+      "readonly": false,
+      "template": "// 关卡 01 · 一次往返\n//\n// 这里没有网络请求。nextReply() 从 transcript.go 里一段写死的脚本取出\n// 模型的下一条回复,于是唯一被考察的东西就是循环的形状。\npackage main\n\nimport \"fmt\"\n\nfunc main() {\n\tmsgs := []message{\n\t\t{Role: \"system\", Content: systemPrompt},\n\t\t{Role: \"user\", Content: \"统计这个目录里有几个 .go 文件\"},\n\t}\n\n\tfor turn := 1; turn <= maxTurns; turn++ {\n\t\treply := nextReply(msgs)\n\t\tfmt.Printf(\"--- 第 %d 轮 ---\\n\", turn)\n\n\t\t// 助手这一轮要原样回写。它带着 tool_calls,下一轮的结果得靠它配对。\n\t\t[[1]]\n\n\t\tif reply.Content != \"\" {\n\t\t\tfmt.Printf(\"模型说: %s\\n\", reply.Content)\n\t\t}\n\n\t\t// 这一轮到此为止了吗\n\t\tif [[2]] {\n\t\t\tbreak\n\t\t}\n\n\t\tfor _, call := range reply.ToolCalls {\n\t\t\toutput := fakeBash(call.Command)\n\t\t\tfmt.Printf(\"  $ %s\\n  | %s\\n\", call.Command, output)\n\n\t\t\t// 每一个 tool_call 都必须有一条结果回去。\n\t\t\t[[3]]\n\t\t}\n\t}\n\n\tfmt.Println()\n\tfmt.Println(\"--- 消息数组 ---\")\n\tfor i, m := range msgs {\n\t\tfmt.Printf(\"%d %-9s %s\\n\", i, m.Role, summarize(m))\n\t}\n}\n"
+    },
+    {
+      "path": "transcript.go",
+      "readonly": true,
+      "template": "package main\n\n// 这一关不联网。下面这段脚本就是\"模型\":它只看消息数组的最后一条是什么,\n// 于是循环里的每一处改动都会立刻反映在它看到的东西上。\n\nconst systemPrompt = \"你是一个在终端里干活的编码 agent,只有一个工具:bash。\"\n\n// 一个保险丝。没有它,一个不停要工具的模型会一直跑到你的额度见底。\nconst maxTurns = 25\n\ntype message struct {\n\tRole      string\n\tContent   string\n\tToolCalls []toolCall\n\n\t// 只在 role:\"tool\" 的消息上出现,它把一条结果和要它的那次调用配起来。\n\tToolCallID string\n}\n\ntype toolCall struct {\n\tID      string\n\tCommand string\n}\n\nfunc nextReply(msgs []message) message {\n\tif msgs[len(msgs)-1].Role == \"tool\" {\n\t\treturn message{Role: \"assistant\", Content: \"这个目录里有 3 个 .go 文件。\"}\n\t}\n\treturn message{\n\t\tRole:      \"assistant\",\n\t\tToolCalls: []toolCall{{ID: \"call_1\", Command: \"ls *.go | wc -l\"}},\n\t}\n}\n\n// fakeBash 站在 exec.Command 的位置上。真实的 stage 00 在这里起一个进程。\nfunc fakeBash(command string) string {\n\tif command == \"ls *.go | wc -l\" {\n\t\treturn \"3\"\n\t}\n\treturn \"[no output]\"\n}\n\nfunc summarize(m message) string {\n\tif len(m.ToolCalls) > 0 {\n\t\treturn \"tool_calls: \" + m.ToolCalls[0].Command\n\t}\n\tif m.ToolCallID != \"\" {\n\t\treturn m.ToolCallID + \" -> \" + m.Content\n\t}\n\tr := []rune(m.Content)\n\tif len(r) > 24 {\n\t\treturn string(r[:24]) + \"...\"\n\t}\n\treturn m.Content\n}\n"
+    }
+  ],
+  "holes": [
+    {
+      "id": "1",
+      "label": {
+        "zh": "模型这一轮的回复,要怎么放进数组",
+        "en": ""
+      },
+      "options": [
+        {
+          "id": "a",
+          "text": "msgs = append(msgs, reply)",
+          "correct": true,
+          "why": {
+            "zh": "原样回写。tool_calls 也跟着进了数组,下一轮的 role:\"tool\" 消息才有东西可以配对。",
+            "en": ""
+          }
+        },
+        {
+          "id": "b",
+          "text": "msgs = append(msgs, message{Role: \"assistant\", Content: reply.Content})",
+          "correct": false,
+          "why": {
+            "zh": "tool_calls 被丢掉了。接下来你追加的 tool 结果找不到对应的调用,下一次请求整个不合法。",
+            "en": ""
+          }
+        },
+        {
+          "id": "c",
+          "text": "// 助手这轮不用记,结果才重要",
+          "correct": false,
+          "why": {
+            "zh": "那模型每一轮都不记得自己刚要求过什么,于是它会把同一条命令一直要下去。这段对话就是它的全部记忆。",
+            "en": ""
+          }
+        }
+      ]
+    },
+    {
+      "id": "2",
+      "label": {
+        "zh": "什么时候该跳出这一轮",
+        "en": ""
+      },
+      "options": [
+        {
+          "id": "a",
+          "text": "reply.Content != \"\"",
+          "correct": false,
+          "why": {
+            "zh": "模型可以一边说话一边要工具。按这个条件,它刚开口解释要做什么,循环就停了,命令一条也不会跑。",
+            "en": ""
+          }
+        },
+        {
+          "id": "b",
+          "text": "len(reply.ToolCalls) == 0",
+          "correct": true,
+          "why": {
+            "zh": "没有要工具,就说明这一轮它已经说完了。整个循环只判断这一件事 —— 这也正是它读不出「被截断」的原因,那是 stage 01 的事。",
+            "en": ""
+          }
+        },
+        {
+          "id": "c",
+          "text": "turn == maxTurns",
+          "correct": false,
+          "why": {
+            "zh": "那不是「做完了」,那是「用完了」。maxTurns 是保险丝,不是终点;把它当终点,每次对话都要烧满 25 轮。",
+            "en": ""
+          }
+        }
+      ]
+    },
+    {
+      "id": "3",
+      "label": {
+        "zh": "命令的输出怎么回给模型",
+        "en": ""
+      },
+      "options": [
+        {
+          "id": "a",
+          "text": "msgs = append(msgs, message{Role: \"tool\", ToolCallID: call.ID, Content: output})",
+          "correct": true,
+          "why": {
+            "zh": "角色是 tool,并且带上 call.ID。模型一次要三条命令时,这个 ID 是接口唯一能把结果对上号的东西。",
+            "en": ""
+          }
+        },
+        {
+          "id": "b",
+          "text": "msgs = append(msgs, message{Role: \"tool\", ToolCallID: \"\", Content: output})",
+          "correct": false,
+          "why": {
+            "zh": "少了 ID,配对就断了。单条命令时可能侥幸能跑,一次要三条的时候必然出错 —— 而这正是它难查的地方。",
+            "en": ""
+          }
+        },
+        {
+          "id": "c",
+          "text": "msgs = append(msgs, message{Role: \"user\", Content: output})",
+          "correct": false,
+          "why": {
+            "zh": "能发出去,但你在假装命令输出是用户说的话。模型会开始向「用户」确认它自己刚跑过的东西。",
+            "en": ""
+          }
+        }
+      ]
+    }
+  ],
+  "run": {
+    "argv": [],
+    "stdin": "",
+    "stdout": [
+      "--- 第 1 轮 ---",
+      "  $ ls *.go | wc -l",
+      "  | 3",
+      "--- 第 2 轮 ---",
+      "模型说: 这个目录里有 3 个 .go 文件。",
+      "",
+      "--- 消息数组 ---",
+      "0 system    你是一个在终端里干活的编码 agent,只有一个...",
+      "1 user      统计这个目录里有几个 .go 文件",
+      "2 assistant tool_calls: ls *.go | wc -l",
+      "3 tool      call_1 -> 3",
+      "4 assistant 这个目录里有 3 个 .go 文件。"
+    ],
+    "expect": {
+      "stdoutIncludes": [
+        "$ ls *.go | wc -l",
+        "2 assistant tool_calls: ls *.go | wc -l",
+        "3 tool      call_1 -> 3"
+      ]
+    }
+  }
+}

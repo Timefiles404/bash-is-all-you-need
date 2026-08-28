@@ -14,8 +14,8 @@ stages/05-live-forever` and see exactly one idea arrive.
 **Do not refactor shared code into a common package.** That is the one change
 that would break the thing this repo is for.
 
-There is exactly one package outside `stages/`, and the test that let it exist
-is worth stating because it is what stops the next one:
+Two things live outside `stages/`, and the test that let them exist is worth
+stating because it is what stops the third:
 
 > **A chapter explains it, or it is not in a stage.**
 
@@ -32,6 +32,20 @@ runaway turn, and a way to fix an endpoint without editing a file.
 Two different programs, so two different places. Nothing was deleted from
 `stages/` to make room for it, and `stages/NN/shell.go` — the file that wires
 one up — is duplicated per stage like everything else.
+
+`web/` is the second: a browser course that teaches the same thirteen stages by
+having the reader assemble them. It is here rather than in a repository of its
+own for one reason, and it is a mechanical one. `web/tools/genlevels` extracts
+every line of every level from `stages/` and refuses to build if a byte has
+moved — so a lesson cannot quietly go on describing code that changed. That
+check needs to see both trees at once, which means one repository. Run it with
+`python web/tools/build.py --check`; it takes seconds and needs no compiler, and
+CI runs it on anything that touches `stages/`.
+
+Unlike `tui/`, `web/` is **main-only**. It is bilingual inside itself — every
+string it shows has a `zh` and an `en` form — so mirroring it onto `zh-cn` would
+make two copies of one program that drift, with no chapter's correctness to
+catch it. The Go it teaches is still mirrored; only the site is not.
 
 The rule remains absolute for anything a chapter teaches. If you are about to
 move something that a chapter walks through into a package because it appears in

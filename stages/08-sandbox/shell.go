@@ -56,15 +56,15 @@ import (
 // that agent's. Stage 07 made the tree concurrent; a field like that is how a
 // trace of it comes out confidently mislabelled.
 type sandbox struct {
-	root string
-
 	// enforce=false makes this an observer: it reports every exec and every
 	// open and blocks nothing. Worth having as a mode of its own — most of the
 	// value here is seeing what a shell command actually does, and that value
-	// does not require refusing anything.
+	// does not require refusing anything. Written once, at construction.
 	enforce bool
 
-	mu      sync.Mutex
+	mu   sync.Mutex
+	root string // where commands run; /open moves it
+
 	execs   []string // every argv seen, after expansion
 	opens   []string // every path the shell opened
 	blocked []string
@@ -72,6 +72,25 @@ type sandbox struct {
 
 func newSandbox(root string, enforce bool) *sandbox {
 	return &sandbox{root: root, enforce: enforce}
+}
+
+// setRoot moves where commands run. /open calls it; nothing else should.
+//
+// Under the mutex because run reads it, and the two can be on different
+// goroutines. Today they are not — the shell will not dispatch /open while a
+// turn is in flight — but that is a property of a state machine three files
+// away, and a struct shared by every agent in the tree should not need one read
+// to know it is safe.
+func (s *sandbox) setRoot(dir string) {
+	s.mu.Lock()
+	s.root = dir
+	s.mu.Unlock()
+}
+
+func (s *sandbox) dir() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.root
 }
 
 // run executes one command inside the embedded interpreter, reporting on the
@@ -102,7 +121,7 @@ func (s *sandbox) run(command string, timeout time.Duration, bus *Bus) execResul
 
 	var stdout, stderr bytes.Buffer
 	runner, err := interp.New(
-		interp.Dir(s.root),
+		interp.Dir(s.dir()),
 		interp.StdIO(nil, &stdout, &stderr),
 		interp.Env(expand.ListEnviron(os.Environ()...)),
 		interp.ExecHandlers(s.execHandler(bus)),
@@ -156,10 +175,13 @@ func (s *sandbox) run(command string, timeout time.Duration, bus *Bus) execResul
 // to do to the source text has already been done, which is exactly why this is
 // the only place a policy can stand.
 //
-// Two layers of closure rather than one method: the outer one captures the bus,
-// which belongs to the call, and the inner one is the middleware shape the
-// interpreter asks for. The policy itself is still on the sandbox, where it is
-// shared.
+// A method returning a closure returning a closure, which is one layer more
+// than the interpreter needs and the layer that carries the bus. The middle
+// function is the middleware shape `interp.ExecHandlers` asks for; the innermost
+// is the handler itself. Both see `bus` because it is a parameter of the method
+// they are declared inside — which is the whole trick, and the reason the bus
+// does not have to live on the sandbox where it would be shared by agents that
+// do not share a bus.
 func (s *sandbox) execHandler(bus *Bus) func(interp.ExecHandlerFunc) interp.ExecHandlerFunc {
 	return func(next interp.ExecHandlerFunc) interp.ExecHandlerFunc {
 		return func(ctx context.Context, args []string) error {

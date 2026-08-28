@@ -182,8 +182,9 @@ func (a *agent) nextChild() int {
 // and refusal a subagent produced would be missing from the report() that main
 // prints at the end of the session and /status shows during it. One sandbox is
 // safe to share across concurrent children because run builds a fresh
-// interpreter per call and the only mutable state on the struct is the audit
-// slices, every append to which is under its mutex.
+// interpreter per call, and everything mutable on the struct — the audit slices
+// and the root that /open moves — is behind its mutex. The bus is not on it at
+// all, for the reason given there: whose bus it is changes per call.
 //
 // It is written out field by field rather than as `child := *a`, which is
 // shorter and which `go vet` correctly refuses: agent holds a sync.Mutex, and

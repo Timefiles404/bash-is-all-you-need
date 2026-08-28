@@ -673,14 +673,14 @@ func (s *shellSession) open(dir string) (string, error) {
 	a.memoryDir = dir
 	// The interpreter has a directory of its own, and os.Chdir does not move it.
 	//
-	// interp.Dir(s.root) is fixed when the runner is built, so without this line
+	// The root is read when a runner is built, so without this line
 	// /open moves the process, the memory files, the skills index and the system
 	// prompt — and leaves every command running in the old directory. That is
 	// worse than not having /open: the model is told where it is by a prompt that
 	// disagrees with what `pwd` returns, and its answers about a tree it cannot
 	// see are confident and wrong.
 	if a.sb != nil {
-		a.sb.root = dir
+		a.sb.setRoot(dir)
 	}
 	sys, stable := s.assemble(a.cfg.shell, dir)
 	a.system, a.stable = sys, stable

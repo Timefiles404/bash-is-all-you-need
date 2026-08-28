@@ -132,8 +132,8 @@ argv:     ["cat", ".env"]
 interp.New(
     interp.Dir(root),
     interp.StdIO(nil, &stdout, &stderr),
-    interp.ExecHandlers(s.execMiddleware),   // every program, final argv
-    interp.OpenHandler(s.open),              // every file the SHELL opens
+    interp.ExecHandlers(s.execHandler(bus)),  // every program, final argv
+    interp.OpenHandler(s.openHandler(bus)),   // every file the SHELL opens
 )
 ```
 

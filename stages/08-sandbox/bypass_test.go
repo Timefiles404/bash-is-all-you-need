@@ -286,7 +286,7 @@ func TestASubagentRunsInsideTheParentsSandbox(t *testing.T) {
 	// A real bash if the machine has one, so the branch under test is the
 	// production branch — a child running an actual unrestricted shell — rather
 	// than an artefact of the environment. Nothing below needs it: the sandbox
-	// refuses this command in execMiddleware, before it ever looks for `cat` on
+	// refuses this command in execHandler, before it ever looks for `cat` on
 	// PATH.
 	shell, _ := findBash()
 

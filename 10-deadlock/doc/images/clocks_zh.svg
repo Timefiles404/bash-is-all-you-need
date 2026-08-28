@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 452" width="760" height="452"
+     font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#57606a"/>
+    </marker>
+    <marker id="ab" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#2563eb"/>
+    </marker>
+  </defs>
+
+  <rect width="760" height="452" fill="#fafbfc" rx="8"/>
+  <rect x="0" y="0" width="760" height="42" fill="#1f2937" rx="8"/>
+  <rect x="0" y="34" width="760" height="8" fill="#1f2937"/>
+  <text x="24" y="27" fill="#ffffff" font-size="15" font-weight="600">一次调用的时间轴上，三个时钟各盯着一段</text>
+  <text x="736" y="27" fill="#9ca3af" font-size="12" text-anchor="end">阶段 10</text>
+
+  <!-- the old single number -->
+  <path d="M62 74 L62 88 L706 88 L706 74" stroke="#d97706" stroke-width="1.5" fill="none" stroke-dasharray="5 4"/>
+  <text x="384" y="68" font-size="12.5" fill="#92400e" text-anchor="middle" font-weight="600">旧的那一个数字：http.Client.Timeout 盖住全程</text>
+
+  <!-- spine -->
+  <line x1="62" y1="140" x2="710" y2="140" stroke="#57606a" stroke-width="1.5"/>
+
+  <rect x="62" y="122" width="92" height="36" rx="5" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="108" y="145" font-size="12" fill="#1f2328" text-anchor="middle">DNS · 建连</text>
+  <rect x="154" y="122" width="56" height="36" rx="5" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="182" y="145" font-size="12" fill="#1f2328" text-anchor="middle">TLS</text>
+  <rect x="210" y="122" width="72" height="36" rx="5" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="246" y="145" font-size="12" fill="#1f2328" text-anchor="middle">写请求</text>
+  <rect x="282" y="122" width="72" height="36" rx="5" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="318" y="145" font-size="12" fill="#1f2328" text-anchor="middle">响应头</text>
+
+  <!-- bytes -->
+  <g fill="#eff6ff" stroke="#2563eb" stroke-width="1.2">
+    <rect x="378" y="128" width="24" height="24" rx="4"/>
+    <rect x="414" y="128" width="24" height="24" rx="4"/>
+    <rect x="450" y="128" width="24" height="24" rx="4"/>
+    <rect x="576" y="128" width="24" height="24" rx="4"/>
+    <rect x="612" y="128" width="24" height="24" rx="4"/>
+  </g>
+  <text x="426" y="112" font-size="12" fill="#1e40af" text-anchor="middle">字节 · 字节 · 字节</text>
+  <text x="606" y="112" font-size="12" fill="#1e40af" text-anchor="middle">字节 · 字节</text>
+  <text x="513" y="145" font-size="12.5" fill="#92400e" text-anchor="middle" font-weight="600">一段安静</text>
+
+  <rect x="648" y="122" width="62" height="36" rx="5" fill="#f0fdf4" stroke="#15803d"/>
+  <text x="679" y="145" font-size="12" fill="#14532d" text-anchor="middle">[DONE]</text>
+
+  <!-- connect -->
+  <path d="M62 186 L62 176 L282 176" stroke="#57606a" stroke-width="1.2" fill="none" stroke-dasharray="4 4"/>
+  <text x="172" y="200" font-size="11.5" fill="#57606a" text-anchor="middle">这一段只有操作系统管着</text>
+  <path d="M284 176 L284 196 L352 196 L352 176" stroke="#57606a" stroke-width="1.8" fill="none"/>
+  <text x="366" y="200" font-size="12.5" fill="#1f2328">connect（30s）：响应头必须在这之内到</text>
+
+  <!-- idle -->
+  <path d="M476 226 L476 246 L574 246 L574 226" stroke="#2563eb" stroke-width="2" fill="none"/>
+  <path d="M476 236 L574 236" stroke="#2563eb" stroke-width="1.5" marker-start="url(#ab)" marker-end="url(#ab)"/>
+  <text x="590" y="240" font-size="12.5" fill="#1e40af" font-weight="600">idle（45s）：两次读到字节之间的间隔</text>
+  <text x="590" y="258" font-size="11.5" fill="#1e40af">整条时间轴上唯一能区分「慢」和「死」的量</text>
+
+  <!-- total -->
+  <path d="M62 276 L62 296 L710 296 L710 276" stroke="#57606a" stroke-width="1.8" fill="none"/>
+  <text x="386" y="314" font-size="12.5" fill="#1f2328" text-anchor="middle">total（15m）：整通调用的兜底，按每次尝试算</text>
+
+  <!-- notes -->
+  <rect x="62" y="336" width="648" height="88" rx="6" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="80" y="360" font-size="12.5" fill="#1f2328">虚线那一个数字同时被问了两个无关的问题：</text>
+  <text x="96" y="382" font-size="12.5" fill="#57606a">一个健康的回答可以生成多久？　　以分钟计，而且原则上没有上限 —— 长回答不是故障。</text>
+  <text x="96" y="404" font-size="12.5" fill="#57606a">一条死掉的连接可以装活多久？　　以毫秒计，没有任何理由等下去。</text>
+
+  <text x="24" y="443" font-size="11.5" fill="#57606a">三个时钟到期的方式都一样：取消同一个 context。所以浮上来的错误长得一模一样，只有取消时带的「原因」还知道是谁响的。</text>
+</svg>

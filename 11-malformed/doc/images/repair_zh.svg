@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 452" width="760" height="452"
+     font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#57606a"/>
+    </marker>
+  </defs>
+
+  <rect width="760" height="452" fill="#fafbfc" rx="8"/>
+  <rect x="0" y="0" width="760" height="42" fill="#1f2937" rx="8"/>
+  <rect x="0" y="34" width="760" height="8" fill="#1f2937"/>
+  <text x="24" y="27" fill="#ffffff" font-size="15" font-weight="600">补全一段被砍断的命令，补出来的是一条更宽的命令</text>
+  <text x="736" y="27" fill="#9ca3af" font-size="12" text-anchor="end">阶段 11 · 第 1 部分</text>
+
+  <!-- intent -->
+  <text x="30" y="70" font-size="12" fill="#57606a">模型本来要跑的：</text>
+  <text x="30" y="98" font-size="13.5" fill="#1f2328" font-family="ui-monospace, Consolas, monospace">git clean -fdx</text>
+  <text x="146" y="98" font-size="13.5" fill="#2563eb" font-family="ui-monospace, Consolas, monospace">-e .env -e vendor</text>
+  <text x="146" y="118" font-size="11.5" fill="#2563eb">把范围收窄的部分，写在最后</text>
+
+  <path d="M138 78 L138 126" stroke="#d97706" stroke-width="1.5" stroke-dasharray="5 4"/>
+  <text x="138" y="72" font-size="11.5" fill="#92400e" text-anchor="middle">砍在这里</text>
+
+  <!-- what arrives -->
+  <text x="30" y="152" font-size="12" fill="#57606a">客户端拿到的（不合法 JSON）：</text>
+  <text x="230" y="152" font-size="13" fill="#1f2328" font-family="ui-monospace, Consolas, monospace">{"command": "git clean -fdx</text>
+
+  <text x="30" y="180" font-size="12" fill="#57606a">补上一个引号一个括号之后：</text>
+  <text x="230" y="180" font-size="13" fill="#b91c1c" font-family="ui-monospace, Consolas, monospace">git clean -fdx</text>
+  <text x="360" y="180" font-size="12" fill="#57606a">—— 合法、完整、语法正确</text>
+
+  <!-- before / after -->
+  <rect x="30" y="198" width="320" height="56" rx="6" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="48" y="220" font-size="12" fill="#1f2328">跑之前</text>
+  <text x="48" y="240" font-size="12" fill="#57606a">.env 在　·　vendor 在</text>
+
+  <path d="M354 226 L396 226" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
+
+  <rect x="400" y="198" width="330" height="56" rx="6" fill="#fef2f2" stroke="#b91c1c" stroke-width="1.5"/>
+  <text x="418" y="220" font-size="12" fill="#1f2328">跑之后</text>
+  <text x="418" y="240" font-size="12" fill="#b91c1c">.env 没了　·　vendor 没了　·　exit 0，没有任何报错</text>
+
+  <!-- the loud four -->
+  <line x1="30" y1="282" x2="730" y2="282" stroke="#d0d7de" stroke-width="1"/>
+  <text x="30" y="310" font-size="12.5" fill="#1f2328" font-weight="600">五个真实载荷里，有四个补出来当场就报错。比如：</text>
+  <text x="30" y="336" font-size="13" fill="#1f2328" font-family="ui-monospace, Consolas, monospace">find /srv/app -name "*.go" -mtime -14 -not</text>
+  <path d="M370 332 L406 332" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
+  <text x="414" y="336" font-size="13" fill="#15803d" font-family="ui-monospace, Consolas, monospace">find: expected an expression after '-not'</text>
+  <text x="30" y="358" font-size="11.5" fill="#57606a">吵闹的失败是运气好的那一种：它自己就是证据。</text>
+
+  <!-- note -->
+  <rect x="30" y="376" width="700" height="60" rx="6" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="48" y="400" font-size="12.5" fill="#1f2328">截断只会从后往前砍，而一条 shell 命令习惯把「把范围收窄」的部分写在后面。</text>
+  <text x="48" y="422" font-size="12.5" fill="#57606a">所以补全出来的那条命令，语法越正确越危险 —— 它是同一条命令去掉了所有限制之后的版本。</text>
+</svg>

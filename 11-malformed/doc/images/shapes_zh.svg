@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 508" width="760" height="508"
+     font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#57606a"/>
+    </marker>
+  </defs>
+
+  <rect width="760" height="508" fill="#fafbfc" rx="8"/>
+  <rect x="0" y="0" width="760" height="42" fill="#1f2937" rx="8"/>
+  <rect x="0" y="34" width="760" height="8" fill="#1f2937"/>
+  <text x="24" y="27" fill="#ffffff" font-size="15" font-weight="600">同一件事，客户端看到四种形状</text>
+  <text x="736" y="27" fill="#9ca3af" font-size="12" text-anchor="end">阶段 11</text>
+
+  <!-- the one event -->
+  <rect x="216" y="62" width="330" height="42" rx="6" fill="#fff7ed" stroke="#d97706" stroke-width="1.5"/>
+  <text x="381" y="88" font-size="13" fill="#92400e" text-anchor="middle" font-weight="600">模型的工具参数写到一半，生成停了</text>
+  <path d="M381 104 L381 122" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
+  <path d="M200 124 L562 124" stroke="#57606a" stroke-width="1.5"/>
+  <path d="M200 124 L200 148" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
+  <path d="M562 124 L562 148" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
+
+  <!-- OpenAI column -->
+  <text x="200" y="168" font-size="13" fill="#1f2328" text-anchor="middle" font-weight="600">OpenAI 那条路</text>
+  <rect x="40" y="182" width="320" height="98" rx="6" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="56" y="204" font-size="12" fill="#57606a">不流式</text>
+  <text x="56" y="226" font-size="12" fill="#1f2328">信封：finish_reason "length"，tool_calls 是 []</text>
+  <text x="56" y="248" font-size="12" fill="#1f2328">你收到：网关自己的 &lt;tool_call&gt; 标记，塞在</text>
+  <text x="56" y="266" font-size="12" fill="#1f2328">message.content 里 —— 一段不是 JSON 的东西</text>
+
+  <rect x="40" y="292" width="320" height="98" rx="6" fill="#eff6ff" stroke="#2563eb" stroke-width="1.5"/>
+  <text x="56" y="314" font-size="12" fill="#1e40af" font-weight="600">流式（真实 agent 跑的就是这个）</text>
+  <text x="56" y="336" font-size="12" fill="#1e3a8a">信封：finish_reason "length"</text>
+  <text x="56" y="358" font-size="12" fill="#1e3a8a">你收到：26 帧里第 2 到第 21 帧是参数碎片，</text>
+  <text x="56" y="376" font-size="12" fill="#1e3a8a">拼起来是一个没有闭合的字符串。没有标记</text>
+
+  <!-- Anthropic column -->
+  <text x="562" y="168" font-size="13" fill="#1f2328" text-anchor="middle" font-weight="600">Anthropic 那条路</text>
+  <rect x="400" y="182" width="320" height="98" rx="6" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="416" y="204" font-size="12" fill="#57606a">网关把这个块补完了</text>
+  <text x="416" y="226" font-size="12" fill="#b91c1c">信封：stop_reason "tool_use" —— 一句假话</text>
+  <text x="416" y="248" font-size="12" fill="#1f2328">你收到：input 被换成 {"raw_arguments": "…"}，</text>
+  <text x="416" y="266" font-size="12" fill="#1f2328">里面那段 JSON 是真的不合法</text>
+
+  <rect x="400" y="292" width="320" height="98" rx="6" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="416" y="314" font-size="12" fill="#57606a">流到中间被砍</text>
+  <text x="416" y="336" font-size="12" fill="#1f2328">信封：stop_reason "max_tokens"</text>
+  <text x="416" y="358" font-size="12" fill="#1f2328">你收到：累积到一半的 input_json_delta 碎片</text>
+
+  <!-- mechanism -->
+  <rect x="40" y="404" width="680" height="86" rx="6" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="58" y="426" font-size="12.5" fill="#1f2328" font-weight="600">左边两种为什么不一样：模型在线上发的不是 JSON</text>
+  <text x="58" y="448" font-size="12" fill="#57606a">它发的是 &lt;tool_call&gt;&lt;function=bash&gt;&lt;parameter=command&gt;… 这种标记，由网关在服务端解析成协议形状。</text>
+  <text x="58" y="468" font-size="12" fill="#57606a">不流式：解析在完整文本上跑一次，被砍断的标记解析失败，网关把原始标记塞回 content 兜底。</text>
+  <text x="58" y="486" font-size="12" fill="#57606a">流式：解析边收边转发，砍断之前解析出来的部分早就发走了 —— 没有兜底可退。</text>
+</svg>

@@ -125,11 +125,11 @@ func parseTaskArgs(raw string) (description, prompt string, err error) {
 // spawn runs one subagent to completion and returns its report.
 //
 // Note what is shared and what is not. Shared: the provider, the HTTP client,
-// the gate, the shell config, and the bus core — so the child's permission
-// prompts reach the same human and the child's events land in the same ordered
-// trace. Not shared: the message array, the system prompt, the compactor, and
-// the turn budget. The split is exactly "state the parent must not lose" versus
-// "state the child must not inherit".
+// the gate, the shell config, the sandbox, and the bus core — so the child's
+// permission prompts reach the same human and the child's events land in the
+// same ordered trace. Not shared: the message array, the system prompt, the
+// compactor, and the turn budget. The split is exactly "state the parent must
+// not lose" versus "state the child must not inherit".
 func (a *agent) spawn(callID, description, prompt string) (string, Usage, error) {
 	started := time.Now()
 	agentID := fmt.Sprintf("%s#%d", description, a.nextChild())
@@ -169,19 +169,33 @@ func (a *agent) nextChild() int {
 // newChild builds a subagent that shares what must be shared and inherits
 // nothing that must not be.
 //
-// Shared: the provider, the HTTP client, the gate, the shell config, and the
-// bus core — so the child's permission prompts reach the same human and its
-// events land in the same ordered trace. Not shared: the message array, the
-// system prompt, the compactor, and the turn budget.
+// Shared: the provider, the HTTP client, the gate, the shell config, the
+// sandbox, and the bus core — so the child's permission prompts reach the same
+// human and its events land in the same ordered trace. Not shared: the message
+// array, the system prompt, the compactor, and the turn budget.
+//
+// The sandbox is worth its own sentence, because it is the entry whose absence
+// had no symptom. It is two things at once: the policy a command is held to,
+// and the record of what the policy saw. A child given a sandbox of its own
+// would need a root, and the only defensible root is the parent's — so the copy
+// would be the parent's policy with a private audit log, and every exec, open
+// and refusal a subagent produced would be missing from the report() that main
+// prints at the end of the session and /status shows during it. One sandbox is
+// safe to share across concurrent children because run builds a fresh
+// interpreter per call and the only mutable state on the struct is the audit
+// slices, every append to which is under its mutex.
 //
 // It is written out field by field rather than as `child := *a`, which is
 // shorter and which `go vet` correctly refuses: agent holds a sync.Mutex, and
 // copying a struct that contains one gives the copy a mutex that is already in
 // whatever state the original's was. The explicit form is also the honest one —
-// every line of it is a decision about what a subagent is.
+// every line of it is a decision about what a subagent is. What it costs is a
+// standing obligation: a field added to agent after this function was written
+// is a field the child does not get until somebody comes back here, and nothing
+// in the toolchain will mention it.
 func (a *agent) newChild(agentID string, system func() string) *agent {
 	child := &agent{
-		p: a.p, httpc: a.httpc, g: a.g, cfg: a.cfg,
+		p: a.p, httpc: a.httpc, g: a.g, cfg: a.cfg, sb: a.sb,
 		bus:       a.bus.Fork(agentID),
 		memoryDir: a.memoryDir,
 		stable:    a.stable,

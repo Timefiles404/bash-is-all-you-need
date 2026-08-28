@@ -260,3 +260,53 @@ func TestTheSandboxCannotSeeInsideAProgram(t *testing.T) {
 	t.Log("as documented: the sandbox saw one exec, allowed it, and the program did the rest. " +
 		"An embedded interpreter is a policy and observability layer, not a security boundary.")
 }
+
+// The other kind of limit: not one the interpreter has, one the wiring had.
+//
+// --sandbox is a claim about a session, and a session delegates. newChild names
+// the fields a subagent inherits one at a time, and for as long as the sandbox
+// was not one of them a child got a nil sb, took runCommand's runBash branch,
+// and ran the delegated work in a real shell — no policy, no sandbox_exec
+// events, and nothing in the tally the session prints at the end.
+//
+// This goes through runCommand rather than comparing child.sb against
+// parent.sb, because the field is not the claim. The claim is that a command
+// the policy refuses is still refused when a subagent is the one running it,
+// and that the refusal reaches the audit log the parent reports from — both of
+// which a refactor could break while still copying the pointer.
+func TestASubagentRunsInsideTheParentsSandbox(t *testing.T) {
+	dir := bypassDir(t)
+
+	// Both branches of runCommand are then rooted at the same directory, so the
+	// unsandboxed one reads the real file rather than missing it by accident
+	// and looking like a pass. bypassDir already uses t.TempDir, so this is
+	// undone when the test ends.
+	t.Chdir(dir)
+
+	// A real bash if the machine has one, so the branch under test is the
+	// production branch — a child running an actual unrestricted shell — rather
+	// than an artefact of the environment. Nothing below needs it: the sandbox
+	// refuses this command in execMiddleware, before it ever looks for `cat` on
+	// PATH.
+	shell, _ := findBash()
+
+	parent, _ := mulAgent(&gate{yolo: true}, shell)
+	parent.sb = newSandbox(dir, parent.bus, true)
+
+	child := parent.newChild("read the config#1", func() string { return "child system" })
+	out := child.runCommand(1, "call_1", "cat "+secretName)
+
+	if strings.Contains(out, canary) {
+		t.Errorf("the subagent read %s and the contents went into a model's context:\n%s", secretName, out)
+	}
+	if !strings.Contains(out, "blocked by the sandbox/exec policy") {
+		t.Errorf("the sandbox did not refuse the subagent's command, so --sandbox holds for everything the parent "+
+			"runs and stops at the first `task` call — the one boundary in this stage is one delegation away from "+
+			"not existing.\nthe child was told:\n%s", out)
+	}
+	if len(parent.sb.blocked) == 0 {
+		t.Error("the parent's sandbox recorded nothing, so report() describes a fraction of the session while " +
+			"reading as though it described all of it: the exec, the open and the refusal counts a human is shown " +
+			"at the end would cover only the commands the parent happened to run itself")
+	}
+}

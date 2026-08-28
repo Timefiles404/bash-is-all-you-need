@@ -162,6 +162,37 @@ actually do" becomes a question with an answer.
 agent --sandbox --observe    # report every exec and open, block nothing
 ```
 
+### Where the sandbox has to reach
+
+`--sandbox` is a claim about a session, and a session delegates. The first
+`task` call used to be the end of it: `newChild` builds a subagent by naming the
+fields it inherits, one at a time, and the sandbox was not one of them. A child
+got a nil `sb`, `runCommand` took its other branch, and the delegated work ran
+in a real bash — no policy, no `sandbox_exec` events, and nothing in the tally
+printed at the end of the session. The parent's own commands were still checked,
+which is what made it invisible: everything a reader would think to look at
+looked right.
+
+The missing line is one field, and the reason nobody noticed is worth more than
+the field. A child is assembled field by field rather than as `child := *a`, and
+that is not a style preference: `agent` holds a `sync.Mutex`, and `go vet`
+correctly refuses to copy a struct containing one. The explicit form is the safe
+one and it is the honest one — every line of it is a decision about what a
+subagent is. What it also is, permanently, is a list somebody has to remember to
+add to.
+
+> **Every field added to `agent` after `newChild` was written is a field the
+> child silently does not get.**
+
+The same function does it again later: stage 10 puts three deadlines on `agent`,
+subagents do not get them, and stage 11 is where somebody notices. Nothing fails
+and nothing warns, because both defaults are wrong in one direction or the other
+— a struct copy inherits what must not be shared, an explicit one fails to
+inherit what must. What catches it is a test that runs a command through the
+child and looks at what came back, which is why the one in `bypass_test.go`
+calls `runCommand` rather than comparing `child.sb` against `parent.sb`. A
+refactor can copy the pointer and then stop using it.
+
 ---
 
 ## The honest limit

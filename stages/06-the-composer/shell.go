@@ -435,8 +435,10 @@ func (s *shellSession) segments() []tui.Segment {
 // window configured there is no denominator — which is the state a session
 // started by double-clicking the binary is in, because a window is a property of
 // a provider and there is no providers.json to have read one from. That is what
-// /provider-window is for, and it is why this field stayed blank in every
-// session configured through the shell until that command existed.
+// /provider-window is for, and the blank field is the least of what it fixes:
+// the panel's own context line falls back to a bare token count with nothing to
+// divide it by, and the compactor's watermark is a fraction of a window that
+// does not exist, so it can never fire.
 //
 // The colour is the point of having it here rather than in /status: full enough
 // to compact is a thing you want to notice without looking for it.
@@ -932,7 +934,7 @@ func savedWindow() int {
 
 // knob is one runtime-changeable setting.
 //
-// A table rather than one command each, because there are seven of them and
+// A table rather than one command each, because there are eight of them and
 // they are all the same shape: read a number, write a number. The ones that are
 // NOT here are the ones that cannot be changed after startup — the shell it
 // found, the trace format — and /set says so by not listing them rather than by

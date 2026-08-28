@@ -491,25 +491,6 @@ func (r *renderer) OnEvent(e Event) {
 	}
 }
 
-func (r *renderer) commandFooter(e Event) string {
-	var parts []string
-	switch {
-	case e.TimedOut:
-		parts = append(parts, r.c(cErr, "TIMED OUT"))
-	default:
-		code := fmt.Sprintf("exit %d", e.ExitCode)
-		if e.ExitCode != 0 {
-			code = r.c(cWarn, code)
-		}
-		parts = append(parts, code)
-	}
-	parts = append(parts, fmt.Sprintf("%dms", e.Millis), humanBytes(e.Bytes))
-	if e.Truncated {
-		parts = append(parts, r.c(cWarn, "truncated"))
-	}
-	return r.c(cDim, "  └ "+strings.Join(parts, " · "))
-}
-
 // renderPanel is the per-call instrument readout, and the reason anyone should
 // read this repo. Three questions it answers that a normal agent cannot:
 //

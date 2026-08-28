@@ -4,10 +4,10 @@
 
 **A coding agent with one tool and a glass cockpit.**
 
-> **The chapters are being rewritten.** Chinese is done first and lives at
-> `<stage>/doc/README_zh.md`; the English edition is written separately from
-> the same code rather than translated, and is not there yet. See
-> [doc-style.md](doc-style.md) for the form both editions take.
+> Every chapter exists in two editions: `<stage>/doc/README.md` (English) and
+> `<stage>/doc/README_zh.md` (中文). They are **not** translations of each other
+> — each was written separately from the same code. See
+> [doc-style.md](doc-style.md) for the form both take.
 
 Plenty of tutorials will teach you to write an agent loop. In 2026 that is an
 afternoon's work, and this repo does it in stage 00, in one file, with no
@@ -59,17 +59,17 @@ check yourself — and then a few open questions that have no answer here.
 
 ### Phase 1 — the instrument panel (00–08)
 
-| Stage | Idea | Status |
+| Stage | Idea | Chapter |
 |---|---|---|
-| [00 The Loop](00-loop/) | request → tool call → execute → repeat. One file, no SDK. | ✅ built |
-| [01 Don't Die](01-dont-die/) | truncation, timeouts, process-tree kill, `finish_reason`, permission gate | ✅ built |
-| [02 See Everything](02-see-everything/) | event bus, streaming, full instrumentation, JSONL trace, replay | ✅ built |
-| [03 Babel](03-babel/) | one agent, many protocols: OpenAI + Anthropic behind a neutral core | ✅ built |
-| [04 The Cache](04-the-cache/) | prompt caching as *discipline*, and what it is worth in dollars | ✅ built |
-| [05 Live Forever](05-live-forever/) | compaction, context injection, memory — and what compaction really costs | ✅ built |
-| [06 The Composer](06-the-composer/) | a TUI in the standard library: God view vs Model view of the same session | ✅ built |
-| [07 Multiply](07-multiply/) | subagents by recursion, skills, and what PTC really is | ✅ built |
-| [08 Sandbox](08-sandbox/) *(optional)* | embedded shell interpreter, and why you cannot secure a shell by reading the command | ✅ built |
+| [00 The Loop](00-loop/) | request → tool call → execute → repeat. One file, no SDK. | [en](00-loop/doc/README.md) · [zh](00-loop/doc/README_zh.md) |
+| [01 Don't Die](01-dont-die/) | truncation, timeouts, process-tree kill, `finish_reason`, permission gate | [en](01-dont-die/doc/README.md) · [zh](01-dont-die/doc/README_zh.md) |
+| [02 See Everything](02-see-everything/) | event bus, streaming, full instrumentation, JSONL trace, replay | [en](02-see-everything/doc/README.md) · [zh](02-see-everything/doc/README_zh.md) |
+| [03 Babel](03-babel/) | one agent, many protocols: OpenAI + Anthropic behind a neutral core | [en](03-babel/doc/README.md) · [zh](03-babel/doc/README_zh.md) |
+| [04 The Cache](04-the-cache/) | prompt caching as *discipline*, and what it is worth in dollars | [en](04-the-cache/doc/README.md) · [zh](04-the-cache/doc/README_zh.md) |
+| [05 Live Forever](05-live-forever/) | compaction, context injection, memory — and what compaction really costs | [en](05-live-forever/doc/README.md) · [zh](05-live-forever/doc/README_zh.md) |
+| [06 The Composer](06-the-composer/) | a TUI in the standard library: God view vs Model view of the same session | [en](06-the-composer/doc/README.md) · [zh](06-the-composer/doc/README_zh.md) |
+| [07 Multiply](07-multiply/) | subagents by recursion, skills, and what PTC really is | [en](07-multiply/doc/README.md) · [zh](07-multiply/doc/README_zh.md) |
+| [08 Sandbox](08-sandbox/) *(optional)* | embedded shell interpreter, and why you cannot secure a shell by reading the command | [en](08-sandbox/doc/README.md) · [zh](08-sandbox/doc/README_zh.md) |
 
 ### Phase 2 — production (09–19)
 
@@ -84,12 +84,12 @@ down the trunk would make it mandatory in practice. It stays a side road —
 `diff 07-multiply/code 08-sandbox/code` is the patch, if you want the
 sandbox in a later stage.
 
-| Stage | Idea | Status |
+| Stage | Idea | Chapter |
 |---|---|---|
-| [09 Triage](09-triage/) | an error is a decision, not a string: one taxonomy over two protocols, `Retry-After`, a retry budget, the fallback ladder | ✅ built |
-| [10 Deadlock](10-deadlock/) | the tool that never returns and the stream that stalls: every wait gets a deadline and an owner | ✅ built |
-| [11 Malformed](11-malformed/) | the tool call is not valid JSON — what each protocol hands you, why repairing it is the trap, and one validation boundary | ✅ built |
-| [12 Echo](12-echo/) | the cheapest tool call is the one you do not make — and an audit, on traces you already have, of what that is worth before you build it | ✅ built |
+| [09 Triage](09-triage/) | an error is a decision, not a string: one taxonomy over two protocols, `Retry-After`, a retry budget, the fallback ladder | [en](09-triage/doc/README.md) · [zh](09-triage/doc/README_zh.md) |
+| [10 Deadlock](10-deadlock/) | the tool that never returns and the stream that stalls: every wait gets a deadline and an owner | [en](10-deadlock/doc/README.md) · [zh](10-deadlock/doc/README_zh.md) |
+| [11 Malformed](11-malformed/) | the tool call is not valid JSON — what each protocol hands you, why repairing it is the trap, and one validation boundary | [en](11-malformed/doc/README.md) · [zh](11-malformed/doc/README_zh.md) |
+| [12 Echo](12-echo/) | the cheapest tool call is the one you do not make — and an audit, on traces you already have, of what that is worth before you build it | [en](12-echo/doc/README.md) · [zh](12-echo/doc/README_zh.md) |
 | 13 Rewind | the session and the workspace are both state, and both need a rewind — resume from the trace, checkpoint before mutation | 🚧 planned |
 | 14 Amnesia | compaction is lossy, so measure the loss: a probe set, a recall number, protected regions | 🚧 planned |
 | 15 Rot | a memory needs an expiry and a witness: stale versus wrong, supersede versus contradict, self-evolving skills that disagree | 🚧 planned |

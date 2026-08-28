@@ -22,16 +22,20 @@ this order, with these exact headings.
 
 ```
 # 阶段 NN：<名字> —— <一句话，说这一章要解决什么>
+# Stage NN: <name> — <one line, what this chapter is for>
 
 <breadcrumb>
 
-## 问题        the scene. no code.
-## 办法        one picture, and the idea in five lines.
-## 怎么做的     numbered steps that build the code in front of the reader.
-## 跑一下       what to type, and what to watch for.
-## 量一量       (only when there is a real measurement)
-## 接下来       the new problem this chapter's answer created.
+## 问题  / The problem      the scene. no code.
+## 办法  / The idea         one picture, and the idea in five lines.
+## 怎么做的 / Building it    numbered steps that build the code in front of the reader.
+## 跑一下 / Run it          what to type, and what to watch for.
+## 量一量 / Measured        (only when there is a real measurement)
+## 接下来 / Next            the new problem this chapter's answer created.
 ```
+
+In English, 观察重点 is **What to watch for**. A part file's headings are the
+same; its title is `## Stage NN · part K: <topic>`.
 
 ### 问题
 
@@ -78,6 +82,11 @@ CI runs it. Three escapes, for the blocks that are not quotes:
 - `// ...` on its own line — you skipped something here.
 - A comment containing Chinese — real code comments are English, so this is
   visibly the chapter talking, not the source.
+
+The third escape is unavailable in the English edition, because real comments are
+English there too. So an English chapter either quotes the source's own comment
+or puts the annotation in the prose — annotated arrows belong inside a
+```` ```go wrong ```` block, which is unchecked.
 
 Keep the source's own English comments when you quote a line that has one, and
 put the Chinese explanation in the prose around the block. Rewriting a comment

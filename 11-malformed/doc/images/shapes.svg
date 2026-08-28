@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 508" width="760" height="508"
+     font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#57606a"/>
+    </marker>
+  </defs>
+
+  <rect width="760" height="508" fill="#fafbfc" rx="8"/>
+  <rect x="0" y="0" width="760" height="42" fill="#1f2937" rx="8"/>
+  <rect x="0" y="34" width="760" height="8" fill="#1f2937"/>
+  <text x="24" y="27" fill="#ffffff" font-size="15" font-weight="600">One event, four shapes on the client</text>
+  <text x="736" y="27" fill="#9ca3af" font-size="12" text-anchor="end">stage 11</text>
+
+  <!-- the one event -->
+  <rect x="216" y="62" width="330" height="42" rx="6" fill="#fff7ed" stroke="#d97706" stroke-width="1.5"/>
+  <text x="381" y="88" font-size="13" fill="#92400e" text-anchor="middle" font-weight="600">generation stopped mid-argument</text>
+  <path d="M381 104 L381 122" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
+  <path d="M200 124 L562 124" stroke="#57606a" stroke-width="1.5"/>
+  <path d="M200 124 L200 148" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
+  <path d="M562 124 L562 148" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
+
+  <!-- OpenAI column -->
+  <text x="200" y="168" font-size="13" fill="#1f2328" text-anchor="middle" font-weight="600">the OpenAI route</text>
+  <rect x="40" y="182" width="320" height="98" rx="6" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="56" y="204" font-size="12" fill="#57606a">not streaming</text>
+  <text x="56" y="226" font-size="12" fill="#1f2328">envelope: finish_reason "length", tool_calls []</text>
+  <text x="56" y="248" font-size="12" fill="#1f2328">you get: the gateway's &lt;tool_call&gt; markup, inside</text>
+  <text x="56" y="266" font-size="12" fill="#1f2328">message.content — and it is not JSON</text>
+
+  <rect x="40" y="292" width="320" height="98" rx="6" fill="#eff6ff" stroke="#2563eb" stroke-width="1.5"/>
+  <text x="56" y="314" font-size="12" fill="#1e40af" font-weight="600">streaming (what a real agent runs)</text>
+  <text x="56" y="336" font-size="12" fill="#1e3a8a">envelope: finish_reason "length"</text>
+  <text x="56" y="358" font-size="12" fill="#1e3a8a">you get: frames 2–21 of 26 are fragments,</text>
+  <text x="56" y="376" font-size="12" fill="#1e3a8a">they concatenate to an unterminated string</text>
+
+  <!-- Anthropic column -->
+  <text x="562" y="168" font-size="13" fill="#1f2328" text-anchor="middle" font-weight="600">the Anthropic route</text>
+  <rect x="400" y="182" width="320" height="98" rx="6" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="416" y="204" font-size="12" fill="#57606a">the gateway finished the block</text>
+  <text x="416" y="226" font-size="12" fill="#b91c1c">envelope: stop_reason "tool_use" — a lie</text>
+  <text x="416" y="248" font-size="12" fill="#1f2328">you get: input replaced by {"raw_arguments"},</text>
+  <text x="416" y="266" font-size="12" fill="#1f2328">and the JSON inside really is invalid</text>
+
+  <rect x="400" y="292" width="320" height="98" rx="6" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="416" y="314" font-size="12" fill="#57606a">cut mid-stream</text>
+  <text x="416" y="336" font-size="12" fill="#1f2328">envelope: stop_reason "max_tokens"</text>
+  <text x="416" y="358" font-size="12" fill="#1f2328">you get: partial input_json_delta fragments</text>
+
+  <!-- mechanism -->
+  <rect x="40" y="404" width="680" height="86" rx="6" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="58" y="426" font-size="12.5" fill="#1f2328" font-weight="600">Why the left two differ: the model does not send JSON on the wire</text>
+  <text x="58" y="448" font-size="12" fill="#57606a">It sends &lt;tool_call&gt;&lt;function=bash&gt;&lt;parameter=command&gt;… markup, parsed into shape by the gateway.</text>
+  <text x="58" y="468" font-size="12" fill="#57606a">Not streaming: the parse runs once, fails on cut markup, and the raw markup falls back into content.</text>
+  <text x="58" y="486" font-size="12" fill="#57606a">Streaming: it parses incrementally and has already forwarded what it parsed — no fallback is left.</text>
+</svg>

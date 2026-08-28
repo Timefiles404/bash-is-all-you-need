@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 516" width="760" height="516"
+     font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#57606a"/>
+    </marker>
+    <marker id="ab" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#2563eb"/>
+    </marker>
+    <marker id="ag" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#15803d"/>
+    </marker>
+    <marker id="ao" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#d97706"/>
+    </marker>
+  </defs>
+
+  <rect width="760" height="516" fill="#fafbfc" rx="8"/>
+  <rect x="0" y="0" width="760" height="42" fill="#1f2937" rx="8"/>
+  <rect x="0" y="34" width="760" height="8" fill="#1f2937"/>
+  <text x="24" y="27" fill="#ffffff" font-size="15" font-weight="600">One boundary, crossed in both directions</text>
+  <text x="736" y="27" fill="#9ca3af" font-size="12" text-anchor="end">stage 11</text>
+
+  <!-- input -->
+  <rect x="190" y="60" width="290" height="40" rx="6" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="335" y="85" font-size="12.5" fill="#1f2328" text-anchor="middle">the arguments, assembled from fragments</text>
+
+  <!-- display dead end -->
+  <path d="M480 80 L516 80" stroke="#57606a" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#a)"/>
+  <rect x="518" y="58" width="222" height="44" rx="6" fill="#f6f8fa" stroke="#d0d7de"/>
+  <text x="629" y="76" font-size="12" fill="#57606a" text-anchor="middle">argsForDisplay → panel / summary</text>
+  <text x="629" y="94" font-size="11.5" fill="#b91c1c" text-anchor="middle">lenient parse, never reaches exec</text>
+
+  <!-- the boundary -->
+  <path d="M335 100 L335 122" stroke="#2563eb" stroke-width="1.5" marker-end="url(#ab)"/>
+  <rect x="196" y="124" width="278" height="54" rx="6" fill="#eff6ff" stroke="#2563eb" stroke-width="1.8"/>
+  <text x="335" y="146" font-size="13" fill="#1e3a8a" text-anchor="middle" font-weight="600">checkCall(t Tool, raw string)</text>
+  <text x="335" y="166" font-size="11.5" fill="#1e40af" text-anchor="middle">against the schema this request really sent</text>
+  <text x="150" y="152" font-size="12" fill="#2563eb" text-anchor="end" font-weight="600">① before dispatch</text>
+
+  <!-- split -->
+  <path d="M270 178 L270 196 L170 196 L170 212" stroke="#d97706" stroke-width="1.5" fill="none" marker-end="url(#ao)"/>
+  <path d="M400 178 L400 196 L580 196 L580 212" stroke="#15803d" stroke-width="1.5" fill="none" marker-end="url(#ag)"/>
+
+  <!-- refused -->
+  <rect x="30" y="214" width="280" height="34" rx="5" fill="#fff7ed" stroke="#d97706"/>
+  <text x="46" y="236" font-size="12" fill="#92400e">faultCut     brackets or quotes open</text>
+  <rect x="30" y="254" width="280" height="34" rx="5" fill="#fff7ed" stroke="#d97706"/>
+  <text x="46" y="276" font-size="12" fill="#92400e">faultNotJSON  closed, but not JSON</text>
+  <rect x="30" y="294" width="280" height="34" rx="5" fill="#fff7ed" stroke="#d97706"/>
+  <text x="46" y="316" font-size="12" fill="#92400e">faultSchema   breaks the schema you sent</text>
+
+  <path d="M170 328 L170 352" stroke="#d97706" stroke-width="1.5" marker-end="url(#ao)"/>
+  <rect x="30" y="354" width="280" height="46" rx="6" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="170" y="374" font-size="12" fill="#1f2328" text-anchor="middle">one statement: what happened</text>
+  <text x="170" y="392" font-size="12" fill="#b91c1c" text-anchor="middle">no instruction, no echo of the fragment</text>
+
+  <!-- passed -->
+  <rect x="440" y="214" width="280" height="34" rx="5" fill="#f0fdf4" stroke="#15803d"/>
+  <text x="580" y="236" font-size="12" fill="#14532d" text-anchor="middle">Args — only this branch has it</text>
+  <path d="M580 248 L580 266" stroke="#15803d" stroke-width="1.5" marker-end="url(#ag)"/>
+  <rect x="440" y="268" width="280" height="34" rx="5" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="580" y="290" font-size="12" fill="#1f2328" text-anchor="middle">the gate → bash → command output</text>
+  <path d="M580 302 L580 352" stroke="#15803d" stroke-width="1.5" marker-end="url(#ag)"/>
+  <rect x="440" y="354" width="280" height="46" rx="6" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="580" y="381" font-size="12" fill="#1f2328" text-anchor="middle">the command's output, verbatim</text>
+
+  <!-- merge -->
+  <path d="M170 400 L170 424 L335 424" stroke="#57606a" stroke-width="1.5" fill="none"/>
+  <path d="M580 400 L580 424 L335 424" stroke="#57606a" stroke-width="1.5" fill="none"/>
+  <path d="M335 424 L335 440" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
+  <rect x="150" y="442" width="370" height="46" rx="6" fill="#eff6ff" stroke="#2563eb" stroke-width="1.8"/>
+  <text x="335" y="462" font-size="12.5" fill="#1e3a8a" text-anchor="middle" font-weight="600">into messages: every call gets one matching result</text>
+  <text x="335" y="480" font-size="11.5" fill="#1e40af" text-anchor="middle">renderArgs turns "" into {}; uniqueIDs renames clashing ids</text>
+  <text x="536" y="466" font-size="12" fill="#2563eb" font-weight="600">② before the history</text>
+
+  <text x="24" y="506" font-size="11.5" fill="#57606a">Left: do not run a command the model never finished. Right: do not leave a bad call in the history.</text>
+</svg>

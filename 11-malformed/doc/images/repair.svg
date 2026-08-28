@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 452" width="760" height="452"
+     font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#57606a"/>
+    </marker>
+  </defs>
+
+  <rect width="760" height="452" fill="#fafbfc" rx="8"/>
+  <rect x="0" y="0" width="760" height="42" fill="#1f2937" rx="8"/>
+  <rect x="0" y="34" width="760" height="8" fill="#1f2937"/>
+  <text x="24" y="27" fill="#ffffff" font-size="15" font-weight="600">Completing a truncated command produces a broader command</text>
+  <text x="736" y="27" fill="#9ca3af" font-size="12" text-anchor="end">stage 11 · part 1</text>
+
+  <!-- intent -->
+  <text x="30" y="70" font-size="12" fill="#57606a">what the model meant to run:</text>
+  <text x="30" y="98" font-size="13.5" fill="#1f2328" font-family="ui-monospace, Consolas, monospace">git clean -fdx</text>
+  <text x="146" y="98" font-size="13.5" fill="#2563eb" font-family="ui-monospace, Consolas, monospace">-e .env -e vendor</text>
+  <text x="146" y="118" font-size="11.5" fill="#2563eb">the part that narrows the scope comes last</text>
+
+  <path d="M138 78 L138 126" stroke="#d97706" stroke-width="1.5" stroke-dasharray="5 4"/>
+  <text x="138" y="72" font-size="11.5" fill="#92400e" text-anchor="middle">cut here</text>
+
+  <!-- what arrives -->
+  <text x="30" y="152" font-size="12" fill="#57606a">what arrives (invalid JSON):</text>
+  <text x="230" y="152" font-size="13" fill="#1f2328" font-family="ui-monospace, Consolas, monospace">{"command": "git clean -fdx</text>
+
+  <text x="30" y="180" font-size="12" fill="#57606a">add one quote and one brace:</text>
+  <text x="230" y="180" font-size="13" fill="#b91c1c" font-family="ui-monospace, Consolas, monospace">git clean -fdx</text>
+  <text x="360" y="180" font-size="12" fill="#57606a">— valid, complete, syntactically correct</text>
+
+  <!-- before / after -->
+  <rect x="30" y="198" width="320" height="56" rx="6" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="48" y="220" font-size="12" fill="#1f2328">before</text>
+  <text x="48" y="240" font-size="12" fill="#57606a">.env present  ·  vendor present</text>
+
+  <path d="M354 226 L396 226" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
+
+  <rect x="400" y="198" width="330" height="56" rx="6" fill="#fef2f2" stroke="#b91c1c" stroke-width="1.5"/>
+  <text x="418" y="220" font-size="12" fill="#1f2328">after</text>
+  <text x="418" y="240" font-size="12" fill="#b91c1c">.env GONE  ·  vendor GONE  ·  exit 0, no error</text>
+
+  <!-- the loud four -->
+  <line x1="30" y1="282" x2="730" y2="282" stroke="#d0d7de" stroke-width="1"/>
+  <text x="30" y="310" font-size="12.5" fill="#1f2328" font-weight="600">Four of the five real payloads failed loudly once completed. For instance:</text>
+  <text x="30" y="336" font-size="13" fill="#1f2328" font-family="ui-monospace, Consolas, monospace">find /srv/app -name "*.go" -mtime -14 -not</text>
+  <path d="M370 332 L406 332" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
+  <text x="414" y="336" font-size="13" fill="#15803d" font-family="ui-monospace, Consolas, monospace">find: expected an expression after '-not'</text>
+  <text x="30" y="358" font-size="11.5" fill="#57606a">A loud failure is the lucky kind: it is its own evidence.</text>
+
+  <!-- note -->
+  <rect x="30" y="376" width="700" height="60" rx="6" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="48" y="400" font-size="12.5" fill="#1f2328">Truncation only cuts from the end, and a shell command puts the narrowing part last.</text>
+  <text x="48" y="422" font-size="12.5" fill="#57606a">The more correct the completion looks, the more dangerous: the same command with its limits removed.</text>
+</svg>

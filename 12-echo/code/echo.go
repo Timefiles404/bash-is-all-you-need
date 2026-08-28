@@ -20,7 +20,7 @@
 // difference is which way the two are allowed to fail. A blocklist that fails
 // open runs something dangerous. A whitelist that fails closed runs the command
 // — which is what would have happened anyway. So this file is built entirely
-// out of refusals, and the price of that is measured in docs/12-echo.md.
+// out of refusals, and the price of that is measured in 12-echo/doc/.
 package main
 
 import (

@@ -330,10 +330,10 @@ func main() {
 		maxDepth = flag.Int("max-depth", 1, "how deep subagents may nest; 0 removes the task tool entirely")
 		noSkills = flag.Bool("no-skills", false, "do not index skills/*/SKILL.md")
 
-		// The out-of-process subagent, for the comparison in docs/07. One prompt
-		// in, one report out, no REPL — which is all a subagent ever was, and is
-		// why `agent --subagent "..."` run from bash is a working subagent
-		// mechanism with no task tool involved at all.
+		// The out-of-process subagent, for the comparison in 07-multiply/doc/.
+		// One prompt in, one report out, no REPL — which is all a subagent ever
+		// was, and is why `agent --subagent "..."` run from bash is a working
+		// subagent mechanism with no task tool involved at all.
 		subagentAt = flag.String("subagent", "", "run one subagent task, print its report, and exit")
 
 		// Stage 09. Three numbers, and the defaults are the argument: retrying
@@ -348,7 +348,7 @@ func main() {
 		// Stage 10. Three clocks where stage 09 had one, and they are separate
 		// flags because they answer different questions — see deadline.go. Any
 		// of them may be 0, which switches that clock off; the wire probing in
-		// docs/wire-notes.md needs all three off, because a probe that gets cut
+		// external/wire-notes.md needs all three off, because a probe that gets cut
 		// short is not evidence.
 		connectFor = flag.Duration("connect-timeout", 30*time.Second, "response headers must arrive within this")
 		idleFor    = flag.Duration("stall-timeout", 45*time.Second, "longest tolerated gap between bytes of a stream")
@@ -640,8 +640,9 @@ func main() {
 	// This is the whole of the out-of-process subagent mechanism, and it is
 	// worth seeing how little there is. An agent that can run bash can run
 	// `agent --subagent "..."`, which means recursion needs no `task` tool at
-	// all — the shell is the orchestrator. docs/07 measures what that costs,
-	// and the answer is: not tokens, but every number on the instrument panel.
+	// all — the shell is the orchestrator. 07-multiply/doc/ measures what
+	// that costs, and the answer is: not tokens, but every number on the
+	// instrument panel.
 	if *subagentAt != "" {
 		child := a.newChild("cli", func() string { return subagentSystem + para + stable })
 		msgs := child.runTurn(ctx, []Msg{TextMsg(RoleUser, *subagentAt)})
@@ -740,7 +741,7 @@ func useShell(noTUI bool, printOnly string) bool {
 }
 
 // command handles the slash commands. They exist for the experiments in
-// docs/05-live-forever.md: compaction that only fires when the window is nearly
+// 05-live-forever/doc/: compaction that only fires when the window is nearly
 // full is hard to demonstrate and harder to test.
 func (a *agent) command(ctx context.Context, line string, msgs []Msg) (bool, []Msg) {
 	switch {

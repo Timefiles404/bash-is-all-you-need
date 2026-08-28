@@ -484,7 +484,7 @@ func TestCheckCallOnTheTaskTool(t *testing.T) {
 			wantFault: faultCut,
 		},
 		{
-			// docs/wire-notes.md §A3c: the gateway really does send this when a
+			// external/wire-notes.md §A3c: the gateway really does send this when a
 			// tool call is cut short. It is valid JSON, it contains no task, and
 			// the ONLY evidence that anything was truncated is this key —
 			// stop_reason still says "tool_use".

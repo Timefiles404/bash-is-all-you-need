@@ -77,7 +77,7 @@ type chatRequest struct {
 
 	// A real OpenAI endpoint will not stream usage without this. The gateway
 	// this repo was developed against sends usage either way — see
-	// docs/wire-notes.md §B5, where the flag is measurably a no-op. Send it
+	// external/wire-notes.md §B5, where the flag is measurably a no-op. Send it
 	// anyway: it costs nothing and the alternative is an agent that reports
 	// zero tokens the day someone points it at a different provider.
 	StreamOptions *streamOptions `json:"stream_options,omitempty"`

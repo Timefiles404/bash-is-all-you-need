@@ -1,6 +1,6 @@
 // Tests for the Anthropic protocol adapter.
 //
-// Every stream fixture below is built from docs/wire-notes.md §B6 and §B7 —
+// Every stream fixture below is built from external/wire-notes.md §B6 and §B7 —
 // bytes this endpoint actually sent, not bytes invented to make a parser look
 // correct. That distinction is the whole reason the fixtures are here: a
 // fixture written from the specification tests your reading of the

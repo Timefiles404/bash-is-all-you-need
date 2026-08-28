@@ -17,7 +17,7 @@
 // stop at the adapter boundary.
 //
 // Every deviation handled below is recorded with evidence in
-// docs/wire-notes.md. Where the observed bytes and the published spec disagree
+// external/wire-notes.md. Where the observed bytes and the published spec disagree
 // — and on this endpoint they disagree in half a dozen separate places — the
 // observation wins, because the observation is what will be on the wire at 3am.
 package main
@@ -88,7 +88,7 @@ func newAnthropicProvider(baseURL, apiKey, model string) *anthropicProvider {
 }
 
 // withCacheBreakpoints toggles prefix pinning. Used by --no-cache to produce
-// the control arm of the experiment in docs/04-the-cache.md.
+// the control arm of the experiment in 04-the-cache/doc/.
 func (p *anthropicProvider) withCacheBreakpoints(on bool) *anthropicProvider {
 	p.cacheBreakpoints = on
 	return p
@@ -742,7 +742,7 @@ func (p *anthropicProvider) ParseStream(r io.Reader, bus *Bus, turn int, started
 		// measurement of the round trip, not a judgement about what came back.
 		markFirstToken()
 		if anthropicHarnessResidue(s) {
-			emit(Event{Kind: KindNotice, Text: fmt.Sprintf("dropped gateway harness residue from visible text: %q (docs/wire-notes.md §A3b, §B6)", s)})
+			emit(Event{Kind: KindNotice, Text: fmt.Sprintf("dropped gateway harness residue from visible text: %q (external/wire-notes.md §A3b, §B6)", s)})
 			return
 		}
 		text.WriteString(s)

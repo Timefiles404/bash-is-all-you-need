@@ -1,11 +1,11 @@
 ---
 name: wire-probe
-description: Probe the LLM gateway with curl and record what it actually sends in docs/wire-notes.md
+description: Probe the LLM gateway with curl and record what it actually sends in external/wire-notes.md
 ---
 
 # Probing the gateway
 
-Every teaching claim in this repo rests on `docs/wire-notes.md`, which records
+Every teaching claim in this repo rests on `external/wire-notes.md`, which records
 what one real gateway actually sends — byte by byte, with the raw evidence
 attached. Protocol documentation and observed behaviour do not agree, and where
 they differ the observation wins.
@@ -37,7 +37,7 @@ protocol) and `$AGENT_BASE_URL/messages` (Anthropic protocol).
 
 ## Recording
 
-Add a numbered section to `docs/wire-notes.md` with:
+Add a numbered section to `external/wire-notes.md` with:
 
 - The exact `curl` invocation, with the key redacted.
 - The raw response body or SSE frames, verbatim, elided only where noted.

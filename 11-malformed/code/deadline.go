@@ -90,7 +90,7 @@ var (
 
 // deadlines is the whole timing policy: three durations, and each is allowed to
 // be zero, which switches that clock off. Zero is a real setting rather than a
-// placeholder — the wire-probing in docs/wire-notes.md is done with all three
+// placeholder — the wire-probing in external/wire-notes.md is done with all three
 // off, because a probe that gets cut short is not evidence.
 type deadlines struct {
 	connect time.Duration // headers must arrive within this
@@ -99,7 +99,7 @@ type deadlines struct {
 }
 
 func defaultDeadlines() deadlines {
-	// The idle default is not a guess; see docs/10-deadlock.md, where the
+	// The idle default is not a guess; see 10-deadlock/doc/, where the
 	// gap between consecutive SSE frames is measured on a real session and
 	// the default is set well above the widest one observed.
 	return deadlines{

@@ -12,7 +12,7 @@
 // disagree about where the system prompt goes, how tool results are addressed,
 // whether tool arguments are a string or an object, what the stop reason is
 // called, and — most expensively — which direction token accounting runs. The
-// table in docs/03-babel.md lists them all with observed evidence.
+// table in 03-babel/doc/ lists them all with observed evidence.
 package main
 
 import (
@@ -147,7 +147,7 @@ type CallResult struct {
 	//
 	// This is not redundancy. On the gateway this repo was built against, a
 	// tool call truncated at max_tokens comes back with stop_reason "tool_use"
-	// and an unusable body (docs/wire-notes.md §A3c) — the envelope lies. When
+	// and an unusable body (external/wire-notes.md §A3c) — the envelope lies. When
 	// a session goes wrong, the normalised value tells you what the agent
 	// believed and RawStop tells you what it was told, and the gap between them
 	// is the bug. Never normalise away your only evidence.

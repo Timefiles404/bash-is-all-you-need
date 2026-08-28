@@ -151,7 +151,7 @@ const (
 
 // triage maps one failure onto one decision.
 //
-// Read this next to §D11 of docs/wire-notes.md. Almost every line here exists
+// Read this next to §D11 of external/wire-notes.md. Almost every line here exists
 // because the recorded bytes contradicted the obvious rule.
 func (e *CallError) triage() Triage {
 	switch e.Phase {
@@ -328,7 +328,7 @@ func (p retryPolicy) wait(n int, after time.Duration, rnd func() float64) time.D
 // and an HTTP-date.
 //
 // Written from the RFC rather than from observation, and the chapter says so:
-// the gateway in docs/wire-notes.md never sent a 429 at all, so there is no
+// the gateway in external/wire-notes.md never sent a 429 at all, so there is no
 // recorded Retry-After anywhere in this repo's evidence. The tests exercise it
 // against a local server instead. That is a weaker footing than the rest of the
 // file has and it is better to name the weakness than to imply a measurement
@@ -683,7 +683,7 @@ func retryLoop(
 			// The partial's own accounting, when the stream got far enough to
 			// have any. It is almost always empty — usage arrives at the end of
 			// a stream, and this stream did not end — which is itself the
-			// finding in docs/09-triage.md: the bill for a broken stream is
+			// finding in 09-triage/doc/: the bill for a broken stream is
 			// real and unobservable at the same time.
 			Usage: partialUsage(ce),
 		})

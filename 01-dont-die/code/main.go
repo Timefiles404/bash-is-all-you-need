@@ -5,7 +5,7 @@
 // off mid-sentence, and a command you really did not want run.
 //
 // Everything added here exists because the stage-00 agent failed at it. The
-// docs (docs/01-dont-die.md) show you how to reproduce each failure first —
+// docs (01-dont-die/doc/) show you how to reproduce each failure first —
 // breaking it yourself is the point.
 //
 // New in this stage:

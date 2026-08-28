@@ -344,7 +344,7 @@ func main() {
 }
 
 // command handles the slash commands. They exist for the experiments in
-// docs/05-live-forever.md: compaction that only fires when the window is nearly
+// 05-live-forever/doc/: compaction that only fires when the window is nearly
 // full is hard to demonstrate and harder to test.
 func (a *agent) command(line string, msgs []Msg) (bool, []Msg) {
 	switch {

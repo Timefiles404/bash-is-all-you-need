@@ -14,11 +14,11 @@ For each mutation:
 
 1. Copy the source file byte for byte to a scratch location outside the repo.
 2. Apply exactly one mutation.
-3. Run `go vet ./stages/<stage>/` **first**. A mutation that does not compile
+3. Run `go vet ./<stage>/code/` **first**. A mutation that does not compile
    proves nothing — it is not a caught mutation, it is an invalid one. Rewrite
    it so it compiles (`if false && x` instead of deleting a block that leaves an
    unused variable).
-4. Run `go test ./stages/<stage>/`. It must FAIL, and you must record which test
+4. Run `go test ./<stage>/code/`. It must FAIL, and you must record which test
    caught it.
 5. Restore from the byte copy and `cmp` to confirm the restore was exact.
 

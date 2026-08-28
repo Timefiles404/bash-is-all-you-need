@@ -5,9 +5,10 @@ description: Add a stage to this course — the snapshot rules, the chapter shap
 
 # Adding a stage
 
-Each `stages/NN-name/` is a **complete, standalone snapshot** of the agent at one
-point in the course. A reader should be able to `diff stages/NN stages/NN+1` and
-see exactly one idea arrive.
+Each `NN-name/` at the repo root is one stage: `code/` is a **complete,
+standalone snapshot** of the agent at that point in the course, and `doc/` is the
+chapter about it. A reader should be able to `diff NN/code NN+1/code` and see
+exactly one idea arrive.
 
 ## Rules that are not negotiable
 
@@ -20,27 +21,35 @@ see exactly one idea arrive.
 
 ## The chapter
 
-`docs/NN-name.md`, and it needs all of these:
+**Read `doc-style.md` before writing a word.** It is the form, and it is not
+optional — the previous set of chapters was deleted for ignoring it. The one
+sentence version:
 
-- The idea in the first three paragraphs, including what it costs.
-- A **"From a real run"** section with output you actually captured. Invented
-  examples undercut the entire premise of the repo.
+> A reader meets a problem before they meet a solution, and every step is
+> something they could have arrived at themselves.
+
+On top of the form, a stage in this repo owes the reader:
+
 - At least one **measurement**, with the arms stated and the confounds named. If
   the measurement undercuts the chapter's thesis, say so — stage 04 found that
   no cache markers beat markers on a short session, and stage 05 found that
   compaction costs more than it saves. Both say so plainly.
 - At least one **failure found while writing it**. These are the most valuable
   paragraphs in the repo. Look for them rather than writing a clean narrative.
-- Exercises that break something on purpose.
+- Output you actually captured. Invented examples undercut the entire premise.
+
+Chinese first, at `NN-name/doc/README_zh.md`. The English edition is written
+separately from the same code, never translated from the Chinese.
 
 ## Verification before commit
 
 ```sh
-gofmt -l stages/                        # empty
-go vet ./...                            # clean
-go test -race ./...                     # green
-GOOS=linux go build ./stages/...        # the platform files are real
-GOOS=darwin go build ./stages/...
+gofmt -l ./*/code/ external/tui/         # empty
+go vet ./...                             # clean
+go test -race ./...                      # green
+GOOS=linux go build -o /dev/null ./NN-name/code    # the platform files are real
+GOOS=darwin go build -o /dev/null ./NN-name/code
+python external/tools/quotecheck.py      # the chapter quotes real code
 grep -rnE 'sk-[A-Za-z0-9]{20,}' --exclude-dir=.git .   # no keys, ever
 ```
 
@@ -48,5 +57,6 @@ Run the agent only inside `sandbox/` — it executes what the model says.
 
 ## Comments
 
-Match the density of `stages/04-the-cache/render.go`. Comments explain *why* and
-name the failure they prevent; they never restate the code.
+Match the density of `04-the-cache/code/render.go`. Comments explain *why* and
+name the failure they prevent; they never restate the code. They are written in
+English regardless of which language edition of the chapter you are writing.

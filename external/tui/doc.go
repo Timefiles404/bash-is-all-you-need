@@ -53,6 +53,6 @@
 //
 // tui/term is a lift of stage 06's term.go, keys.go and width.go. The stage
 // copies are the version with the essays in them and they stay; a behaviour
-// change in one has to be mirrored in the other or docs/06-the-composer.md
+// change in one has to be mirrored in the other or 06-the-composer/doc/
 // stops being true.
 package tui

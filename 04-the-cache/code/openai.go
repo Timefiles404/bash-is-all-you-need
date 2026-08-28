@@ -121,7 +121,7 @@ type oaiRequest struct {
 
 	// A real OpenAI endpoint will not stream usage without this. The gateway
 	// this repo was developed against sends usage either way — see
-	// docs/wire-notes.md §B5, where the flag is *measurably* a no-op: same 13
+	// external/wire-notes.md §B5, where the flag is *measurably* a no-op: same 13
 	// frames, same position, same fields, with and without it. Send it anyway:
 	// it costs nothing and the alternative is an agent that reports zero tokens
 	// the day someone points it at a different provider.

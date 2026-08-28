@@ -125,7 +125,7 @@ func main() {
 		step         = flag.Bool("step", false, "replay: wait for Enter before each event")
 		showReq      = flag.Bool("show-request", false, "print the full request body before each call")
 
-		// The two experiment arms of docs/04-the-cache.md. Neither belongs in a
+		// The two experiment arms of 04-the-cache/doc/. Neither belongs in a
 		// real agent; both exist so the chapter can put a number on advice that
 		// is otherwise just advice.
 		noCache    = flag.Bool("no-cache", false, "omit cache_control breakpoints (control arm)")

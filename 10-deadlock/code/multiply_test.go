@@ -501,7 +501,7 @@ func TestParseTaskArgs(t *testing.T) {
 			errMentions: "JSON",
 		},
 		{
-			// docs/wire-notes.md: the gateway really does send this when a tool
+			// external/wire-notes.md: the gateway really does send this when a tool
 			// call is cut short. It is valid JSON and it contains no task.
 			name:        "the observed {\"raw_arguments\":\"\"} payload",
 			raw:         `{"raw_arguments":""}`,

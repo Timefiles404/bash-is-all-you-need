@@ -20,7 +20,7 @@
 // stage would be a rewrite instead of an addition — which is the whole argument
 // for the split, in one sentence.
 //
-// Everything below is written against docs/wire-notes.md §B4/§B5/§B7, which
+// Everything below is written against external/wire-notes.md §B4/§B5/§B7, which
 // recorded what this endpoint actually sends rather than what the specification
 // says it should. Where the two disagree the bytes win, and each disagreement is
 // commented. Those comments are the most valuable lines in the file: every one

@@ -6,7 +6,7 @@
 // replay months later without three copies of the formatting.
 //
 // The reasoning behind the timeout, the process-tree kill, the head+tail
-// truncation and the sanitising trio is all in docs/01-dont-die.md. It has not
+// truncation and the sanitising trio is all in 01-dont-die/doc/. It has not
 // changed; only its plumbing has.
 package main
 
@@ -163,7 +163,7 @@ func (r execResult) render(maxOutput int) (string, bool) {
 }
 
 // truncate keeps the head and the tail and drops the middle. See
-// docs/01-dont-die.md for why head-only truncation loses the line that mattered.
+// 01-dont-die/doc/ for why head-only truncation loses the line that mattered.
 func truncate(s string, max int) (string, bool) {
 	if max < 256 {
 		max = 256

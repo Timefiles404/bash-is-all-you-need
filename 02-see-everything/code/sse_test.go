@@ -1,6 +1,6 @@
 // Tests for the SSE reader and the OpenAI stream parser.
 //
-// Every frame constant below is copied out of docs/wire-notes.md — these are
+// Every frame constant below is copied out of external/wire-notes.md — these are
 // bytes this endpoint actually sent, not bytes invented to make a parser look
 // good. That is the entire point: a fixture you wrote from the specification
 // tests your reading of the specification, and this endpoint does not match the

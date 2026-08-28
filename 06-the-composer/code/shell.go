@@ -11,7 +11,7 @@
 // Which is the one thing to get straight in this directory, because it now has
 // two terminal UIs in it and only one of them is taught. The stage's own —
 // tui.go, keys.go, term.go, views.go, width.go — is the lesson
-// docs/06-the-composer.md walks through: a trace reader whose loop is thirty
+// 06-the-composer/doc/ walks through: a trace reader whose loop is thirty
 // lines, opened by --composer, small on purpose, and untouched by this file.
 // tui/ is the tool: the same three functions with a scrollback buffer, a
 // settings file and a permission prompt behind them, not taught, and the reason

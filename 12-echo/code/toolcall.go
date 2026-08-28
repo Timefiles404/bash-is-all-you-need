@@ -31,7 +31,7 @@
 // session.
 //
 // What this file deliberately does NOT do is repair truncated arguments. That
-// decision is measured rather than asserted; see docs/11-malformed.md.
+// decision is measured rather than asserted; see 11-malformed/doc/.
 package main
 
 import (

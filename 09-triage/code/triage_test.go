@@ -59,7 +59,7 @@ func traceLineFor(t *testing.T, in Event) string {
 // the ones where the *transport* is the subject: a real Retry-After header, a
 // real truncated body, a real error envelope served as text/plain.
 //
-// Every table row below is traceable to docs/wire-notes.md §D11/§A3c or to RFC
+// Every table row below is traceable to external/wire-notes.md §D11/§A3c or to RFC
 // 9110. Rows that are not observed behaviour say so.
 
 // ---------------------------------------------------------------------------

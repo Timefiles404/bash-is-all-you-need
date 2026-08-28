@@ -108,9 +108,17 @@ If you cannot write this section, the chapters are in the wrong order.
 
 ## Limits
 
-- **200–350 lines per document.** Over that, split: `README_zh.md` keeps the
-  chapter's spine, and each part becomes its own file in the same folder, each
-  one obeying this whole document in miniature.
+- **200–350 lines per document**, and past 350 stop and ask whether it should
+  split: `README_zh.md` keeps the chapter's spine, and each part becomes its own
+  file in the same folder, each one obeying this whole document in miniature.
+
+  This is a trigger for judgement, not a cap. What it protects against is a wall
+  of text with six unrelated things in it. What it must not do is cut a single
+  argument in half to hit a number — stage 08's 怎么做的 is an escalation
+  ladder where each step defeats the one before it, and splitting it anywhere
+  would leave both halves less convincing than the whole. That chapter runs
+  long on purpose. If you go over, say in one line why the thing is indivisible;
+  if you cannot, it was divisible.
 - **A dozen lines per code block**, except the final assembly in 怎么做的.
 - **A term is introduced at most once, in the sentence that needs it.** No
   glossary paragraphs. No "recall that". If a chapter needs four new terms in

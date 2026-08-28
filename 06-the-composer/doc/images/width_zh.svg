@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 400" width="700" height="400"
+     font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif">
+  <rect width="700" height="400" fill="#fafbfc" rx="8"/>
+  <rect x="0" y="0" width="700" height="42" fill="#1f2937" rx="8"/>
+  <rect x="0" y="34" width="700" height="8" fill="#1f2937"/>
+  <text x="24" y="27" fill="#ffffff" font-size="15" font-weight="600">字节数、字符数、列数</text>
+  <text x="676" y="27" fill="#9ca3af" font-size="12" text-anchor="end">阶段 06</text>
+
+  <!-- header row -->
+  <text x="40" y="76" font-size="12" fill="#57606a">字符串</text>
+  <text x="330" y="76" font-size="12" fill="#57606a" text-anchor="middle">len() 字节</text>
+  <text x="450" y="76" font-size="12" fill="#57606a" text-anchor="middle">字符</text>
+  <text x="580" y="76" font-size="12" fill="#15803d" text-anchor="middle" font-weight="600">列 —— 终端只在乎这个</text>
+  <path d="M40 84 L660 84" stroke="#d0d7de" stroke-width="1"/>
+
+  <!-- row 1 -->
+  <text x="40" y="112" font-size="14" fill="#1f2328" font-family="ui-monospace, Consolas, monospace">你好世界</text>
+  <text x="330" y="112" font-size="13" fill="#1f2328" text-anchor="middle">12</text>
+  <text x="450" y="112" font-size="13" fill="#1f2328" text-anchor="middle">4</text>
+  <rect x="536" y="96" width="88" height="22" rx="4" fill="#f0fdf4" stroke="#15803d"/>
+  <text x="580" y="112" font-size="13" fill="#14532d" text-anchor="middle" font-weight="600">8</text>
+  <path d="M40 124 L660 124" stroke="#eaeef2" stroke-width="1"/>
+
+  <!-- row 2 -->
+  <text x="40" y="152" font-size="13" fill="#1f2328" font-family="ui-monospace, Consolas, monospace">"\x1b[31mred\x1b[0m"</text>
+  <text x="330" y="152" font-size="13" fill="#1f2328" text-anchor="middle">12</text>
+  <text x="450" y="152" font-size="13" fill="#1f2328" text-anchor="middle">12</text>
+  <rect x="536" y="136" width="88" height="22" rx="4" fill="#f0fdf4" stroke="#15803d"/>
+  <text x="580" y="152" font-size="13" fill="#14532d" text-anchor="middle" font-weight="600">3</text>
+  <path d="M40 164 L660 164" stroke="#eaeef2" stroke-width="1"/>
+
+  <!-- row 3 -->
+  <text x="40" y="192" font-size="14" fill="#1f2328" font-family="ui-monospace, Consolas, monospace">六个汉字的名字</text>
+  <text x="330" y="192" font-size="13" fill="#1f2328" text-anchor="middle">18</text>
+  <text x="450" y="192" font-size="13" fill="#1f2328" text-anchor="middle">6</text>
+  <rect x="536" y="176" width="88" height="22" rx="4" fill="#f0fdf4" stroke="#15803d"/>
+  <text x="580" y="192" font-size="13" fill="#14532d" text-anchor="middle" font-weight="600">12</text>
+
+  <!-- the %-20s failure -->
+  <rect x="26" y="220" width="648" height="94" rx="6" fill="#fef2f2" stroke="#cf222e" stroke-width="1.5"/>
+  <text x="42" y="242" font-size="12.5" fill="#cf222e" font-weight="600">%-20s 补的是二十个字节</text>
+  <text x="42" y="264" font-size="11.5" fill="#1f2328">六个汉字已经 18 字节，所以它只补 2 个空格 —— 而它在屏幕上只占了 12 列。</text>
+  <text x="42" y="284" font-size="11.5" fill="#1f2328">下一列提前 6 格开始，只在这一行；其他每一行都还是对的。</text>
+  <text x="42" y="304" font-size="11.5" fill="#cf222e">所以这个 bug 报出来是「终端错乱」，不是「格式化动词数错了东西」。</text>
+
+  <rect x="26" y="328" width="648" height="34" rx="6" fill="#fff7ed" stroke="#d97706"/>
+  <text x="42" y="350" font-size="11.5" fill="#92400e">歧义宽度字符（希腊字母、西里尔字母、制表符、… 、±）在 CJK locale 下是 2 列，别处是 1 列。这里永远答 1。</text>
+
+  <text x="26" y="386" font-size="11.5" fill="#57606a">一个形状取决于 LANG 的布局，比一个偶尔窄一格的框糟得多。</text>
+</svg>

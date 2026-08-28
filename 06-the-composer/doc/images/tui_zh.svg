@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 430" width="700" height="430"
+     font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#57606a"/>
+    </marker>
+    <marker id="ab" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#2563eb"/>
+    </marker>
+  </defs>
+
+  <rect width="700" height="430" fill="#fafbfc" rx="8"/>
+  <rect x="0" y="0" width="700" height="42" fill="#1f2937" rx="8"/>
+  <rect x="0" y="34" width="700" height="8" fill="#1f2937"/>
+  <text x="24" y="27" fill="#ffffff" font-size="15" font-weight="600">一个 TUI 拆开是什么</text>
+  <text x="676" y="27" fill="#9ca3af" font-size="12" text-anchor="end">阶段 06</text>
+
+  <!-- enter raw mode -->
+  <rect x="26" y="62" width="648" height="34" rx="6" fill="#eff6ff" stroke="#2563eb" stroke-width="1.5"/>
+  <text x="42" y="84" font-size="12.5" fill="#1e3a8a" font-weight="600">进入 raw 模式 —— 四个 printf，加一件必须先安排好的事：怎么退出去</text>
+
+  <!-- three producers -->
+  <rect x="26" y="120" width="196" height="70" rx="6" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="124" y="142" font-size="12.5" fill="#1f2328" text-anchor="middle" font-weight="600">读键盘</text>
+  <text x="124" y="161" font-size="11.5" fill="#57606a" text-anchor="middle">一个 goroutine，堵在 Read 上</text>
+  <text x="124" y="179" font-size="11.5" fill="#2563eb" text-anchor="middle" font-family="ui-monospace, Consolas, monospace">keys chan Key</text>
+
+  <rect x="252" y="120" width="196" height="70" rx="6" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="350" y="142" font-size="12.5" fill="#1f2328" text-anchor="middle" font-weight="600">窗口变大变小</text>
+  <text x="350" y="161" font-size="11.5" fill="#57606a" text-anchor="middle">SIGWINCH，或者轮询一下</text>
+  <text x="350" y="179" font-size="11.5" fill="#2563eb" text-anchor="middle" font-family="ui-monospace, Consolas, monospace">resize chan struct{}</text>
+
+  <rect x="478" y="120" width="196" height="70" rx="6" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="576" y="142" font-size="12.5" fill="#1f2328" text-anchor="middle" font-weight="600">该退出了</text>
+  <text x="576" y="161" font-size="11.5" fill="#57606a" text-anchor="middle">信号，或者用户按了 q</text>
+  <text x="576" y="179" font-size="11.5" fill="#2563eb" text-anchor="middle" font-family="ui-monospace, Consolas, monospace">done chan struct{}</text>
+
+  <path d="M124 190 L124 214 L340 214" stroke="#2563eb" stroke-width="1.5" fill="none"/>
+  <path d="M350 190 L350 214" stroke="#2563eb" stroke-width="1.5" fill="none"/>
+  <path d="M576 190 L576 214 L360 214" stroke="#2563eb" stroke-width="1.5" fill="none"/>
+  <path d="M350 214 L350 232" stroke="#2563eb" stroke-width="1.5" marker-end="url(#ab)"/>
+
+  <!-- the select -->
+  <rect x="180" y="234" width="340" height="62" rx="6" fill="#fff7ed" stroke="#d97706" stroke-width="1.5"/>
+  <text x="350" y="257" font-size="13" fill="#92400e" text-anchor="middle" font-weight="600" font-family="ui-monospace, Consolas, monospace">select { ... }</text>
+  <text x="350" y="278" font-size="11.5" fill="#92400e" text-anchor="middle">一个循环，一个协程。状态只有它一个人改</text>
+
+  <path d="M350 296 L350 318" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
+
+  <rect x="216" y="320" width="268" height="34" rx="6" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="350" y="342" font-size="12.5" fill="#1f2328" text-anchor="middle">重画一次，整屏，从头到尾</text>
+
+  <!-- restore -->
+  <rect x="26" y="368" width="648" height="34" rx="6" fill="#f0fdf4" stroke="#15803d" stroke-width="1.5"/>
+  <text x="42" y="390" font-size="12.5" fill="#14532d" font-weight="600">恢复 raw 模式 —— 四个出口全都要走到这里，漏一个，用户的终端就废了</text>
+
+  <text x="26" y="422" font-size="11.5" fill="#57606a">框架藏起来的不是上面这些，是下面那一条：打开容易，保证关掉才是全部的问题。</text>
+</svg>

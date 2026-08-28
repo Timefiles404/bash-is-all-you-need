@@ -197,7 +197,7 @@ go test ./05-live-forever/code -run Cut
 
 - `TestCanCutBeforeRejectsAToolResultWhateverRoleCarriesIt` 会红，而 `TestEveryLegalCutProducesASendableConversation` **不一定会红**。后者用的那份对话样例，工具结果恰好都落在 user 消息里，role 判断顺手把它们挡住了。
 - 这就是第 1 步说的那件事的实测形态：删掉一项冗余检查，测试套件可能整体还是绿的 —— 取决于样例里的切点碰巧落在哪儿。
-- 记得把删掉的循环加回去。
+- 看完把它改回来：`git checkout 05-live-forever/code/compact.go`。
 
 ---
 

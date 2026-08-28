@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 390" width="700" height="390"
+     font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#57606a"/>
+    </marker>
+  </defs>
+
+  <rect width="700" height="390" fill="#fafbfc" rx="8"/>
+  <rect x="0" y="0" width="700" height="42" fill="#1f2937" rx="8"/>
+  <rect x="0" y="34" width="700" height="8" fill="#1f2937"/>
+  <text x="24" y="27" fill="#ffffff" font-size="15" font-weight="600">一次调用的 prompt 拆成三份</text>
+  <text x="676" y="27" fill="#9ca3af" font-size="12" text-anchor="end">阶段 04</text>
+
+  <text x="26" y="70" font-size="12" fill="#57606a">这一轮发出去 963 个 prompt token。它们不是同一个单价：</text>
+
+  <!-- three components -->
+  <rect x="26" y="84" width="200" height="66" rx="6" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="46" y="106" font-size="18" fill="#1f2328" font-family="ui-monospace, Consolas, monospace">█</text>
+  <text x="70" y="106" font-size="12.5" fill="#1f2328" font-weight="600">full · 全价</text>
+  <text x="46" y="128" font-size="12" fill="#57606a">3 个</text>
+  <text x="46" y="144" font-size="11.5" fill="#57606a">前缀被改动过一点</text>
+
+  <rect x="250" y="84" width="200" height="66" rx="6" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="270" y="106" font-size="18" fill="#8250df" font-family="ui-monospace, Consolas, monospace">▓</text>
+  <text x="294" y="106" font-size="12.5" fill="#1f2328" font-weight="600">write · 写缓存</text>
+  <text x="270" y="128" font-size="12" fill="#57606a">0 个</text>
+  <text x="270" y="144" font-size="11.5" fill="#57606a">比全价还贵一点</text>
+
+  <rect x="474" y="84" width="200" height="66" rx="6" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="494" y="106" font-size="18" fill="#15803d" font-family="ui-monospace, Consolas, monospace">░</text>
+  <text x="518" y="106" font-size="12.5" fill="#1f2328" font-weight="600">read · 读缓存</text>
+  <text x="494" y="128" font-size="12" fill="#57606a">960 个</text>
+  <text x="494" y="144" font-size="11.5" fill="#57606a">大约全价的十分之一</text>
+
+  <path d="M350 150 L350 172" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
+
+  <!-- the bar -->
+  <rect x="26" y="176" width="648" height="52" rx="6" fill="#f6f8fa" stroke="#d0d7de"/>
+  <text x="46" y="208" font-size="15" fill="#1f2328" font-family="ui-monospace, Consolas, monospace">│ in 963    <tspan fill="#1f2328">█</tspan><tspan fill="#15803d">░░░░░░░░░░░░░░░░░░░</tspan>  full 3 · write 0 · read 960</text>
+
+  <!-- the 3-token point -->
+  <path d="M126 232 L126 254" stroke="#cf222e" stroke-width="1.3" marker-end="url(#a)"/>
+  <rect x="26" y="256" width="320" height="48" rx="6" fill="#fef2f2" stroke="#cf222e"/>
+  <text x="42" y="275" font-size="11.5" fill="#cf222e">3 × 20 ÷ 963 = 0 格</text>
+  <text x="42" y="293" font-size="11.5" fill="#cf222e">所以强制给它一格：一个小到看不见的成分，</text>
+  <text x="42" y="293" font-size="11.5" fill="#cf222e" opacity="0"> </text>
+
+  <rect x="360" y="256" width="314" height="48" rx="6" fill="#f0fdf4" stroke="#15803d"/>
+  <text x="376" y="275" font-size="11.5" fill="#14532d">三种字形，不是三种颜色。</text>
+  <text x="376" y="293" font-size="11.5" fill="#14532d">经过 grep、写进文件、落进 CI 日志之后还认得出。</text>
+
+  <text x="42" y="322" font-size="11.5" fill="#cf222e">和一个不存在的成分，是两件不同的事。</text>
+
+  <text x="26" y="352" font-size="11.5" fill="#57606a">一张三个数的表是读得懂的，一根条是一眼就能看见的 —— 你要注意的是比例在两轮之间变了。</text>
+  <text x="26" y="372" font-size="11.5" fill="#57606a">而一个只在彩色终端里有效的图，恰好在别人想向你展示一个问题的时候是空的。</text>
+</svg>

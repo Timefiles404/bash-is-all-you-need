@@ -1,0 +1,97 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 780 500" width="780" height="500"
+     font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#57606a"/>
+    </marker>
+    <marker id="ag" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#15803d"/>
+    </marker>
+    <marker id="aw" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#d97706"/>
+    </marker>
+  </defs>
+
+  <rect width="780" height="500" fill="#fafbfc" rx="8"/>
+  <rect x="0" y="0" width="780" height="42" fill="#1f2937" rx="8"/>
+  <rect x="0" y="34" width="780" height="8" fill="#1f2937"/>
+  <text x="24" y="27" fill="#ffffff" font-size="15" font-weight="600">缓存是前缀匹配</text>
+  <text x="756" y="27" fill="#9ca3af" font-size="12" text-anchor="end">阶段 04</text>
+
+  <text x="24" y="68" font-size="12.5" fill="#57606a">一个请求在线上的字节顺序：tools，然后 system，然后 messages。记号只能说「到这里为止」。</text>
+
+  <path d="M392 86 L392 424" stroke="#d0d7de" stroke-width="1" stroke-dasharray="4 4"/>
+
+  <!-- normal -->
+  <text x="24" y="106" font-size="12.5" fill="#1f2328" font-weight="600">正常：两个记号</text>
+
+  <rect x="32" y="118" width="210" height="28" rx="4" fill="#f0fdf4" stroke="#15803d"/>
+  <text x="137" y="137" font-size="12" fill="#14532d" text-anchor="middle" font-family="ui-monospace, Consolas, monospace">tools</text>
+
+  <rect x="32" y="148" width="210" height="28" rx="4" fill="#f0fdf4" stroke="#15803d"/>
+  <text x="137" y="167" font-size="12" fill="#14532d" text-anchor="middle" font-family="ui-monospace, Consolas, monospace">system</text>
+
+  <path d="M242 162 L286 162" stroke="#15803d" stroke-width="1.5" marker-end="url(#ag)"/>
+  <text x="292" y="158" font-size="11.5" fill="#15803d">记号 1</text>
+  <text x="292" y="174" font-size="11" fill="#57606a">整场会话不动</text>
+
+  <rect x="32" y="182" width="210" height="24" rx="4" fill="#f0fdf4" stroke="#15803d"/>
+  <text x="137" y="199" font-size="11.5" fill="#14532d" text-anchor="middle">第 1 轮：提问 · 命令 · 输出</text>
+
+  <rect x="32" y="208" width="210" height="24" rx="4" fill="#f0fdf4" stroke="#15803d"/>
+  <text x="137" y="225" font-size="11.5" fill="#14532d" text-anchor="middle">第 2 轮：命令 · 输出</text>
+
+  <text x="137" y="248" font-size="12" fill="#57606a" text-anchor="middle">…</text>
+
+  <rect x="32" y="256" width="210" height="24" rx="4" fill="#f0fdf4" stroke="#15803d"/>
+  <text x="137" y="273" font-size="11.5" fill="#14532d" text-anchor="middle">第 N-1 轮：命令 · 输出</text>
+
+  <rect x="32" y="282" width="210" height="24" rx="4" fill="#eff6ff" stroke="#2563eb" stroke-width="1.5"/>
+  <text x="137" y="299" font-size="11.5" fill="#1e3a8a" text-anchor="middle">第 N 轮：这一轮新增的</text>
+
+  <path d="M242 294 L286 294" stroke="#15803d" stroke-width="1.5" marker-end="url(#ag)"/>
+  <text x="292" y="290" font-size="11.5" fill="#15803d">记号 2</text>
+  <text x="292" y="306" font-size="11" fill="#57606a">每一轮往下挪一格</text>
+
+  <text x="32" y="336" font-size="11.5" fill="#15803d">绿色：和上一次逐字节相同，按读取价计费</text>
+  <text x="32" y="356" font-size="11.5" fill="#2563eb">蓝色：这一轮才有的内容，按全价计费</text>
+
+  <!-- broken -->
+  <text x="404" y="106" font-size="12.5" fill="#1f2328" font-weight="600">--break-cache：最前面多了一行时间戳</text>
+
+  <rect x="412" y="118" width="210" height="28" rx="4" fill="#fff7ed" stroke="#d97706" stroke-width="1.5"/>
+  <text x="517" y="137" font-size="11" fill="#92400e" text-anchor="middle" font-family="ui-monospace, Consolas, monospace">Current time: 2026-08-27T…</text>
+
+  <path d="M622 132 L666 132" stroke="#d97706" stroke-width="1.5" marker-end="url(#aw)"/>
+  <text x="672" y="128" font-size="11.5" fill="#92400e">每次都不同</text>
+  <text x="672" y="144" font-size="11" fill="#57606a">就这一行</text>
+
+  <rect x="412" y="148" width="210" height="28" rx="4" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="517" y="167" font-size="12" fill="#57606a" text-anchor="middle" font-family="ui-monospace, Consolas, monospace">tools</text>
+
+  <rect x="412" y="178" width="210" height="28" rx="4" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="517" y="197" font-size="12" fill="#57606a" text-anchor="middle" font-family="ui-monospace, Consolas, monospace">system</text>
+
+  <rect x="412" y="208" width="210" height="24" rx="4" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="517" y="225" font-size="11.5" fill="#57606a" text-anchor="middle">第 1 轮</text>
+
+  <rect x="412" y="234" width="210" height="24" rx="4" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="517" y="251" font-size="11.5" fill="#57606a" text-anchor="middle">第 2 轮</text>
+
+  <text x="517" y="274" font-size="12" fill="#57606a" text-anchor="middle">…</text>
+
+  <rect x="412" y="282" width="210" height="24" rx="4" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="517" y="299" font-size="11.5" fill="#57606a" text-anchor="middle">第 N 轮</text>
+
+  <path d="M636 160 L636 300" stroke="#d97706" stroke-width="1.5" stroke-dasharray="4 3"/>
+  <text x="648" y="236" font-size="11.5" fill="#92400e">全部全价</text>
+
+  <text x="412" y="336" font-size="11.5" fill="#92400e">第一个字节变了，后面的记号一个都不起作用。</text>
+  <text x="412" y="356" font-size="11.5" fill="#57606a">没有报错，HTTP 200，只是账单变了。</text>
+
+  <!-- bottom -->
+  <rect x="24" y="386" width="732" height="88" rx="6" fill="#eff6ff" stroke="#2563eb"/>
+  <text x="42" y="410" font-size="12.5" fill="#1e3a8a" font-weight="600">于是有了两条纪律，它们比记号本身更重要</text>
+  <text x="42" y="432" font-size="12" fill="#1e40af">一，一个记号有用的前提是：它前面的每一个字节，下一次请求还是这些。</text>
+  <text x="42" y="452" font-size="12" fill="#1e40af">二，稳定的内容必须排在前面，变动的内容排在后面 —— 顺序的影响比记号放哪儿大。</text>
+</svg>

@@ -117,11 +117,11 @@ func parseTaskArgs(raw string) (description, prompt string, err error) {
 
 // spawn 把一个子 Agent 跑到结束，返回它的报告。
 //
-// 注意什么共享、什么不共享。共享的：provider、HTTP 客户端、权限闸、
-// shell 配置，还有总线的 core——这样子 Agent 的权限提问会送到同一个
-// 人面前，它的事件也落进同一份有序的 trace。不共享的：消息数组、系
-// 统提示词、compactor 和回合预算。这道分界线恰好就是"父 Agent 不能丢的
-// 状态"对上"子 Agent 不能继承的状态"。
+// 注意什么共享、什么不共享。共享的：provider、HTTP 客户端、权限闸、shell
+// 配置、沙箱，还有总线的 core——这样子 Agent 的权限提问会送到同一个人面
+// 前，它的事件也落进同一份有序的 trace。不共享的：消息数组、系统提示词、
+// compactor 和回合预算。这道分界线恰好就是"父 Agent 不能丢的状态"对上"子
+// Agent 不能继承的状态"。
 func (a *agent) spawn(callID, description, prompt string) (string, Usage, error) {
 	started := time.Now()
 	agentID := fmt.Sprintf("%s#%d", description, a.nextChild())
@@ -160,18 +160,29 @@ func (a *agent) nextChild() int {
 
 // newChild 造出的子 Agent，该共享的都共享，不该继承的一样不继承。
 //
-// 共享的：provider、HTTP 客户端、权限闸、shell 配置，还有总线的
-// core——这样子 Agent 的权限提问会送到同一个人面前，它的事件也落进同
-// 一份有序的 trace。不共享的：消息数组、系统提示词、compactor 和回合预
-// 算。
+// 共享的：provider、HTTP 客户端、权限闸、shell 配置、沙箱，还有总线的
+// core——这样子 Agent 的权限提问会送到同一个人面前，它的事件也落进同一份
+// 有序的 trace。不共享的：消息数组、系统提示词、compactor 和回合预算。
 //
-// 一个字段一个字段写出来，而不是写 `child := *a`——后者更短，而且
-// `go vet` 拒得没错：agent 里有 sync.Mutex，复制含互斥锁的结构体，副
-// 本拿到的锁就停在原件当时的那个状态上。写全了也更诚实：这里每一
-// 行，都是在决定子 Agent 到底是什么。
+// 沙箱值得单独说一句，因为它正是那个缺了也没有任何症状的条目。它一身两
+// 职：既是一条命令要守的策略，也是这条策略看见过什么的那份记录。给子
+// Agent 配一个它自己的沙箱，就得给它一个根目录，而唯一站得住的根目录就是
+// 父 Agent 那个——于是这份拷贝会是"父 Agent 的策略，配一份私有的审计记
+// 录"，而子 Agent 产生的每一次 exec、每一次 open、每一次拒绝，都会从
+// main 在会话结束时打出的那份 report() 里、以及 /status 在会话进行中显示
+// 的那份里，一并消失。一个沙箱在并发的子 Agent 之间共用是安全的，因为
+// run 每次调用都新建一个解释器，而这个结构体上唯一可变的状态就是那几个审
+// 计切片，往它们里面的每一次 append 都在它那把锁底下。
+//
+// 一个字段一个字段写出来，而不是写 `child := *a`——后者更短，而且 `go
+// vet` 拒得没错：agent 里有 sync.Mutex，复制含互斥锁的结构体，副本拿到的
+// 锁就停在原件当时的那个状态上。写全了也更诚实：这里每一行，都是在决定子
+// Agent 到底是什么。它的代价是一项长期的义务：这个函数写完之后才加到
+// agent 上的字段，在有人回到这里补一笔之前，子 Agent 就是拿不到，而工具
+// 链里没有任何东西会提醒这一句。
 func (a *agent) newChild(agentID string, system func() string) *agent {
 	child := &agent{
-		p: a.p, httpc: a.httpc, g: a.g, cfg: a.cfg,
+		p: a.p, httpc: a.httpc, g: a.g, cfg: a.cfg, sb: a.sb,
 		bus:       a.bus.Fork(agentID),
 		memoryDir: a.memoryDir,
 		stable:    a.stable,

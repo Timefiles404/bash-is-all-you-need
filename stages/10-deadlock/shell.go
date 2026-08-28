@@ -53,6 +53,7 @@ type shellSession struct {
 	app   *tui.App
 	store *settings.Store
 	trace *traceSink
+	folds *foldSink
 	opts  shellOpts
 
 	// storeErr 记的是没有设置存储时，它为什么没有。它进的是横幅而不是日志，
@@ -135,6 +136,68 @@ func (t *traceSink) path() string {
 }
 
 // ---------------------------------------------------------------------------
+// 折叠
+// ---------------------------------------------------------------------------
+
+// foldSink 告诉输出区，渲染器接下来要写的是哪一类行。
+//
+// 它必须排在渲染器*前面*订阅，而 main() 的做法是把它写成 NewBus 的第一个参
+// 数。Emit 是在 core 的那把 mutex 底下按顺序派发给每个订阅者的，所以轮到渲
+// 染器时，它即将写出的那些行属于哪一类，早已定好。要是登记在渲染器后面，这
+// 段代码照样编译得过、照样跑得起来，只是每一行都会被标成它前面那个事件的类
+// 别——这种错在屏幕安静的时候看着是对的，会话一忙起来就全乱了。
+//
+// 另一条路是照渲染出来的文字的前缀去分类。那样今天也能用，连总线订阅者都不
+// 用要，然后在某个人改动 render.go 里某个字符的那一刻悄悄失效。事件本身就知
+// 道答案，没有理由再从画面上把它倒推一遍。
+type foldSink struct {
+	mu  sync.Mutex
+	app *tui.App
+}
+
+// attach 等外壳建起来之后，才把外壳交给这个订阅者。在那之前发出的事件——启动
+// 时那行供应商——就干脆不分类，这也是对的：它们属于横幅，而横幅从不折叠。
+func (f *foldSink) attach(app *tui.App) {
+	f.mu.Lock()
+	f.app = app
+	f.mu.Unlock()
+}
+
+func (f *foldSink) OnEvent(e Event) {
+	f.mu.Lock()
+	app := f.app
+	f.mu.Unlock()
+	if app != nil {
+		app.SetClass(classOf(e))
+	}
+}
+
+// classOf 决定精简视图留下什么。
+//
+// 它写下的规矩是：Agent 说了什么、做了什么，留着；仪器量出来的那些，折起
+// 来。于是精简视图里剩下的，是模型的行文、每条命令在跑之前的样子，以及所有
+// 出错的地方——也就是一个人复述这场会话时会讲的那些。折起来的是每次调用的那
+// 块仪表盘、每条命令的原始输出，还有围着它们的那些账：这些恰恰是这个仓库存
+// 在的理由，却没有一样是你在等着看 Agent 有没有听懂你的时候想留在屏幕上的。
+func classOf(e Event) tui.Class {
+	switch e.Kind {
+	case KindTextDelta:
+		return tui.ClassProse
+
+	case KindToolResult, KindResponseEnd, KindUsage, KindRetry,
+		KindMemoryLoaded, KindSkillsIndexed, KindCompactStart, KindCompactEnd,
+		KindRequest:
+		return tui.ClassDetail
+
+	default:
+		// 别的都留在看得见的那一侧，而默认值特意选的就是看得见这一边。以后往
+		// events.go 里加的新 Kind 会一直显示在屏幕上，直到有人另做决定——这是那
+		// 种会被人注意到的失败。
+		return tui.ClassPlain
+	}
+}
+
+// ---------------------------------------------------------------------------
 // 跑起来
 // ---------------------------------------------------------------------------
 
@@ -154,6 +217,7 @@ func (s *shellSession) run(ctx context.Context) error {
 		InterruptCause: errInterrupted,
 		OnExit:         s.onExit,
 	})
+	s.folds.attach(s.app)
 	// 渲染器从 stdout 挪到外壳的输出区，输出这一侧的改动就这么多。还往 stdout
 	// 写的东西会落在备用屏上、帧的底下，把帧毁掉——agent.out 就是为这个存在
 	// 的，command() 也是为这个往那里写。
@@ -282,37 +346,72 @@ func (s *shellSession) submit(ctx context.Context, line string) error {
 // 状态栏
 // ---------------------------------------------------------------------------
 
-func (s *shellSession) segments() []string {
+func (s *shellSession) segments() []tui.Segment {
 	s.mu.Lock()
 	a, pname, pcfg, wd := s.a, s.pname, s.pcfg, s.wd
 	msgs := len(s.msgs)
 	s.mu.Unlock()
 
-	who := "no provider"
+	who := tui.Segment{Value: "no provider", Tone: tui.ToneBad}
 	if a.lad != nil {
-		who = pname + " (" + pcfg.Protocol + ")"
+		who = tui.Segment{Value: pname + " (" + pcfg.Protocol + ")", Tone: tui.ToneAccent}
 	}
-	out := []string{who, shortModel(pcfg.Model), shortDir(wd)}
+	out := []tui.Segment{who, {Value: shortModel(pcfg.Model)}}
+	if seg, ok := contextSegment(s.view.lastUsage.Prompt(), s.view.window); ok {
+		out = append(out, seg)
+	}
 	if n := s.view.session.Prompt() + s.view.session.Output; n > 0 {
-		out = append(out, fmt.Sprintf("%s tok", thousands(n)))
+		out = append(out, tui.Segment{Value: thousands(n) + " tok", Tone: tui.ToneMuted})
 	}
 	if s.view.prices.known() {
-		out = append(out, fmt.Sprintf("$%.4f", s.view.sessionCost))
+		out = append(out, tui.Segment{Value: fmt.Sprintf("$%.4f", s.view.sessionCost), Tone: tui.ToneMuted})
 	}
 	// 只有真有消息了，消息数才值得占一个字段。在一条挤不下就得丢字段的栏上，
 	// "0 msg" 是那种什么都没回答的字段。
 	if msgs > 0 {
-		out = append(out, fmt.Sprintf("%d msg", msgs))
+		out = append(out, tui.Segment{Value: fmt.Sprintf("%d msg", msgs), Tone: tui.ToneMuted})
 	}
 	if p := s.trace.path(); p != "" {
-		out = append(out, "rec")
+		out = append(out, tui.Segment{Value: "rec", Tone: tui.ToneWarn})
 	}
 	if a.cfg.yolo {
-		// 在一条挤不下就得丢字段的栏上，它值得占个位：它是唯一一个后果为"命
-		// 令不问就跑"的设置。
-		out = append(out, "yolo")
+		// 在一条挤不下就得丢字段的栏上，它值得占个位，也值得是上面最扎眼的那
+		// 个：它是唯一一个后果为"命令不问就跑"的设置。
+		out = append(out, tui.Segment{Value: "yolo", Tone: tui.ToneBad})
 	}
+	// 目录放在最后，因为它是最长的那个字段，也是唯一一个长度没有上限的字段；而
+	// 这条栏是从第一个挤不下的字段起，往后一并丢掉。放在中间时，凡是比这条路径
+	// 窄的终端，它后面的字段就全都看不见了——包括 yolo，而在这条栏上，少掉 yolo
+	// 的代价是最大的。
+	out = append(out, tui.Segment{Label: "in", Value: shortDir(wd), Tone: tui.ToneMuted})
 	return out
+}
+
+// contextSegment 报的是上下文有多满；报不出来的时候，它一个字都不说。
+//
+// 有两种报不出来。第一次调用之前没有 prompt 可量，而一个"0%"读起来像是个答
+// 案，而不像是"没有答案"。再就是没配窗口时没有分母——一个双击二进制起来的会
+// 话正是这个状态，因为窗口是供应商的一项属性，而这时根本没有 providers.json
+// 可以从里面读到它。/provider-window 就是为这个准备的，而空着的这个字段是它
+// 顺手补上的最小的一件：面板自己那行上下文会退回成一个光秃秃的 token 数，没
+// 有东西可以拿来除；压缩的水位线是窗口的一个比例，而窗口不存在，于是它永远
+// 也到不了。
+//
+// 把它放在这里而不是放进 /status，图的就是那点颜色：满到该压缩了，是那种你
+// 希望不用特意去找就能注意到的事。
+func contextSegment(prompt, window int) (tui.Segment, bool) {
+	if prompt <= 0 || window <= 0 {
+		return tui.Segment{}, false
+	}
+	pct := float64(prompt) * 100 / float64(window)
+	tone := tui.ToneGood
+	switch {
+	case pct >= 85:
+		tone = tui.ToneBad
+	case pct >= 60:
+		tone = tui.ToneWarn
+	}
+	return tui.Segment{Label: "ctx", Value: fmt.Sprintf("%.0f%%", pct), Tone: tone}, true
 }
 
 func shortModel(m string) string {
@@ -727,11 +826,84 @@ func (s *shellSession) commands() []tui.Command {
 			},
 		},
 		{
+			Name: "/provider-window", Args: "<tokens>", Group: "provider",
+			Help: "set and save how large this model's context window is",
+			Run: func(_ context.Context, arg string, w io.Writer) error {
+				arg = strings.TrimSpace(arg)
+				if arg == "" {
+					s.mu.Lock()
+					have := s.pcfg.Window
+					s.mu.Unlock()
+					if have <= 0 {
+						return fmt.Errorf("no window is configured; pass a size in tokens, e.g. /provider-window 131072")
+					}
+					fmt.Fprintf(w, "  %d tokens\n", have)
+					return nil
+				}
+				n, err := strconv.Atoi(arg)
+				if err != nil {
+					return fmt.Errorf("want a number of tokens: %w", err)
+				}
+				if n < 1024 {
+					// 这不是口味问题。压缩的水位线是这个数的一个比例，而一个比
+					// 一份系统提示词还小的窗口，会把水位线压到地板底下：会话还
+					// 一句话没说就要去压缩，而且每次都失败。
+					return fmt.Errorf("want at least 1024 tokens, got %d", n)
+				}
+				if s.store == nil {
+					return fmt.Errorf("no settings file, so there is nowhere to save this: %v", s.storeErr)
+				}
+				s.store.Set(envWindow, arg)
+				if err := s.store.Save(); err != nil {
+					return err
+				}
+				// 存下来之外还导出到环境里，因为 rebuildProvider 是从环境重新
+				// 解析的，一个只存在于磁盘上的值要到下次启动才会生效。
+				os.Setenv(envWindow, arg)
+
+				s.mu.Lock()
+				s.opts.window = n
+				msg, err := s.rebuildProvider()
+				s.mu.Unlock()
+				fmt.Fprintf(w, "  saved to %s\n", s.store.Path())
+				if err != nil {
+					// 存是存下了，但供应商没建起来。这里报的是重建失败，不是这
+					// 条命令失败：那个数字已经在磁盘上，下次启动就会用上。
+					return err
+				}
+				fmt.Fprintf(w, "  %s\n", msg)
+				return nil
+			},
+		},
+		{
 			Name: "/set", Args: "[name [value]]", Group: "agent",
 			Help: "show or change a limit without restarting",
 			Run:  s.runSet,
 		},
 	}
+}
+
+// envWindow 是 /provider-window 把上下文窗口存进去的地方。
+//
+// 它不放进 providers.json，理由和 API key 不放进去的一样：那个文件是要提交
+// 的，而一场通过外壳配起来的会话在里面根本没有属于自己的条目可写。它也没做
+// 成一个 --window flag，因为 flag 得记住、还得每次重敲，而供应商那几条命令
+// 存在的全部意义，就是照顾一个被人双击打开的二进制。
+const envWindow = "AGENT_WINDOW"
+
+// savedWindow 从环境里把窗口读出来——到调用它的时候，一个存下来的设置已经被
+// 导出到那里了。
+//
+// 值不合法就忽略，而不是报出来。这段跑在启动过程中，那时还没有界面可以报给
+// 它；忽略的后果是一个空字段，而 /provider-window 会解释它——另一边则是一个
+// 被双击打开的二进制直接致命报错，而整个外壳存在的意义，就是不让那种失败发
+// 生。
+func savedWindow() int {
+	n, err := strconv.Atoi(strings.TrimSpace(os.Getenv(envWindow)))
+	if err != nil || n < 1024 {
+		return 0
+	}
+	return n
 }
 
 // ---------------------------------------------------------------------------
@@ -740,7 +912,7 @@ func (s *shellSession) commands() []tui.Command {
 
 // knob 是一项能在运行时改的设置。
 //
-// 写成一张表，而不是一条命令一个，因为它们有十四个，而且形状都一样：读一个
+// 写成一张表，而不是一条命令一个，因为它们有十五个，而且形状都一样：读一个
 // 数，写一个数。**不**在这里的，是启动之后就改不动的那些——它找到的 shell、
 // trace 的格式——而 /set 表态的方式是不把它们列出来，不是收下改动然后不理。
 type knob struct {
@@ -802,6 +974,20 @@ func (s *shellSession) knobs() []knob {
 		{"call-timeout", "backstop on one whole model call", func() string { return a.dl.total.String() }, dur(&a.dl.total)},
 		{"retry", "attempts per provider on a retryable failure", func() string { return strconv.Itoa(a.pol.attempts) }, num(&a.pol.attempts, 1)},
 		{"retry-budget", "total time one call may wait between attempts", func() string { return a.pol.budget.String() }, dur(&a.pol.budget)},
+		{"window", "context window in tokens; /provider-window also saves it", func() string { return strconv.Itoa(s.view.window) }, func(v string) error {
+			n, err := strconv.Atoi(v)
+			if err != nil {
+				return err
+			}
+			if n < 1024 {
+				return fmt.Errorf("want at least 1024 tokens")
+			}
+			// 同一个数字的三份拷贝；之所以是三份，是因为它们是在三个不同的时刻
+			// 从供应商那里读来的。只设其中一份，正是仪表盘和压缩对"什么时候该
+			// 触发"各说各话的由来。
+			s.opts.window, s.view.window, a.comp.window = n, n, n
+			return nil
+		}},
 		{"compact-at", "compact past this fraction of the window", func() string { return fmt.Sprintf("%.2f", a.comp.threshold) }, frac(&a.comp.threshold)},
 		{"keep", "fraction of the window left in place after compacting", func() string { return fmt.Sprintf("%.2f", a.comp.keepRatio) }, frac(&a.comp.keepRatio)},
 		{"yolo", "run every command without asking", func() string { return onOrOff(a.cfg.yolo) }, func(v string) error {

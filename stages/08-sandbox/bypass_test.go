@@ -254,3 +254,52 @@ func TestTheSandboxCannotSeeInsideAProgram(t *testing.T) {
 	t.Log("as documented: the sandbox saw one exec, allowed it, and the program did the rest. " +
 		"An embedded interpreter is a policy and observability layer, not a security boundary.")
 }
+
+// 另一种极限：不是解释器有的那种，是接线曾经有过的那种。
+//
+// --sandbox 是一句关于整场会话的断言，而一场会话是会派活出去的。
+// newChild 是一个字段一个字段地点名子 Agent 继承什么的，而只要沙箱
+// 不在这份名单上，子 Agent 拿到的 sb 就是 nil，走的就是 runCommand
+// 里 runBash 那条分支，派出去的活是在一个真的 shell 里跑的——没有策
+// 略，没有 sandbox_exec 事件，会话最后打出的那份统计里也什么都没
+// 有。
+//
+// 这里是穿过 runCommand 去验的，而不是拿 child.sb 和 parent.sb 比指
+// 针，因为那个字段并不是要断言的东西。要断言的是：一条策略要拒的命
+// 令，换成子 Agent 来跑，照样会被拒；而且这次拒绝会进到父 Agent 用
+// 来汇报的那份审计记录里——这两件事，一次重构都可能弄坏，哪怕它还老
+// 老实实地把指针复制过去。
+func TestASubagentRunsInsideTheParentsSandbox(t *testing.T) {
+	dir := bypassDir(t)
+
+	// 这样 runCommand 的两条分支就都扎在同一个目录上，于是没进沙箱的那条
+	// 读到的是真实存在的那个文件，而不是碰巧没找着、看着像通过了。
+	// bypassDir 本来就用的 t.TempDir，所以测试结束时这一切都会撤掉。
+	t.Chdir(dir)
+
+	// 有真 bash 就用真 bash，好让被测的那条分支是生产环境里的那条——一个
+	// 子 Agent 跑着一个真正不受限的 shell——而不是环境凑出来的假象。底下
+	// 的代码其实不需要它：沙箱在 execMiddleware 里就把这条命令拒了，压根
+	// 轮不到它去 PATH 上找 `cat`。
+	shell, _ := findBash()
+
+	parent, _ := mulAgent(&gate{yolo: true}, shell)
+	parent.sb = newSandbox(dir, parent.bus, true)
+
+	child := parent.newChild("read the config#1", func() string { return "child system" })
+	out := child.runCommand(1, "call_1", "cat "+secretName)
+
+	if strings.Contains(out, canary) {
+		t.Errorf("the subagent read %s and the contents went into a model's context:\n%s", secretName, out)
+	}
+	if !strings.Contains(out, "blocked by the sandbox/exec policy") {
+		t.Errorf("the sandbox did not refuse the subagent's command, so --sandbox holds for everything the parent "+
+			"runs and stops at the first `task` call — the one boundary in this stage is one delegation away from "+
+			"not existing.\nthe child was told:\n%s", out)
+	}
+	if len(parent.sb.blocked) == 0 {
+		t.Error("the parent's sandbox recorded nothing, so report() describes a fraction of the session while " +
+			"reading as though it described all of it: the exec, the open and the refusal counts a human is shown " +
+			"at the end would cover only the commands the parent happened to run itself")
+	}
+}

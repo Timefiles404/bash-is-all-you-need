@@ -420,8 +420,16 @@ func main() {
 	// 所以错误是被带着走的，不是当场抛出来；到下面真正需要供应商的那一条路径上
 	// 再检查。配置出错，该致命的只有依赖这份配置的代码，别的一概不该。
 	pcfg, pname, resolveErr := pf.resolve(*providerName)
-	if *window > 0 {
+	// 窗口，按这三个来源互相压过的顺序排：先是 flag，再是 /provider-window 存
+	// 下来的，最后才是 providers.json 里写的。完全通过外壳配起来的会话在那个文
+	// 件里没有条目，所以少了中间这一条，它就压根没有窗口——而没有窗口，压缩永远
+	// 不会触发，状态栏上那个上下文字段一直是空的，屏幕上也没有任何东西说明为什
+	// 么。
+	switch {
+	case *window > 0:
 		pcfg.Window = *window
+	case savedWindow() > 0:
+		pcfg.Window = savedWindow()
 	}
 
 	view := newRenderer(os.Stdout, colorEnabled(os.Stdout),
@@ -480,7 +488,11 @@ func main() {
 	}
 	cfg.shell = shell
 
-	bus := NewBus(view)
+	// 折叠订阅者写在渲染器前面，而这个顺序就是那份约定：Emit 按顺序派发给每个
+	// 订阅者，所以它能赶在渲染器写之前，先说出渲染器接下来要写的是哪一类行。见
+	// shell.go 里的 foldSink。
+	folds := &foldSink{}
+	bus := NewBus(folds, view)
 
 	// trace 蹲在一个开关后面，这样 /trace 才能在会话中途把它挪走。至于为什么不
 	// 是给总线加一个 Unsubscribe，见 shell.go 里的 traceSink。
@@ -521,7 +533,7 @@ func main() {
 
 	sh := &shellSession{
 		storeErr: storeErr,
-		pf:       pf, view: view, bus: bus, store: store, trace: traces,
+		pf:       pf, view: view, bus: bus, store: store, trace: traces, folds: folds,
 		pname: pname, pcfg: pcfg, wd: wd,
 		opts: shellOpts{
 			provider: *providerName, fallback: *fallbackTo, cacheBP: !*noCache,

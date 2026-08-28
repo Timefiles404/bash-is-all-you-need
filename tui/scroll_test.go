@@ -23,7 +23,7 @@ func rowsAt(s *scrollback, w, h int) []string {
 // newline until the paragraph ends. If an unterminated write were invisible the
 // pane would sit empty for the whole of the first sentence.
 func TestAWriteWithNoTrailingNewlineIsVisibleInTheView(t *testing.T) {
-	s := newScrollback(100)
+	s := newScrollback(100, style{})
 	s.Write([]byte("abc"))
 
 	rows := rowsAt(s, 20, 5)
@@ -33,7 +33,7 @@ func TestAWriteWithNoTrailingNewlineIsVisibleInTheView(t *testing.T) {
 }
 
 func TestTheNextWriteContinuesThePartialLineRatherThanStartingANewOne(t *testing.T) {
-	s := newScrollback(100)
+	s := newScrollback(100, style{})
 	s.Write([]byte("abc"))
 	s.Write([]byte("def"))
 
@@ -47,7 +47,7 @@ func TestTheNextWriteContinuesThePartialLineRatherThanStartingANewOne(t *testing
 }
 
 func TestAPartialLineCountsTowardsTheStatsButIsNotYetALoggedLine(t *testing.T) {
-	s := newScrollback(100)
+	s := newScrollback(100, style{})
 	s.Write([]byte("done\n"))
 	s.Write([]byte("still writing"))
 
@@ -75,7 +75,7 @@ func TestCRLFIsOneLineEndingAndABareCRRewritesTheLine(t *testing.T) {
 		{"mixed", "a\r\nb\rc\nd\n", []string{"a", "c", "d"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			s := newScrollback(100)
+			s := newScrollback(100, style{})
 			s.Write([]byte(tc.write))
 
 			rows := rowsAt(s, 20, 10)
@@ -97,7 +97,7 @@ func TestAnEmptyLogicalLineStillOccupiesOneRow(t *testing.T) {
 		t.Errorf("wrapLine(%q, 0) = %q, expected one empty row even at zero width", "", got)
 	}
 
-	s := newScrollback(100)
+	s := newScrollback(100, style{})
 	s.Write([]byte("a\n\nb\n"))
 
 	rows, total, _ := s.view(20, 10, 0)
@@ -117,7 +117,7 @@ func TestAnEmptyLogicalLineStillOccupiesOneRow(t *testing.T) {
 // would keep drawing the old geometry until something else happened to push a
 // line.
 func TestChangingTheWidthInvalidatesTheWrapCache(t *testing.T) {
-	s := newScrollback(100)
+	s := newScrollback(100, style{})
 	s.Write([]byte(strings.Repeat("x", 30) + "\n"))
 
 	wide := rowsAt(s, 20, 10)
@@ -145,7 +145,7 @@ func TestChangingTheWidthInvalidatesTheWrapCache(t *testing.T) {
 // scrollback has to preserve that: a colour that vanishes from row two onward is
 // how a repaint mid-paragraph loses it.
 func TestColourSurvivesWrappingOntoTheSecondRow(t *testing.T) {
-	s := newScrollback(100)
+	s := newScrollback(100, style{})
 	s.Write([]byte("\x1b[31m" + strings.Repeat("a", 30) + "\x1b[0m\n"))
 
 	rows := rowsAt(s, 20, 10)
@@ -172,7 +172,7 @@ func TestColourSurvivesWrappingOntoTheSecondRow(t *testing.T) {
 // reported.
 func TestTheLineCapDropsInBatchesAndKeepsTheNewestLine(t *testing.T) {
 	const capLines = 32
-	s := newScrollback(capLines)
+	s := newScrollback(capLines, style{})
 
 	var b strings.Builder
 	for i := 0; i < 200; i++ {
@@ -208,11 +208,11 @@ func TestTheLineCapDropsInBatchesAndKeepsTheNewestLine(t *testing.T) {
 // bundle would turn a resize into a hang. The truncation happens once, at write
 // time, and says that it happened.
 func TestALogicalLineLongerThanTheByteCapIsTruncatedWithAMarker(t *testing.T) {
-	s := newScrollback(100)
+	s := newScrollback(100, style{})
 	s.Write([]byte(strings.Repeat("z", maxLineBytes+1000) + "\n"))
 
 	s.mu.Lock()
-	got := s.lines[0]
+	got := s.lines[0].text
 	s.mu.Unlock()
 
 	if !strings.HasSuffix(got, " …(line truncated)") {
@@ -226,11 +226,11 @@ func TestALogicalLineLongerThanTheByteCapIsTruncatedWithAMarker(t *testing.T) {
 // A line at exactly the cap is not over it, and adding a marker to it would
 // claim something was lost when nothing was.
 func TestALineExactlyAtTheByteCapIsNotTruncated(t *testing.T) {
-	s := newScrollback(100)
+	s := newScrollback(100, style{})
 	s.Write([]byte(strings.Repeat("z", maxLineBytes) + "\n"))
 
 	s.mu.Lock()
-	got := s.lines[0]
+	got := s.lines[0].text
 	s.mu.Unlock()
 
 	if len(got) != maxLineBytes || strings.Contains(got, "truncated") {
@@ -242,11 +242,11 @@ func TestALineExactlyAtTheByteCapIsNotTruncated(t *testing.T) {
 // that drops a line per write.
 func TestAScrollbackAsksForAtLeastSixteenLines(t *testing.T) {
 	for _, ask := range []int{-1, 0, 1, 15} {
-		if s := newScrollback(ask); s.maxLines != 16 {
+		if s := newScrollback(ask, style{}); s.maxLines != 16 {
 			t.Errorf("newScrollback(%d).maxLines = %d, expected the floor of 16", ask, s.maxLines)
 		}
 	}
-	if s := newScrollback(17); s.maxLines != 17 {
+	if s := newScrollback(17, style{}); s.maxLines != 17 {
 		t.Errorf("newScrollback(17).maxLines = %d, expected 17: the floor overrode a legitimate value", s.maxLines)
 	}
 }
@@ -259,7 +259,7 @@ func TestAScrollbackAsksForAtLeastSixteenLines(t *testing.T) {
 // "scrolled past the top" impossible to express rather than something every key
 // handler has to remember to check.
 func TestViewClampsTheScrollOffsetAtBothEnds(t *testing.T) {
-	s := newScrollback(100)
+	s := newScrollback(100, style{})
 	for i := 0; i < 10; i++ {
 		s.Write([]byte(string(rune('a'+i)) + "\n"))
 	}
@@ -290,7 +290,7 @@ func TestViewClampsTheScrollOffsetAtBothEnds(t *testing.T) {
 }
 
 func TestViewOfAnEmptyOrCollapsedPaneReturnsNothingRatherThanPanicking(t *testing.T) {
-	s := newScrollback(100)
+	s := newScrollback(100, style{})
 	if rows, total, up := s.view(20, 5, 0); len(rows) != 0 || total != 0 || up != 0 {
 		t.Errorf("an empty pane returned (%q, %d, %d), expected (nil, 0, 0)", rows, total, up)
 	}
@@ -305,7 +305,7 @@ func TestViewOfAnEmptyOrCollapsedPaneReturnsNothingRatherThanPanicking(t *testin
 // The partial line scrolls with everything else: it is a row of the pane, not a
 // separate widget pinned to the bottom.
 func TestThePartialLineIsPartOfTheScrollableContent(t *testing.T) {
-	s := newScrollback(100)
+	s := newScrollback(100, style{})
 	s.Write([]byte("one\ntwo\n"))
 	s.Write([]byte("three, still going"))
 
@@ -328,7 +328,7 @@ func TestThePartialLineIsPartOfTheScrollableContent(t *testing.T) {
 // clear empties the pane and nothing else: the drop counter is a fact about the
 // session, and resetting it would make /status claim nothing was ever lost.
 func TestClearEmptiesThePaneAndKeepsTheDropCount(t *testing.T) {
-	s := newScrollback(16)
+	s := newScrollback(16, style{})
 	for i := 0; i < 60; i++ {
 		s.Write([]byte("filler\n"))
 	}
@@ -359,7 +359,7 @@ func TestClearEmptiesThePaneAndKeepsTheDropCount(t *testing.T) {
 // Any goroutine may write while the render loop reads. This is here for the race
 // detector rather than for its assertions.
 func TestWritesFromManyGoroutinesAreSafeToViewFrom(t *testing.T) {
-	s := newScrollback(64)
+	s := newScrollback(64, style{})
 	done := make(chan struct{})
 	for w := 0; w < 4; w++ {
 		go func(w int) {

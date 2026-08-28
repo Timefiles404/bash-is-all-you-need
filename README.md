@@ -152,8 +152,9 @@ set -a && . ../.env && set +a
 ```
 
 那是阶段 00：一个提示符、一个循环，别无其他。**从阶段 06 起，同一个二进制
-打开的是一个交互式外壳**——一块滚动输出区，一条状态栏（上面写着提供方、
-模型、目录和正在累积的账单），Escape 打断一个回合，还有一批斜杠命令：
+打开的是一个交互式外壳**——一块滚动输出区，一个带边框的提示符（它下面那行
+写着提供方、模型、上下文满到什么程度，以及正在累积的账单），Escape 打断一
+个回合，Ctrl-O 把那几块仪表盘折起来、再放回来，还有一批斜杠命令：
 
 ```sh
 go build -o agent ./stages/12-echo
@@ -162,10 +163,10 @@ cd sandbox && ../agent
 
 `/help` 列出全部命令，`/keys` 是键盘表，`/status` 把这次会话当前被配置成
 什么样全部打出来。它在什么都没配的情况下也起得来：`/provider-url`、
-`/provider-protocol`、`/provider-model` 和 `/provider-apikey` 会配好一个
-端点并存到仓库外面——正是这一点让这个二进制在"双击打开、而不是从一个
-source 过 `.env` 的 shell 里启动"时仍然可用。`/open <目录>` 把 Agent 挪到
-另一个目录。
+`/provider-protocol`、`/provider-model`、`/provider-apikey` 和
+`/provider-window` 会配好一个端点并存到仓库外面——正是这一点让这个二进制在
+"双击打开、而不是从一个 source 过 `.env` 的 shell 里启动"时仍然可用。
+`/open <目录>` 把 Agent 挪到另一个目录。
 
 在它之前能用的东西，一样都没有停：
 

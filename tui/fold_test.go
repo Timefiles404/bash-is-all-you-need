@@ -414,6 +414,36 @@ func TestThePartialLineIsRenderedWhileItIsStillBeingWritten(t *testing.T) {
 	}
 }
 
+// A detail line still being written is folded on the same rule as a finished
+// one, and this pins which of the two possible behaviours is intended.
+//
+// The other one is what the code did first: fold only completed lines, which
+// draws the partial in full and then makes it disappear the instant its newline
+// arrives. Both are defensible in isolation — you can watch the line being
+// written — but a view whose whole job is to hide detail should not show detail
+// and then take it away, because the reader is told something is there and then
+// told it is not.
+func TestADetailLineIsFoldedWhileItIsStillBeingWrittenToo(t *testing.T) {
+	s := newScrollback(100, style{})
+	s.Write([]byte("visible\n"))
+	s.setClass(ClassDetail)
+	s.Write([]byte("half a panel line, no newline yet"))
+
+	rows := rowsAt(s, 60, 5)
+	for _, r := range rows {
+		if strings.Contains(r, "half a panel") {
+			t.Errorf("the compact view drew an unfinished detail line: %q\nall rows: %q", r, rows)
+		}
+	}
+
+	// And the full view still shows it, so what folding hides is the only
+	// difference between the two modes.
+	s.setDetail(true)
+	if got := rowsAt(s, 60, 5); !strings.Contains(strings.Join(got, "\n"), "half a panel") {
+		t.Errorf("the full view hid an unfinished detail line: %q", got)
+	}
+}
+
 // Previewing must not advance the fence state. A partial line is rendered again
 // on every frame, so a chunk that happens to start with three backticks would
 // otherwise toggle the fence thirty times a second, and the rest of the session

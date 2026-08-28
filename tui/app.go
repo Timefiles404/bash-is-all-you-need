@@ -677,8 +677,7 @@ func (a *App) detailKey(k term.Key) bool {
 	if k.Kind != term.KeyRune || !k.Ctrl || k.Rune != 'o' {
 		return false
 	}
-	on := !a.back.detailed()
-	a.back.setDetail(on)
+	on := a.back.toggleDetail()
 	if on {
 		a.setNote("showing everything · ctrl-o to fold it again", false)
 	} else {

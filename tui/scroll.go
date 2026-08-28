@@ -134,6 +134,20 @@ func (s *scrollback) setDetail(on bool) bool {
 	return true
 }
 
+// toggleDetail flips the view mode and returns what it is now.
+//
+// One lock acquisition rather than a read followed by a write. Only the loop
+// goroutine presses keys, so reading and then setting would be correct today —
+// and would be a lost update the first time anything else changed the mode,
+// with no test able to see it because the window between the two would be a few
+// nanoseconds wide.
+func (s *scrollback) toggleDetail() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.detail = !s.detail
+	return s.detail
+}
+
 func (s *scrollback) detailed() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -349,8 +363,15 @@ func (s *scrollback) view(w, h, up int) (rows []string, total, clamped int) {
 	// The partial line is deliberately not in the cache: it changes on every
 	// write, and caching a value that is invalid by the time it is read costs
 	// an allocation to be wrong.
+	// The line being written is folded on the same rule as a finished one.
+	//
+	// Without this it is drawn in full and then vanishes into the placeholder
+	// the moment its newline lands, because folding happens per completed line.
+	// Showing detail in a view whose whole job is to hide detail, and then
+	// taking it away, is worse than never showing it: the reader is told
+	// something is there and then told it is not.
 	var tail []string
-	if s.partial != "" {
+	if s.partial != "" && (s.detail || s.cur != ClassDetail) {
 		text := s.partial
 		if s.cur == ClassProse && s.md != nil {
 			text = s.md.preview(text)

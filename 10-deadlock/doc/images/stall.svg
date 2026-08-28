@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 470" width="760" height="470"
+     font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#57606a"/>
+    </marker>
+    <marker id="ab" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#2563eb"/>
+    </marker>
+  </defs>
+
+  <rect width="760" height="470" fill="#fafbfc" rx="8"/>
+  <rect x="0" y="0" width="760" height="42" fill="#1f2937" rx="8"/>
+  <rect x="0" y="34" width="760" height="8" fill="#1f2937"/>
+  <text x="24" y="27" fill="#ffffff" font-size="15" font-weight="600">The watchdog does one thing: now minus the last byte's timestamp</text>
+  <text x="736" y="27" fill="#9ca3af" font-size="12" text-anchor="end">stage 10</text>
+
+  <!-- reader lane -->
+  <text x="24" y="92" font-size="12.5" fill="#1f2328" font-weight="600">reader</text>
+  <text x="24" y="110" font-size="11.5" fill="#57606a">writes a</text>
+  <text x="24" y="126" font-size="11.5" fill="#57606a">timestamp on</text>
+  <text x="24" y="142" font-size="11.5" fill="#57606a">every read</text>
+  <line x1="96" y1="112" x2="710" y2="112" stroke="#d0d7de" stroke-width="1.2"/>
+
+  <g fill="#eff6ff" stroke="#2563eb" stroke-width="1.2">
+    <rect x="100" y="100" width="22" height="22" rx="4"/>
+    <rect x="134" y="100" width="22" height="22" rx="4"/>
+    <rect x="168" y="100" width="22" height="22" rx="4"/>
+  </g>
+  <text x="196" y="94" font-size="12" fill="#1e40af">the last byte — last = this moment</text>
+  <path d="M190 112 L179 112" stroke="#2563eb" stroke-width="1.2"/>
+  <path d="M179 100 L179 148" stroke="#2563eb" stroke-width="1.2" stroke-dasharray="4 3"/>
+
+  <text x="330" y="118" font-size="12.5" fill="#92400e" font-weight="600">no byte arrives after this</text>
+
+  <!-- watcher lane -->
+  <text x="24" y="196" font-size="12.5" fill="#1f2328" font-weight="600">watchdog</text>
+  <text x="24" y="214" font-size="11.5" fill="#57606a">compares</text>
+  <text x="24" y="230" font-size="11.5" fill="#57606a">every idle/4</text>
+  <line x1="96" y1="212" x2="710" y2="212" stroke="#d0d7de" stroke-width="1.2"/>
+
+  <g font-size="11.5" fill="#57606a" text-anchor="middle">
+    <circle cx="259" cy="212" r="6" fill="#ffffff" stroke="#57606a" stroke-width="1.4"/>
+    <text x="259" y="240">0.25</text>
+    <circle cx="339" cy="212" r="6" fill="#ffffff" stroke="#57606a" stroke-width="1.4"/>
+    <text x="339" y="240">0.50</text>
+    <circle cx="419" cy="212" r="6" fill="#ffffff" stroke="#57606a" stroke-width="1.4"/>
+    <text x="419" y="240">0.75</text>
+  </g>
+  <text x="339" y="258" font-size="11.5" fill="#57606a" text-anchor="middle">the gap is under idle; do nothing</text>
+
+  <circle cx="499" cy="212" r="8" fill="#fff7ed" stroke="#d97706" stroke-width="2"/>
+  <text x="499" y="240" font-size="11.5" fill="#92400e" text-anchor="middle" font-weight="600">1.00</text>
+
+  <!-- the fire -->
+  <path d="M499 220 L499 288" stroke="#d97706" stroke-width="1.5" fill="none" marker-end="url(#a)"/>
+  <rect x="392" y="290" width="286" height="44" rx="6" fill="#fff7ed" stroke="#d97706" stroke-width="1.5"/>
+  <text x="535" y="309" font-size="12.5" fill="#92400e" text-anchor="middle" font-weight="600">gap &gt;= idle</text>
+  <text x="535" y="327" font-size="12" fill="#92400e" text-anchor="middle">cancel(errStalled) — the call is hung</text>
+
+  <!-- detection band -->
+  <rect x="499" y="152" width="100" height="26" rx="4" fill="#fef3c7" stroke="#d97706" stroke-dasharray="4 3"/>
+  <text x="549" y="169" font-size="11.5" fill="#92400e" text-anchor="middle">idle → idle × 1.25</text>
+  <text x="486" y="169" font-size="11.5" fill="#57606a" text-anchor="end">never before idle</text>
+
+  <!-- why not reset -->
+  <rect x="24" y="352" width="712" height="96" rx="6" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="42" y="376" font-size="12.5" fill="#1f2328" font-weight="600">Why not timer.Reset(idle) on every byte</text>
+  <text x="42" y="398" font-size="12" fill="#57606a">The timer expires, the runtime queues its callback, the bytes arrive, Reset lands a microsecond late.</text>
+  <text x="42" y="418" font-size="12" fill="#57606a">The call fails as stalled although the bytes came. It fires rarely, so it looks like a flaky provider.</text>
+  <text x="42" y="438" font-size="12" fill="#1f2328">Comparing timestamps cannot lose that race: the reader writes the moment before the watcher reads it.</text>
+</svg>

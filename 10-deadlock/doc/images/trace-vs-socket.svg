@@ -1,0 +1,85 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 516" width="760" height="516"
+     font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif">
+  <defs>
+    <marker id="ab" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#2563eb"/>
+    </marker>
+    <marker id="ao" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#d97706"/>
+    </marker>
+  </defs>
+
+  <rect width="760" height="516" fill="#fafbfc" rx="8"/>
+  <rect x="0" y="0" width="760" height="42" fill="#1f2937" rx="8"/>
+  <rect x="0" y="34" width="760" height="8" fill="#1f2937"/>
+  <text x="24" y="27" fill="#ffffff" font-size="15" font-weight="600">The same stretch of time, measured three ways</text>
+  <text x="736" y="27" fill="#9ca3af" font-size="12" text-anchor="end">stage 10 · part 1</text>
+
+  <!-- lane 1: filtered trace -->
+  <text x="24" y="80" font-size="12.5" fill="#1f2328" font-weight="600">Method one: gaps between trace events</text>
+  <text x="24" y="98" font-size="11.5" fill="#57606a">the filter listed only text_delta and usage</text>
+  <line x1="90" y1="126" x2="706" y2="126" stroke="#d0d7de" stroke-width="1.2"/>
+  <g fill="#e5e7eb" stroke="#9ca3af" stroke-width="1">
+    <rect x="90" y="118" width="7" height="16" rx="2"/>
+    <rect x="104" y="118" width="7" height="16" rx="2"/>
+    <rect x="118" y="118" width="7" height="16" rx="2"/>
+    <rect x="612" y="118" width="7" height="16" rx="2"/>
+    <rect x="626" y="118" width="7" height="16" rx="2"/>
+    <rect x="640" y="118" width="7" height="16" rx="2"/>
+  </g>
+  <path d="M128 126 L608 126" stroke="#d97706" stroke-width="1.5" marker-start="url(#ao)" marker-end="url(#ao)"/>
+  <text x="368" y="118" font-size="12.5" fill="#92400e" text-anchor="middle" font-weight="600">reports a 9099 ms silence — it did not happen</text>
+
+  <!-- lane 2: the omitted kinds -->
+  <text x="24" y="182" font-size="12.5" fill="#1f2328" font-weight="600">the events the filter dropped, same stretch</text>
+  <text x="24" y="200" font-size="11.5" fill="#57606a">reasoning_delta 223</text>
+  <text x="24" y="216" font-size="11.5" fill="#57606a">tool_args_delta 310</text>
+  <line x1="90" y1="228" x2="706" y2="228" stroke="#d0d7de" stroke-width="1.2"/>
+  <g fill="#eff6ff" stroke="#2563eb" stroke-width="0.9">
+    <rect x="132" y="220" width="5" height="16" rx="1"/><rect x="146" y="220" width="5" height="16" rx="1"/>
+    <rect x="160" y="220" width="5" height="16" rx="1"/><rect x="174" y="220" width="5" height="16" rx="1"/>
+    <rect x="188" y="220" width="5" height="16" rx="1"/><rect x="202" y="220" width="5" height="16" rx="1"/>
+    <rect x="216" y="220" width="5" height="16" rx="1"/><rect x="230" y="220" width="5" height="16" rx="1"/>
+    <rect x="244" y="220" width="5" height="16" rx="1"/><rect x="258" y="220" width="5" height="16" rx="1"/>
+    <rect x="272" y="220" width="5" height="16" rx="1"/><rect x="286" y="220" width="5" height="16" rx="1"/>
+    <rect x="300" y="220" width="5" height="16" rx="1"/><rect x="314" y="220" width="5" height="16" rx="1"/>
+    <rect x="328" y="220" width="5" height="16" rx="1"/><rect x="342" y="220" width="5" height="16" rx="1"/>
+    <rect x="356" y="220" width="5" height="16" rx="1"/><rect x="370" y="220" width="5" height="16" rx="1"/>
+    <rect x="384" y="220" width="5" height="16" rx="1"/><rect x="398" y="220" width="5" height="16" rx="1"/>
+    <rect x="412" y="220" width="5" height="16" rx="1"/><rect x="426" y="220" width="5" height="16" rx="1"/>
+    <rect x="440" y="220" width="5" height="16" rx="1"/><rect x="454" y="220" width="5" height="16" rx="1"/>
+    <rect x="468" y="220" width="5" height="16" rx="1"/><rect x="482" y="220" width="5" height="16" rx="1"/>
+    <rect x="496" y="220" width="5" height="16" rx="1"/><rect x="510" y="220" width="5" height="16" rx="1"/>
+    <rect x="524" y="220" width="5" height="16" rx="1"/><rect x="538" y="220" width="5" height="16" rx="1"/>
+    <rect x="552" y="220" width="5" height="16" rx="1"/><rect x="566" y="220" width="5" height="16" rx="1"/>
+    <rect x="580" y="220" width="5" height="16" rx="1"/><rect x="594" y="220" width="5" height="16" rx="1"/>
+  </g>
+  <text x="368" y="256" font-size="12" fill="#1e40af" text-anchor="middle">those nine seconds were streaming a thinking block</text>
+
+  <!-- lane 3: the socket -->
+  <text x="24" y="302" font-size="12.5" fill="#1f2328" font-weight="600">Method three: reads on the socket</text>
+  <text x="24" y="320" font-size="11.5" fill="#57606a">byte level, timed by whoever reads</text>
+  <line x1="90" y1="348" x2="706" y2="348" stroke="#d0d7de" stroke-width="1.2"/>
+  <g fill="#eff6ff" stroke="#2563eb" stroke-width="1">
+    <rect x="90" y="340" width="6" height="16" rx="2"/><rect x="112" y="340" width="6" height="16" rx="2"/>
+    <rect x="134" y="340" width="6" height="16" rx="2"/><rect x="156" y="340" width="6" height="16" rx="2"/>
+    <rect x="178" y="340" width="6" height="16" rx="2"/><rect x="200" y="340" width="6" height="16" rx="2"/>
+    <rect x="222" y="340" width="6" height="16" rx="2"/><rect x="244" y="340" width="6" height="16" rx="2"/>
+    <rect x="266" y="340" width="6" height="16" rx="2"/><rect x="288" y="340" width="6" height="16" rx="2"/>
+    <rect x="422" y="340" width="6" height="16" rx="2"/><rect x="444" y="340" width="6" height="16" rx="2"/>
+    <rect x="466" y="340" width="6" height="16" rx="2"/><rect x="488" y="340" width="6" height="16" rx="2"/>
+    <rect x="510" y="340" width="6" height="16" rx="2"/><rect x="532" y="340" width="6" height="16" rx="2"/>
+    <rect x="554" y="340" width="6" height="16" rx="2"/><rect x="576" y="340" width="6" height="16" rx="2"/>
+    <rect x="598" y="340" width="6" height="16" rx="2"/><rect x="620" y="340" width="6" height="16" rx="2"/>
+    <rect x="642" y="340" width="6" height="16" rx="2"/><rect x="664" y="340" width="6" height="16" rx="2"/>
+  </g>
+  <path d="M298 348 L418 348" stroke="#2563eb" stroke-width="1.5" marker-start="url(#ab)" marker-end="url(#ab)"/>
+  <text x="358" y="340" font-size="12" fill="#1e40af" text-anchor="middle" font-weight="600">widest 5001 ms</text>
+
+  <text x="24" y="396" font-size="12" fill="#57606a">Method two inferred it from TTFT and concluded the window must exceed 16.4 s. The premise is wrong:</text>
+  <text x="24" y="414" font-size="12" fill="#57606a">TTFT measures when content appears; the watchdog watches reads on the socket.</text>
+  <text x="24" y="440" font-size="12" fill="#1f2328">Across those same 14 calls TTFT topped out at 4157 ms and the widest byte-level silence was 5001 ms.</text>
+  <text x="24" y="458" font-size="12" fill="#1f2328">The socket went quieter mid-stream than before the first token — not the order the trace implied.</text>
+  <text x="24" y="484" font-size="11.5" fill="#57606a">A trace holds only the frames the adapter chose to turn into events. It cannot answer this question,</text>
+  <text x="24" y="500" font-size="11.5" fill="#57606a">not because it recorded badly, but because what it records was never this.</text>
+</svg>

@@ -412,9 +412,10 @@ From this stage on the directory also holds a `shell.go`, and the repo holds a
 
 The composer is a reader: it opens a file and shows you what happened in a
 session. The shell is a front end for the agent itself — a pane the panel
-prints into, a status bar carrying the provider and the running bill, a line
-editor, Escape to interrupt a turn, and slash commands for the things you would
-otherwise restart the process to change.
+prints into, a bordered prompt with the provider and the running bill on the
+line beneath it, a line editor, Escape to interrupt a turn, Ctrl-O to fold the
+instruments away and bring them back, and slash commands for the things you
+would otherwise restart the process to change.
 
 It exists because running the agent and reading this chapter want different
 programs. The UI in this chapter has to be small enough to hold in your head,

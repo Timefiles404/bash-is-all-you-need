@@ -167,9 +167,10 @@ set -a && . ../.env && set +a
 ```
 
 That is stage 00: a prompt, a loop, and nothing else. **From stage 06 on the
-same binary opens an interactive shell instead** — a scrollback pane, a status
-bar showing the provider, the model, the directory and the running bill, Escape
-to interrupt a turn, and slash commands:
+same binary opens an interactive shell instead** — a scrollback pane, a
+bordered prompt with the provider, the model, how full the context is and the
+running bill on the line under it, Escape to interrupt a turn, Ctrl-O to fold
+the instrument panels away and bring them back, and slash commands:
 
 ```sh
 go build -o agent ./stages/12-echo
@@ -178,10 +179,11 @@ cd sandbox && ../agent
 
 `/help` lists them, `/keys` is the keyboard, `/status` prints everything the
 session is currently configured to do. It starts even with nothing configured:
-`/provider-url`, `/provider-protocol`, `/provider-model` and `/provider-apikey`
-set an endpoint up and save it outside the repo, which is what makes the binary
-usable when it was started by double-clicking it rather than from a shell that
-had sourced `.env`. `/open <dir>` moves the agent to another directory.
+`/provider-url`, `/provider-protocol`, `/provider-model`, `/provider-apikey`
+and `/provider-window` set an endpoint up and save it outside the repo, which is
+what makes the binary usable when it was started by double-clicking it rather
+than from a shell that had sourced `.env`. `/open <dir>` moves the agent to
+another directory.
 
 Nothing that worked before it stopped working:
 

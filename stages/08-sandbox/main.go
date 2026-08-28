@@ -386,8 +386,17 @@ func main() {
 	// path that actually needs a provider. A config error should be fatal to the
 	// code that depends on the config and to nothing else.
 	pcfg, pname, resolveErr := pf.resolve(*providerName)
-	if *window > 0 {
+	// The window, in the order the three sources beat each other: the flag, then
+	// what /provider-window saved, then whatever providers.json said. A session
+	// configured entirely through the shell has no entry in that file, so
+	// without the middle line it has no window at all — and with no window the
+	// compactor can never fire and the context field on the status row stays
+	// blank with nothing on screen to say why.
+	switch {
+	case *window > 0:
 		pcfg.Window = *window
+	case savedWindow() > 0:
+		pcfg.Window = savedWindow()
 	}
 
 	view := newRenderer(os.Stdout, colorEnabled(os.Stdout),
@@ -446,7 +455,12 @@ func main() {
 	}
 	cfg.shell = shell
 
-	bus := NewBus(view)
+	// The fold sink is named before the renderer, and the order is the contract:
+	// Emit delivers to subscribers in order, so this one gets to say what class
+	// of line the renderer is about to write before the renderer writes it. See
+	// foldSink in tuishell.go.
+	folds := &foldSink{}
+	bus := NewBus(folds, view)
 
 	// The trace sits behind a switch so /trace can move it mid-session. See
 	// traceSink in tuishell.go for why the bus has no Unsubscribe instead.
@@ -476,7 +490,7 @@ func main() {
 
 	sh := &shellSession{
 		storeErr: storeErr,
-		pf:       pf, view: view, bus: bus, store: store, trace: traces,
+		pf:       pf, view: view, bus: bus, store: store, trace: traces, folds: folds,
 		pname: pname, pcfg: pcfg, wd: wd,
 		opts: shellOpts{
 			provider: *providerName, cacheBP: !*noCache,

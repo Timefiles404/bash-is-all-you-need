@@ -19,8 +19,9 @@ is worth stating because it is what stops the next one:
 
 > **A chapter explains it, or it is not in a stage.**
 
-`tui/` is the interactive shell — a scrollback pane, a status bar, a line
-editor, slash commands, a settings file. No chapter explains any of it, and
+`tui/` is the interactive shell — a scrollback pane that folds its own detail
+away, a bordered composer with a status row under it, a line editor, a Markdown
+renderer, slash commands, a settings file. No chapter explains any of it, and
 none should. It is there so that *using* the repo does not require the lesson
 to grow: stage 06 builds a terminal UI out of three functions and a select, and
 that chapter's whole value is that you can hold all of it in your head, so it

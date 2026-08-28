@@ -67,6 +67,7 @@ type shellSession struct {
 	app   *tui.App
 	store *settings.Store
 	trace *traceSink
+	folds *foldSink
 	opts  shellOpts
 
 	// storeErr is why there is no settings store, when there is none. It goes in
@@ -152,6 +153,73 @@ func (t *traceSink) path() string {
 }
 
 // ---------------------------------------------------------------------------
+// Folding
+// ---------------------------------------------------------------------------
+
+// foldSink tells the pane what kind of line the renderer is about to write.
+//
+// It has to be subscribed *before* the renderer, and main() does that by naming
+// it first in NewBus. Emit holds the bus mutex and delivers to subscribers in
+// order, so by the time the renderer runs, the class for the lines it is about
+// to produce is already set. Registered after the renderer this would still
+// compile, still run, and label every line with the class of the event before
+// it — which is the kind of wrong that looks right on a quiet screen and
+// scrambles as soon as a session gets busy.
+//
+// The alternative was to classify the rendered text by its prefix. That works
+// today, needs no bus subscriber at all, and stops working silently the first
+// time somebody changes a glyph in render.go. The event already knows the
+// answer; there is no reason to re-derive it from the picture.
+type foldSink struct {
+	mu  sync.Mutex
+	app *tui.App
+}
+
+// attach connects the sink once the shell exists. Events emitted before that —
+// the provider line at startup — are simply not classified, which is right:
+// they belong to the banner, and the banner is never folded.
+func (f *foldSink) attach(app *tui.App) {
+	f.mu.Lock()
+	f.app = app
+	f.mu.Unlock()
+}
+
+func (f *foldSink) OnEvent(e Event) {
+	f.mu.Lock()
+	app := f.app
+	f.mu.Unlock()
+	if app != nil {
+		app.SetClass(classOf(e))
+	}
+}
+
+// classOf decides what the compact view keeps.
+//
+// The rule it encodes: keep what the agent said and what it did, fold what the
+// instruments measured. That leaves the compact view showing the model's prose,
+// every command before it runs, and everything that went wrong — which is the
+// session as a person would recount it. What folds away is the per-call panel,
+// the raw output of each command, and the accounting around them: all of it the
+// reason this repo exists, none of it what you want on screen while you are
+// waiting to see whether the agent understood you.
+func classOf(e Event) tui.Class {
+	switch e.Kind {
+	case KindTextDelta:
+		return tui.ClassProse
+
+	case KindToolResult, KindResponseEnd, KindUsage, KindMemoryLoaded,
+		KindCompactStart, KindCompactEnd, KindRequest:
+		return tui.ClassDetail
+
+	default:
+		// Everything else stays visible, and the default is deliberately the
+		// visible one. A kind added to events.go later shows up on screen until
+		// somebody decides otherwise, which is the failure that gets noticed.
+		return tui.ClassPlain
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Running
 // ---------------------------------------------------------------------------
 
@@ -175,6 +243,7 @@ func (s *shellSession) run(ctx context.Context) error {
 		Uninterruptible: "cancellation is stage 10's idea, so a turn here runs to the end once it has started",
 		OnExit:          s.onExit,
 	})
+	s.folds.attach(s.app)
 	// The renderer moves from stdout to the shell's pane, and that is the whole
 	// output change. Anything still writing to stdout would land on the
 	// alternate screen underneath the frame and corrupt it, which is why
@@ -315,38 +384,75 @@ func (s *shellSession) submit(_ context.Context, line string) error {
 // The status bar
 // ---------------------------------------------------------------------------
 
-func (s *shellSession) segments() []string {
+func (s *shellSession) segments() []tui.Segment {
 	s.mu.Lock()
 	a, pname, pcfg, wd := s.a, s.pname, s.pcfg, s.wd
 	msgs := len(s.msgs)
 	s.mu.Unlock()
 
-	who := "no provider"
+	who := tui.Segment{Value: "no provider", Tone: tui.ToneBad}
 	if a.p != nil {
-		who = pname + " (" + pcfg.Protocol + ")"
+		who = tui.Segment{Value: pname + " (" + pcfg.Protocol + ")", Tone: tui.ToneAccent}
 	}
-	out := []string{who, shortModel(pcfg.Model), shortDir(wd)}
+	out := []tui.Segment{who, {Value: shortModel(pcfg.Model)}}
+	if seg, ok := contextSegment(s.view.lastUsage.Prompt(), s.view.window); ok {
+		out = append(out, seg)
+	}
 	if n := s.view.session.Prompt() + s.view.session.Output; n > 0 {
-		out = append(out, fmt.Sprintf("%s tok", thousands(n)))
+		out = append(out, tui.Segment{Value: thousands(n) + " tok", Tone: tui.ToneMuted})
 	}
 	if s.view.prices.known() {
-		out = append(out, fmt.Sprintf("$%.4f", s.view.sessionCost))
+		out = append(out, tui.Segment{Value: fmt.Sprintf("$%.4f", s.view.sessionCost), Tone: tui.ToneMuted})
 	}
-	// The message count is worth a field only once there are messages. On a bar
+	// The message count is worth a field only once there are messages. On a row
 	// that has to drop fields to fit, "0 msg" is one that answers nothing.
 	if msgs > 0 {
-		out = append(out, fmt.Sprintf("%d msg", msgs))
+		out = append(out, tui.Segment{Value: fmt.Sprintf("%d msg", msgs), Tone: tui.ToneMuted})
 	}
 	if p := s.trace.path(); p != "" {
-		out = append(out, "rec")
+		out = append(out, tui.Segment{Value: "rec", Tone: tui.ToneWarn})
 	}
 	if a.cfg.yolo {
-		// Worth a place on a bar that has to drop fields to fit: it is the one
-		// setting whose consequence is a command running without being asked
-		// about.
-		out = append(out, "yolo")
+		// Worth a place on a row that has to drop fields to fit, and worth being
+		// the loudest thing on it: it is the one setting whose consequence is a
+		// command running without being asked about.
+		out = append(out, tui.Segment{Value: "yolo", Tone: tui.ToneBad})
 	}
+	// The directory goes last because it is the longest field and the only one
+	// with no bound on its length, and the row drops fields from the first one
+	// that does not fit onward. In the middle it hid everything after it on any
+	// terminal narrower than the path — including yolo, which is the field on
+	// this row whose absence costs the most.
+	out = append(out, tui.Segment{Label: "in", Value: shortDir(wd), Tone: tui.ToneMuted})
 	return out
+}
+
+// contextSegment reports how full the context is, and says nothing at all when
+// it cannot.
+//
+// Two ways it cannot. Before the first call there is no prompt to measure, and
+// a "0%" would read as an answer rather than as the absence of one. And with no
+// window configured there is no denominator — which is the state a session
+// started by double-clicking the binary is in, because a window is a property of
+// a provider and there is no providers.json to have read one from. That is what
+// /provider-window is for, and it is why this field stayed blank in every
+// session configured through the shell until that command existed.
+//
+// The colour is the point of having it here rather than in /status: full enough
+// to compact is a thing you want to notice without looking for it.
+func contextSegment(prompt, window int) (tui.Segment, bool) {
+	if prompt <= 0 || window <= 0 {
+		return tui.Segment{}, false
+	}
+	pct := float64(prompt) * 100 / float64(window)
+	tone := tui.ToneGood
+	switch {
+	case pct >= 85:
+		tone = tui.ToneBad
+	case pct >= 60:
+		tone = tui.ToneWarn
+	}
+	return tui.Segment{Label: "ctx", Value: fmt.Sprintf("%.0f%%", pct), Tone: tone}, true
 }
 
 func shortModel(m string) string {
@@ -735,11 +841,89 @@ func (s *shellSession) commands() []tui.Command {
 			},
 		},
 		{
+			Name: "/provider-window", Args: "<tokens>", Group: "provider",
+			Help: "set and save how large this model's context window is",
+			Run: func(_ context.Context, arg string, w io.Writer) error {
+				arg = strings.TrimSpace(arg)
+				if arg == "" {
+					s.mu.Lock()
+					have := s.pcfg.Window
+					s.mu.Unlock()
+					if have <= 0 {
+						return fmt.Errorf("no window is configured; pass a size in tokens, e.g. /provider-window 131072")
+					}
+					fmt.Fprintf(w, "  %d tokens\n", have)
+					return nil
+				}
+				n, err := strconv.Atoi(arg)
+				if err != nil {
+					return fmt.Errorf("want a number of tokens: %w", err)
+				}
+				if n < 1024 {
+					// Not a taste judgement. The compactor's watermark is a
+					// fraction of this number, and a window smaller than one
+					// system prompt puts the watermark below the floor, so the
+					// session would try to compact before it had said anything
+					// and fail every time.
+					return fmt.Errorf("want at least 1024 tokens, got %d", n)
+				}
+				if s.store == nil {
+					return fmt.Errorf("no settings file, so there is nowhere to save this: %v", s.storeErr)
+				}
+				s.store.Set(envWindow, arg)
+				if err := s.store.Save(); err != nil {
+					return err
+				}
+				// Exported as well as saved, because rebuildProvider re-resolves
+				// from the environment and a value that exists only on disk
+				// would not take effect until the next start.
+				os.Setenv(envWindow, arg)
+
+				s.mu.Lock()
+				s.opts.window = n
+				msg, err := s.rebuildProvider()
+				s.mu.Unlock()
+				fmt.Fprintf(w, "  saved to %s\n", s.store.Path())
+				if err != nil {
+					// Saved, but the provider did not come back. Reported as a
+					// failure of the rebuild rather than of the command: the
+					// number is on disk and will be used at the next start.
+					return err
+				}
+				fmt.Fprintf(w, "  %s\n", msg)
+				return nil
+			},
+		},
+		{
 			Name: "/set", Args: "[name [value]]", Group: "agent",
 			Help: "show or change a limit without restarting",
 			Run:  s.runSet,
 		},
 	}
+}
+
+// envWindow is where /provider-window saves the context window.
+//
+// It is not in providers.json, for the same reason the API key is not: that
+// file is committed, and a session configured through the shell has no entry in
+// it to write to. It is not a --window flag either, because a flag has to be
+// remembered and retyped, and the whole point of the provider commands is a
+// binary somebody double-clicked.
+const envWindow = "AGENT_WINDOW"
+
+// savedWindow reads the window out of the environment, which is where a saved
+// setting has been exported to by the time this is called.
+//
+// A bad value is ignored rather than reported. This runs during startup, before
+// there is a UI to report it to, and the consequence of ignoring it is one blank
+// field that /provider-window will explain — against a fatal error on a binary
+// that was double-clicked, which is the failure this whole shell exists to stop.
+func savedWindow() int {
+	n, err := strconv.Atoi(strings.TrimSpace(os.Getenv(envWindow)))
+	if err != nil || n < 1024 {
+		return 0
+	}
+	return n
 }
 
 // ---------------------------------------------------------------------------
@@ -805,6 +989,21 @@ func (s *shellSession) knobs() []knob {
 		{"max-turns", "tool-call rounds per user message", func() string { return strconv.Itoa(a.cfg.maxTurns) }, num(&a.cfg.maxTurns, 1)},
 		{"max-output", "bytes of command output the model may see", func() string { return strconv.Itoa(a.cfg.maxOutput) }, num(&a.cfg.maxOutput, 1)},
 		{"timeout", "kill a command after this long", func() string { return a.cfg.timeout.String() }, dur(&a.cfg.timeout)},
+		{"window", "context window in tokens; /provider-window also saves it", func() string { return strconv.Itoa(s.view.window) }, func(v string) error {
+			n, err := strconv.Atoi(v)
+			if err != nil {
+				return err
+			}
+			if n < 1024 {
+				return fmt.Errorf("want at least 1024 tokens")
+			}
+			// Three copies of one number, and they are three because they were
+			// read from the provider at three different moments. Setting one is
+			// how the panel and the compactor come to disagree about when to
+			// fire.
+			s.opts.window, s.view.window, a.comp.window = n, n, n
+			return nil
+		}},
 		{"compact-at", "compact past this fraction of the window", func() string { return fmt.Sprintf("%.2f", a.comp.threshold) }, frac(&a.comp.threshold)},
 		{"keep", "fraction of the window left in place after compacting", func() string { return fmt.Sprintf("%.2f", a.comp.keepRatio) }, frac(&a.comp.keepRatio)},
 		{"yolo", "run every command without asking", func() string { return onOrOff(a.cfg.yolo) }, func(v string) error {

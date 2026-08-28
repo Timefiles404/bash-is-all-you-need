@@ -46,9 +46,17 @@ import (
 	"mvdan.cc/sh/v3/syntax"
 )
 
+// sandbox is the policy and the audit log, shared by every agent in the tree.
+//
+// It deliberately holds no bus. Which agent is running a command is a property
+// of the *call*, not of the sandbox — the same reason render.go reads the depth
+// off the event rather than off renderer state. One sandbox serves the parent
+// and every subagent, so a bus stored here would be whichever agent happened to
+// build it, and every exec, open and refusal in the tree would be reported as
+// that agent's. Stage 07 made the tree concurrent; a field like that is how a
+// trace of it comes out confidently mislabelled.
 type sandbox struct {
 	root string
-	bus  *Bus
 
 	// enforce=false makes this an observer: it reports every exec and every
 	// open and blocks nothing. Worth having as a mode of its own — most of the
@@ -62,16 +70,22 @@ type sandbox struct {
 	blocked []string
 }
 
-func newSandbox(root string, bus *Bus, enforce bool) *sandbox {
-	return &sandbox{root: root, bus: bus, enforce: enforce}
+func newSandbox(root string, enforce bool) *sandbox {
+	return &sandbox{root: root, enforce: enforce}
 }
 
-// run executes one command inside the embedded interpreter.
+// run executes one command inside the embedded interpreter, reporting on the
+// bus of whichever agent asked for it.
 //
 // It returns the same execResult as runBash so the rest of the agent cannot
 // tell the difference — which is the point of having kept exec.go's rendering
 // separate from its running since stage 01.
-func (s *sandbox) run(command string, timeout time.Duration) execResult {
+//
+// The bus is an argument rather than a field for the reason on the struct: one
+// sandbox serves the whole agent tree, and the answer to "who ran this" changes
+// per call. A fresh interpreter is built here anyway, so the handlers it gets
+// can close over that answer at no cost.
+func (s *sandbox) run(command string, timeout time.Duration, bus *Bus) execResult {
 	started := time.Now()
 
 	file, err := syntax.NewParser().Parse(strings.NewReader(command), "cmd")
@@ -91,8 +105,8 @@ func (s *sandbox) run(command string, timeout time.Duration) execResult {
 		interp.Dir(s.root),
 		interp.StdIO(nil, &stdout, &stderr),
 		interp.Env(expand.ListEnviron(os.Environ()...)),
-		interp.ExecHandlers(s.execMiddleware),
-		interp.OpenHandler(s.open),
+		interp.ExecHandlers(s.execHandler(bus)),
+		interp.OpenHandler(s.openHandler(bus)),
 	)
 	if err != nil {
 		return execResult{Stderr: "sandbox: " + err.Error(), ExitCode: -1, Duration: time.Since(started)}
@@ -136,64 +150,74 @@ func (s *sandbox) run(command string, timeout time.Duration) execResult {
 	return res
 }
 
-// execMiddleware wraps the interpreter's default exec handler.
+// execHandler wraps the interpreter's default exec handler, for one call.
 //
-// `args` here is the finished argument vector. Everything the shell was going
+// `args` inside is the finished argument vector. Everything the shell was going
 // to do to the source text has already been done, which is exactly why this is
 // the only place a policy can stand.
-func (s *sandbox) execMiddleware(next interp.ExecHandlerFunc) interp.ExecHandlerFunc {
-	return func(ctx context.Context, args []string) error {
-		if len(args) == 0 {
+//
+// Two layers of closure rather than one method: the outer one captures the bus,
+// which belongs to the call, and the inner one is the middleware shape the
+// interpreter asks for. The policy itself is still on the sandbox, where it is
+// shared.
+func (s *sandbox) execHandler(bus *Bus) func(interp.ExecHandlerFunc) interp.ExecHandlerFunc {
+	return func(next interp.ExecHandlerFunc) interp.ExecHandlerFunc {
+		return func(ctx context.Context, args []string) error {
+			if len(args) == 0 {
+				return next(ctx, args)
+			}
+			joined := strings.Join(args, " ")
+
+			s.mu.Lock()
+			s.execs = append(s.execs, joined)
+			s.mu.Unlock()
+
+			// Emitted for EVERY exec, including ones the model never wrote —
+			// the ones a pipeline, a loop, an alias or an `eval` produced. This
+			// is the "per-process interception" half of the chapter, and reading
+			// a trace of it is the fastest way to find out what a shell command
+			// really did.
+			bus.Emit(Event{Kind: KindSandboxExec, Command: joined})
+
+			if r := s.checkArgv(args); r != nil {
+				s.mu.Lock()
+				s.blocked = append(s.blocked, joined)
+				s.mu.Unlock()
+				bus.Emit(Event{Kind: KindSandboxBlock, Command: joined, Text: r.Error()})
+				if s.enforce {
+					return r
+				}
+			}
 			return next(ctx, args)
 		}
-		joined := strings.Join(args, " ")
-
-		s.mu.Lock()
-		s.execs = append(s.execs, joined)
-		s.mu.Unlock()
-
-		// Emitted for EVERY exec, including ones the model never wrote — the
-		// ones a pipeline, a loop, an alias or an `eval` produced. This is the
-		// "per-process interception" half of the chapter, and reading a trace
-		// of it is the fastest way to find out what a shell command really did.
-		s.bus.Emit(Event{Kind: KindSandboxExec, Command: joined})
-
-		if r := s.checkArgv(args); r != nil {
-			s.mu.Lock()
-			s.blocked = append(s.blocked, joined)
-			s.mu.Unlock()
-			s.bus.Emit(Event{Kind: KindSandboxBlock, Command: joined, Text: r.Error()})
-			if s.enforce {
-				return r
-			}
-		}
-		return next(ctx, args)
 	}
 }
 
-// open is called for every file the shell itself opens: redirections.
+// openHandler is called for every file the shell itself opens: redirections.
 //
 // Files opened by the *programs* the shell runs do not come through here — the
 // interpreter has no visibility into another process's syscalls, and getting
 // that would mean ptrace, seccomp-bpf, or a filesystem namespace, which is the
 // OS-level answer this chapter ends on.
-func (s *sandbox) open(ctx context.Context, path string, flag int, perm os.FileMode) (io.ReadWriteCloser, error) {
-	s.mu.Lock()
-	s.opens = append(s.opens, path)
-	s.mu.Unlock()
-	s.bus.Emit(Event{Kind: KindSandboxOpen, Path: path})
-
-	if isSecretPath(path) {
-		r := &refusal{Level: "sandbox/open", What: path, Why: "a redirect targets " + secretName}
+func (s *sandbox) openHandler(bus *Bus) interp.OpenHandlerFunc {
+	return func(ctx context.Context, path string, flag int, perm os.FileMode) (io.ReadWriteCloser, error) {
 		s.mu.Lock()
-		s.blocked = append(s.blocked, "< "+path)
+		s.opens = append(s.opens, path)
 		s.mu.Unlock()
-		s.bus.Emit(Event{Kind: KindSandboxBlock, Command: "redirect " + path, Text: r.Error()})
-		if s.enforce {
-			return nil, r
+		bus.Emit(Event{Kind: KindSandboxOpen, Path: path})
+
+		if isSecretPath(path) {
+			r := &refusal{Level: "sandbox/open", What: path, Why: "a redirect targets " + secretName}
+			s.mu.Lock()
+			s.blocked = append(s.blocked, "< "+path)
+			s.mu.Unlock()
+			bus.Emit(Event{Kind: KindSandboxBlock, Command: "redirect " + path, Text: r.Error()})
+			if s.enforce {
+				return nil, r
+			}
 		}
+		return interp.DefaultOpenHandler()(ctx, path, flag, perm)
 	}
-	return interp.DefaultOpenHandler()(ctx, path, flag, perm)
 }
 
 // checkArgv is the policy, applied to a finished argument vector.

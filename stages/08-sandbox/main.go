@@ -532,7 +532,7 @@ func main() {
 	sh.a = a
 
 	if *sandboxOn {
-		a.sb = newSandbox(wd, bus, !*observe)
+		a.sb = newSandbox(wd, !*observe)
 		mode := "enforcing"
 		if *observe {
 			mode = "observing only — nothing will be blocked"

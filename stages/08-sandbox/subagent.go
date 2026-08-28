@@ -377,7 +377,7 @@ func (a *agent) runCommand(turn int, callID, command string) string {
 	// and rendering its result as two separate jobs from stage 01 onward.
 	var r execResult
 	if a.sb != nil {
-		r = a.sb.run(command, a.cfg.timeout)
+		r = a.sb.run(command, a.cfg.timeout, a.bus)
 	} else {
 		r = runBash(a.cfg.shell, command, a.cfg.timeout)
 	}

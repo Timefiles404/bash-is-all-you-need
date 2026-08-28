@@ -49,8 +49,8 @@ var bypassCases = []bypassCase{
 // reports whether the secret escaped and whether the sandbox blocked anything.
 func runIn(t *testing.T, dir, command string, enforce bool) (leaked, blocked bool, out string) {
 	t.Helper()
-	sb := newSandbox(dir, NewBus(), enforce)
-	r := sb.run(command, 10*time.Second)
+	sb := newSandbox(dir, enforce)
+	r := sb.run(command, 10*time.Second, NewBus())
 	out = r.Stdout + r.Stderr
 	return strings.Contains(r.Stdout, canary), len(sb.blocked) > 0, out
 }
@@ -200,8 +200,8 @@ func TestExpansionBeatsParsing(t *testing.T) {
 // argv-only policy at EVERY level, including the sandbox — unless the sandbox
 // also handles file opens. `cat < .env` runs cat with no arguments at all.
 func TestRedirectIsNotVisibleInArgv(t *testing.T) {
-	sb := newSandbox(bypassDir(t), NewBus(), true)
-	_ = sb.run("cat < .env", 10*time.Second)
+	sb := newSandbox(bypassDir(t), true)
+	_ = sb.run("cat < .env", 10*time.Second, NewBus())
 
 	for _, argv := range sb.execs {
 		if strings.Contains(argv, secretName) {
@@ -290,10 +290,11 @@ func TestASubagentRunsInsideTheParentsSandbox(t *testing.T) {
 	// PATH.
 	shell, _ := findBash()
 
-	parent, _ := mulAgent(&gate{yolo: true}, shell)
-	parent.sb = newSandbox(dir, parent.bus, true)
+	parent, rec := mulAgent(&gate{yolo: true}, shell)
+	parent.sb = newSandbox(dir, true)
 
-	child := parent.newChild("read the config#1", func() string { return "child system" })
+	const childID = "read the config#1"
+	child := parent.newChild(childID, func() string { return "child system" })
 	out := child.runCommand(1, "call_1", "cat "+secretName)
 
 	if strings.Contains(out, canary) {
@@ -308,5 +309,28 @@ func TestASubagentRunsInsideTheParentsSandbox(t *testing.T) {
 		t.Error("the parent's sandbox recorded nothing, so report() describes a fraction of the session while " +
 			"reading as though it described all of it: the exec, the open and the refusal counts a human is shown " +
 			"at the end would cover only the commands the parent happened to run itself")
+	}
+
+	// And the events say who did it.
+	//
+	// One sandbox now serves the whole tree, so the only thing that can answer
+	// "which agent ran this" is the bus the call arrived on. Held as a field it
+	// would be whichever agent built the sandbox — the root — and every exec,
+	// open and refusal a subagent produced would be stamped depth 0 with no
+	// agent name, in a trace that is otherwise complete and correctly ordered.
+	// That is the worst shape for a bug: nothing missing, everything wrong.
+	seen := 0
+	for _, e := range rec.events {
+		switch e.Kind {
+		case KindSandboxExec, KindSandboxOpen, KindSandboxBlock:
+			seen++
+			if e.Depth != 1 || e.Agent != childID {
+				t.Errorf("%s from the subagent is stamped depth %d agent %q, expected depth 1 agent %q",
+					e.Kind, e.Depth, e.Agent, childID)
+			}
+		}
+	}
+	if seen == 0 {
+		t.Fatal("no sandbox events reached the bus at all, so this test proves nothing about who they name")
 	}
 }

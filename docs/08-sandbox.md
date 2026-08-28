@@ -193,6 +193,25 @@ child and looks at what came back, which is why the one in `bypass_test.go`
 calls `runCommand` rather than comparing `child.sb` against `parent.sb`. A
 refactor can copy the pointer and then stop using it.
 
+Sharing the sandbox then asks a second question, and it is the more interesting
+one. The sandbox reports what it saw on an event bus — and once one sandbox
+serves the whole tree, *which* bus? A field set at construction is the obvious
+answer and the wrong one: it would hold the root agent's bus, so every exec,
+open and refusal a subagent produced would arrive stamped depth 0 with no agent
+name. The trace would be complete, correctly ordered, and confidently
+mislabelled, which is a worse failure than a missing line — a gap you notice.
+
+So the bus is an argument to `run`, not a field on `sandbox`. Which agent ran a
+command is a property of the call; the policy and the audit log are properties
+of the tree. This is the same distinction `render.go` makes when it reads depth
+off the event rather than tracking "which agent are we inside" as renderer
+state, and for the same reason: stage 07 made the tree concurrent, so *when*
+something happened stopped being enough to say *who* did it. A fresh interpreter
+is built for every command anyway, so the handlers it gets can close over the
+answer at no cost.
+
+> **Shared state may not remember who last used it.**
+
 ---
 
 ## The honest limit

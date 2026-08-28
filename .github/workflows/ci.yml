@@ -21,14 +21,19 @@ permissions:
 
 jobs:
   drift:
-    name: levels still match the stages
+    name: the lessons still match the code
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: check
+      # The chapters quote the stage code. A quote that no longer matches is a
+      # lesson teaching something the repo does not do any more, and nothing
+      # else in this file would notice.
+      - name: chapters quote real code
+        run: python external/tools/quotecheck.py
+      - name: browser levels match the stages
         run: python external/web/tools/build.py --check
 
   go:

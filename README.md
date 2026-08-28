@@ -1,6 +1,13 @@
 # bash is all you need
 
+**English** · [中文](README_zh.md)
+
 **A coding agent with one tool and a glass cockpit.**
+
+> **The chapters are being rewritten.** Chinese is done first and lives at
+> `<stage>/doc/README_zh.md`; the English edition is written separately from
+> the same code rather than translated, and is not there yet. See
+> [doc-style.md](doc-style.md) for the form both editions take.
 
 Plenty of tutorials will teach you to write an agent loop. In 2026 that is an
 afternoon's work, and this repo does it in stage 00, in one file, with no

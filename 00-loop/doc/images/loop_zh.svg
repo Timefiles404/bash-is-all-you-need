@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 545" width="700" height="545"
+     font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#57606a"/>
+    </marker>
+    <marker id="ab" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#2563eb"/>
+    </marker>
+    <marker id="ag" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#15803d"/>
+    </marker>
+  </defs>
+
+  <rect width="700" height="545" fill="#fafbfc" rx="8"/>
+  <rect x="0" y="0" width="700" height="42" fill="#1f2937" rx="8"/>
+  <rect x="0" y="34" width="700" height="8" fill="#1f2937"/>
+  <text x="24" y="27" fill="#ffffff" font-size="15" font-weight="600">一轮对话里发生了什么</text>
+  <text x="676" y="27" fill="#9ca3af" font-size="12" text-anchor="end">阶段 00</text>
+
+  <!-- spine -->
+  <rect x="255" y="64" width="200" height="34" rx="6" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="355" y="86" font-size="13" fill="#1f2328" text-anchor="middle">你输入一句话</text>
+  <path d="M355 98 L355 116" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
+
+  <rect x="215" y="118" width="280" height="34" rx="6" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="355" y="140" font-size="13" fill="#1f2328" text-anchor="middle">messages 末尾追加一条 user 消息</text>
+  <path d="M355 152 L355 172" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
+
+  <rect x="190" y="174" width="330" height="58" rx="6" fill="#eff6ff" stroke="#2563eb" stroke-width="1.5"/>
+  <text x="355" y="196" font-size="13.5" fill="#1e3a8a" text-anchor="middle" font-weight="600">POST /chat/completions</text>
+  <text x="355" y="216" font-size="12.5" fill="#1e40af" text-anchor="middle">把整个 messages，连同 bash 的工具定义，一起发出去</text>
+  <path d="M355 232 L355 252" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
+
+  <rect x="205" y="254" width="300" height="34" rx="6" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="355" y="276" font-size="13" fill="#1f2328" text-anchor="middle">把模型的回复原样追加进 messages</text>
+  <path d="M355 288 L355 306" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
+
+  <rect x="228" y="308" width="254" height="40" rx="6" fill="#fff7ed" stroke="#d97706" stroke-width="1.5"/>
+  <text x="355" y="333" font-size="13" fill="#92400e" text-anchor="middle" font-weight="600">这条回复里有 tool_calls 吗？</text>
+
+  <!-- no branch -->
+  <path d="M482 328 L560 328 L560 384" stroke="#15803d" stroke-width="1.5" fill="none" marker-end="url(#ag)"/>
+  <text x="566" y="324" font-size="12" fill="#15803d">没有</text>
+  <rect x="450" y="386" width="220" height="34" rx="6" fill="#f0fdf4" stroke="#15803d"/>
+  <text x="560" y="408" font-size="13" fill="#14532d" text-anchor="middle">把文字打出来，本轮结束</text>
+
+  <!-- yes branch -->
+  <path d="M228 328 L150 328 L150 384" stroke="#2563eb" stroke-width="1.5" fill="none" marker-end="url(#ab)"/>
+  <text x="120" y="324" font-size="12" fill="#2563eb">有</text>
+  <rect x="40" y="386" width="220" height="34" rx="6" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="150" y="408" font-size="13" fill="#1f2328" text-anchor="middle">逐条执行里面的 bash 命令</text>
+  <path d="M150 420 L150 438" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
+
+  <rect x="40" y="440" width="220" height="52" rx="6" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="150" y="461" font-size="13" fill="#1f2328" text-anchor="middle">每一条命令的输出，都追加成</text>
+  <text x="150" y="479" font-size="12" fill="#57606a" text-anchor="middle" font-family="ui-monospace, Consolas, monospace">{role:"tool", tool_call_id}</text>
+
+  <!-- loop back -->
+  <path d="M40 466 L20 466 L20 203 L186 203" stroke="#2563eb" stroke-width="1.5" fill="none"
+        stroke-dasharray="5 4" marker-end="url(#ab)"/>
+  <text x="30" y="330" font-size="12" fill="#2563eb" transform="rotate(-90 30 330)" text-anchor="middle">再发一次，这次带上结果</text>
+
+  <text x="24" y="527" font-size="11.5" fill="#57606a">虚线是循环：只要模型还在要工具，这一圈就再走一遍。messages 只增不减。</text>
+</svg>

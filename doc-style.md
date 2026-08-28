@@ -70,8 +70,19 @@ Never open with the finished function and walk down it. That is the failure this
 document exists to prevent, and it is the most natural thing in the world to do
 once you know the answer.
 
-Quote real code. If the repo's code has a line the reader would trip over,
-that is a step, not a footnote.
+Quote real code — actually real. `external/tools/quotecheck.py` checks that every
+line inside a ```` ```go ```` fence exists verbatim in that stage's `code/`, and
+CI runs it. Three escapes, for the blocks that are not quotes:
+
+- ```` ```go wrong ```` — code you are showing the reader *not* to write.
+- `// ...` on its own line — you skipped something here.
+- A comment containing Chinese — real code comments are English, so this is
+  visibly the chapter talking, not the source.
+
+Keep the source's own English comments when you quote a line that has one, and
+put the Chinese explanation in the prose around the block. Rewriting a comment
+into Chinese inside a quote makes the quote a paraphrase, and then nothing
+checks it.
 
 ### 跑一下
 

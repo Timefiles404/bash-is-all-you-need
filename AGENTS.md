@@ -123,6 +123,7 @@ gofmt -l ./*/code/ external/tui/           # must be empty
 go vet ./...                               # must be clean
 GOOS=linux go build -o /dev/null ./06-the-composer/code   # platform files are real
 GOOS=darwin go build -o /dev/null ./06-the-composer/code
+python external/tools/quotecheck.py                       # chapters quote real code
 python external/web/tools/build.py --check                # the drift check
 ```
 

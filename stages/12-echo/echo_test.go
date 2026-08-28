@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -192,9 +193,26 @@ func TestABackslashInDoubleQuotesIsNotAlwaysAnEscape(t *testing.T) {
 	if len(paths) != 1 {
 		t.Fatalf("witnesses = %v, want one path", paths)
 	}
-	if d := digestOf(paths[0]); d == "" {
-		t.Fatalf("the witness %q hashes to nothing, so it can never go stale; the backslashes were "+
-			"eaten and the path names no file", paths[0])
+	// 这个断言到哪儿都成立：双引号里反斜杠只对 $ ` " \ 和换行起转义作用，所以
+	// 每一个反斜杠都会原样进到参数里。这是 shell 的语法，不是这台机器的性质。
+	//
+	// 数个数而不是直接比字符串，因为两个平台接下来的做法不一样，而那点不一样
+	// 恰恰不是这里要说的事：Windows 上这个参数本来就是绝对路径，原样送到底；
+	// Linux 上 `\tmp\…` 是个相对名字，会先拼到工作目录后面。不管走哪条，分词
+	// 器要是吃掉了反斜杠，这里的数字就会变小。
+	if got, want := strings.Count(paths[0], `\`), strings.Count(win, `\`); got != want {
+		t.Fatalf("the witness %q has %d backslashes, expected %d from %q — some were eaten",
+			paths[0], got, want, win)
+	}
+
+	// 那个参数接下来能不能指到一个真文件，是这台机器的性质，而且只有 Windows
+	// 上能。以前这个断言在所有平台上都跑，于是它安安稳稳过了四个月——因为它只
+	// 在 Windows 上被跑过。Linux 上同一个字符串是一个名字里带反斜杠的文件名，
+	// 谁也不指，摘要为空是对的。
+	if runtime.GOOS == "windows" {
+		if d := digestOf(paths[0]); d == "" {
+			t.Fatalf("the witness %q hashes to nothing, so it can never go stale", paths[0])
+		}
 	}
 
 	// 真正的转义还得照常管用。

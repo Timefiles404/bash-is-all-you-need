@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -199,9 +200,31 @@ func TestABackslashInDoubleQuotesIsNotAlwaysAnEscape(t *testing.T) {
 	if len(paths) != 1 {
 		t.Fatalf("witnesses = %v, want one path", paths)
 	}
-	if d := digestOf(paths[0]); d == "" {
-		t.Fatalf("the witness %q hashes to nothing, so it can never go stale; the backslashes were "+
-			"eaten and the path names no file", paths[0])
+
+	// The claim, and it holds everywhere: inside double quotes a backslash
+	// escapes only $ ` " \ and a newline, so every one of these survives into
+	// the argument. That is shell grammar, not a property of this machine.
+	//
+	// Counted rather than compared, because the two platforms disagree about
+	// what happens next and neither disagreement is the point. On Windows the
+	// argument is already absolute and arrives unchanged; on Linux `\tmp\…` is a
+	// relative name, so it gets joined onto the working directory first. Either
+	// way a tokenizer that ate the backslashes would show up here as a smaller
+	// number.
+	if got, want := strings.Count(paths[0], `\`), strings.Count(win, `\`); got != want {
+		t.Fatalf("the witness %q has %d backslashes, expected %d from %q — some were eaten",
+			paths[0], got, want, win)
+	}
+
+	// Whether that argument then names a file is a property of this machine,
+	// and only on Windows does it. Asserting the digest everywhere is what this
+	// test used to do, and it passed for four months because it was only ever
+	// run on Windows: on Linux the same string is one filename with backslashes
+	// in it, naming nothing, and the digest is correctly empty.
+	if runtime.GOOS == "windows" {
+		if d := digestOf(paths[0]); d == "" {
+			t.Fatalf("the witness %q hashes to nothing, so it can never go stale", paths[0])
+		}
 	}
 
 	// And an escape that really is one still works.

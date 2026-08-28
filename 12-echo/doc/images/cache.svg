@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 486" width="700" height="486"
+     font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#57606a"/>
+    </marker>
+    <marker id="ag" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#15803d"/>
+    </marker>
+    <marker id="ao" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#d97706"/>
+    </marker>
+  </defs>
+
+  <rect width="700" height="486" fill="#fafbfc" rx="8"/>
+  <rect x="0" y="0" width="700" height="42" fill="#1f2937" rx="8"/>
+  <rect x="0" y="34" width="700" height="8" fill="#1f2937"/>
+  <text x="24" y="27" fill="#ffffff" font-size="15" font-weight="600">The path one command takes through the cache</text>
+  <text x="676" y="27" fill="#9ca3af" font-size="12" text-anchor="end">stage 12</text>
+
+  <rect x="238" y="58" width="224" height="30" rx="5" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="350" y="78" font-size="12.5" fill="#1f2328" text-anchor="middle" font-family="ui-monospace, Consolas, monospace">cat wire-notes.md</text>
+  <path d="M350 88 L350 104" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
+
+  <!-- gate 1: whitelist -->
+  <rect x="212" y="106" width="276" height="34" rx="5" fill="#fff7ed" stroke="#d97706" stroke-width="1.5"/>
+  <text x="350" y="128" font-size="12.5" fill="#92400e" text-anchor="middle" font-weight="600">whitelist: may this be cached?</text>
+  <path d="M488 123 L596 123" stroke="#d97706" stroke-width="1.5" marker-end="url(#ao)"/>
+  <text x="542" y="116" font-size="11" fill="#92400e" text-anchor="middle">not understood</text>
+  <path d="M350 140 L350 156" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
+
+  <!-- gate 2: key -->
+  <rect x="212" y="158" width="276" height="52" rx="5" fill="#eff6ff" stroke="#2563eb" stroke-width="1.5"/>
+  <text x="350" y="178" font-size="12.5" fill="#1e3a8a" text-anchor="middle" font-weight="600">the key: what is the same command</text>
+  <text x="350" y="198" font-size="11" fill="#1e40af" text-anchor="middle">text + shell + cwd + cap + environment</text>
+  <path d="M350 210 L350 226" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
+
+  <!-- lookup -->
+  <rect x="252" y="228" width="196" height="30" rx="5" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="350" y="248" font-size="12.5" fill="#1f2328" text-anchor="middle">is this key in the table?</text>
+  <path d="M448 243 L596 243" stroke="#d97706" stroke-width="1.5" marker-end="url(#ao)"/>
+  <text x="522" y="236" font-size="11" fill="#92400e" text-anchor="middle">no</text>
+  <path d="M350 258 L350 274" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
+
+  <!-- gate 3: witnesses -->
+  <rect x="184" y="276" width="332" height="52" rx="5" fill="#fff7ed" stroke="#d97706" stroke-width="1.5"/>
+  <text x="350" y="296" font-size="12.5" fill="#92400e" text-anchor="middle" font-weight="600">witnesses: did what it read change?</text>
+  <text x="350" y="316" font-size="11" fill="#92400e" text-anchor="middle">every path on the command line, and its hash then</text>
+  <path d="M516 302 L596 302 L596 258" stroke="#d97706" stroke-width="1.5" fill="none" marker-end="url(#ao)"/>
+  <text x="558" y="296" font-size="11" fill="#92400e" text-anchor="middle">changed</text>
+  <path d="M350 328 L350 348" stroke="#15803d" stroke-width="1.5" marker-end="url(#ag)"/>
+
+  <!-- hit -->
+  <rect x="212" y="350" width="276" height="34" rx="5" fill="#f0fdf4" stroke="#15803d" stroke-width="1.5"/>
+  <text x="350" y="372" font-size="12.5" fill="#14532d" text-anchor="middle" font-weight="600">hit: hand back the stored text</text>
+
+  <!-- miss column -->
+  <rect x="536" y="106" width="138" height="152" rx="5" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="605" y="150" font-size="12.5" fill="#1f2328" text-anchor="middle" font-weight="600">run it for real</text>
+  <text x="605" y="172" font-size="11" fill="#57606a" text-anchor="middle">start a process, read</text>
+  <text x="605" y="188" font-size="11" fill="#57606a" text-anchor="middle">the disk, render, cut</text>
+  <text x="605" y="214" font-size="11" fill="#57606a" text-anchor="middle">i.e. what happens</text>
+  <text x="605" y="230" font-size="11" fill="#57606a" text-anchor="middle">with the cache off</text>
+
+  <rect x="26" y="400" width="648" height="36" rx="5" fill="#f6f8fa" stroke="#d0d7de"/>
+  <text x="42" y="422" font-size="11.5" fill="#1f2328">All three gates point one way: <tspan font-weight="600">refuse what you do not understand.</tspan> All three arrows lead right.</text>
+
+  <text x="26" y="452" font-size="11.5" fill="#57606a">So most of echo.go is refusal rules; the cache itself is about 80 lines.</text>
+  <text x="26" y="470" font-size="11.5" fill="#57606a">Over-refusing costs one wasted run. Letting one through serves a stale answer forever.</text>
+</svg>

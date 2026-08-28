@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 400" width="700" height="400"
+     font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#57606a"/>
+    </marker>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#cf222e"/>
+    </marker>
+  </defs>
+
+  <rect width="700" height="400" fill="#fafbfc" rx="8"/>
+  <rect x="0" y="0" width="700" height="42" fill="#1f2937" rx="8"/>
+  <rect x="0" y="34" width="700" height="8" fill="#1f2937"/>
+  <text x="24" y="27" fill="#ffffff" font-size="15" font-weight="600">Ten seconds of shell, fourteen minutes of model</text>
+  <text x="676" y="27" fill="#9ca3af" font-size="12" text-anchor="end">stage 12</text>
+
+  <text x="26" y="70" font-size="12" fill="#57606a">Sixteen recorded sessions. This whole bar is the time spent on the model:</text>
+
+  <!-- the model-time bar: 620px = 864,374 ms -->
+  <rect x="26" y="82" width="620" height="30" rx="4" fill="#2563eb"/>
+  <text x="336" y="102" font-size="12.5" fill="#ffffff" text-anchor="middle" font-weight="600">864,374 ms of model time</text>
+
+  <!-- the sliver -->
+  <path d="M26 118 L26 146" stroke="#cf222e" stroke-width="1.4"/>
+  <path d="M26.3 118 L26.3 146" stroke="#cf222e" stroke-width="1.4"/>
+  <text x="34" y="140" font-size="12" fill="#cf222e" font-weight="600">the 401 ms this chapter saved is here</text>
+  <text x="34" y="158" font-size="11.5" fill="#cf222e">At the same scale it is 0.29 of a pixel — that red line is already thicker</text>
+
+  <!-- zoomed comparison -->
+  <text x="26" y="196" font-size="12" fill="#57606a">Shrink model time by a thousand to make them comparable:</text>
+
+  <rect x="26" y="208" width="620" height="22" rx="3" fill="#dbeafe" stroke="#2563eb"/>
+  <rect x="26" y="208" width="288" height="22" rx="3" fill="#2563eb"/>
+  <text x="170" y="224" font-size="11.5" fill="#ffffff" text-anchor="middle">401 ms</text>
+  <text x="480" y="224" font-size="11.5" fill="#1e3a8a" text-anchor="middle">864,374 ms ÷ 1000 = 864 ms</text>
+
+  <!-- the three numbers -->
+  <rect x="26" y="252" width="196" height="62" rx="6" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="124" y="274" font-size="12.5" fill="#1f2328" text-anchor="middle" font-weight="600">4 hits / 107 commands</text>
+  <text x="124" y="294" font-size="20" fill="#cf222e" text-anchor="middle" font-weight="600">3.7%</text>
+  <text x="124" y="308" font-size="11" fill="#57606a" text-anchor="middle">sixteen real sessions replayed</text>
+
+  <rect x="246" y="252" width="196" height="62" rx="6" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="344" y="274" font-size="12.5" fill="#1f2328" text-anchor="middle" font-weight="600">saved time vs model time</text>
+  <text x="344" y="294" font-size="20" fill="#cf222e" text-anchor="middle" font-weight="600">0.05%</text>
+  <text x="344" y="308" font-size="11" fill="#57606a" text-anchor="middle">401 ms ÷ 864,374 ms</text>
+
+  <rect x="466" y="252" width="208" height="62" rx="6" fill="#f0fdf4" stroke="#15803d"/>
+  <text x="570" y="274" font-size="12.5" fill="#14532d" text-anchor="middle" font-weight="600">the cache from stage 04</text>
+  <text x="570" y="294" font-size="20" fill="#15803d" text-anchor="middle" font-weight="600">83.9%</text>
+  <text x="570" y="308" font-size="11" fill="#14532d" text-anchor="middle">418,688 / 499,172 prompt tokens</text>
+
+  <path d="M570 316 L570 334" stroke="#15803d" stroke-width="1.4" marker-end="url(#a)"/>
+  <text x="670" y="352" font-size="11.5" fill="#14532d" text-anchor="end">It needs no whitelist, witnesses or tokenizer — stage 04 wrote one HTTP header.</text>
+
+  <text x="26" y="382" font-size="11.5" fill="#57606a">In the same session, the cache actually saving money was built eight chapters ago. This one ships off.</text>
+</svg>

@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 400" width="700" height="400"
+     font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#57606a"/>
+    </marker>
+    <marker id="ab" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#2563eb"/>
+    </marker>
+  </defs>
+
+  <rect width="700" height="400" fill="#fafbfc" rx="8"/>
+  <rect x="0" y="0" width="700" height="42" fill="#1f2937" rx="8"/>
+  <rect x="0" y="34" width="700" height="8" fill="#1f2937"/>
+  <text x="24" y="27" fill="#ffffff" font-size="15" font-weight="600">The audit: replaying commands that already happened</text>
+  <text x="676" y="27" fill="#9ca3af" font-size="12" text-anchor="end">stage 12</text>
+
+  <rect x="26" y="62" width="200" height="118" rx="6" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="126" y="82" font-size="12.5" fill="#1f2328" text-anchor="middle" font-weight="600">sixteen old traces</text>
+  <text x="42" y="104" font-size="11" fill="#57606a" font-family="ui-monospace, Consolas, monospace">command_end  ls -la</text>
+  <text x="42" y="120" font-size="11" fill="#57606a" font-family="ui-monospace, Consolas, monospace">command_end  cat go.mod</text>
+  <text x="42" y="136" font-size="11" fill="#57606a" font-family="ui-monospace, Consolas, monospace">command_end  ls -la</text>
+  <text x="42" y="152" font-size="11" fill="#57606a" font-family="ui-monospace, Consolas, monospace">command_end  go test ./...</text>
+  <text x="42" y="170" font-size="11.5" fill="#1f2328">107 in all, each timed</text>
+
+  <path d="M226 121 L286 121" stroke="#2563eb" stroke-width="1.5" marker-end="url(#ab)"/>
+  <text x="256" y="112" font-size="11" fill="#2563eb" text-anchor="middle">in order</text>
+
+  <rect x="288" y="84" width="180" height="74" rx="6" fill="#eff6ff" stroke="#2563eb" stroke-width="1.5"/>
+  <text x="378" y="106" font-size="12.5" fill="#1e3a8a" text-anchor="middle" font-weight="600">one cold cache</text>
+  <text x="378" y="126" font-size="11.5" fill="#1e40af" text-anchor="middle">key it, look it up</text>
+  <text x="378" y="144" font-size="11.5" fill="#1e40af" text-anchor="middle">run not one command</text>
+
+  <path d="M468 121 L528 121" stroke="#2563eb" stroke-width="1.5" marker-end="url(#ab)"/>
+
+  <rect x="530" y="84" width="144" height="74" rx="6" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="602" y="106" font-size="12.5" fill="#1f2328" text-anchor="middle" font-weight="600">how many hit</text>
+  <text x="602" y="128" font-size="16" fill="#cf222e" text-anchor="middle" font-weight="600">4 / 107</text>
+  <text x="602" y="148" font-size="11.5" fill="#57606a" text-anchor="middle">401 ms saved</text>
+
+  <!-- what it costs to find out -->
+  <rect x="26" y="200" width="648" height="52" rx="6" fill="#f0fdf4" stroke="#15803d" stroke-width="1.5"/>
+  <text x="42" y="222" font-size="12.5" fill="#14532d" font-weight="600">What this audit cost: no API key, no model call, not one command actually executed</text>
+  <text x="42" y="242" font-size="11.5" fill="#14532d">It reads sessions you already paid for, so the worth of a cache is answerable before writing it.</text>
+
+  <!-- the blind spot -->
+  <rect x="26" y="268" width="648" height="72" rx="6" fill="#fef2f2" stroke="#cf222e" stroke-width="1.5"/>
+  <text x="42" y="290" font-size="12.5" fill="#cf222e" font-weight="600">But this tool cannot see its own successes</text>
+  <text x="42" y="310" font-size="11.5" fill="#1f2328">Audit a trace recorded with the cache ON and it reports 0 hits: a hit never produces a command_end.</text>
+  <text x="42" y="328" font-size="11.5" fill="#1f2328">Same work: the cache-off arm audits 9/47, the cache-on arm 0/44 — and that arm really served 12.</text>
+
+  <text x="26" y="366" font-size="11.5" fill="#57606a">It only works on traces recorded without the cache: it answers "worth turning on", not "how did it do".</text>
+  <text x="26" y="386" font-size="11.5" fill="#57606a">The second question needs the witness mechanism from part 2, reporting on itself at runtime.</text>
+</svg>

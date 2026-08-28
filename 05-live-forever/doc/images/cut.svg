@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 500" width="760" height="500"
+     font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif">
+  <defs>
+    <marker id="c-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#2563eb"/>
+    </marker>
+  </defs>
+
+  <rect width="760" height="500" fill="#fafbfc" rx="8"/>
+  <rect x="0" y="0" width="760" height="42" fill="#1f2937" rx="8"/>
+  <rect x="0" y="34" width="760" height="8" fill="#1f2937"/>
+  <text x="24" y="27" fill="#ffffff" font-size="15" font-weight="600">Where the cut is allowed to land</text>
+  <text x="736" y="27" fill="#9ca3af" font-size="12" text-anchor="end">stage 05 · part 1</text>
+
+  <text x="24" y="66" font-size="11.5" fill="#57606a">index · role · what this message holds</text>
+  <text x="360" y="66" font-size="11.5" fill="#57606a">cut before it, and what happens</text>
+
+  <!-- 0 -->
+  <rect x="24" y="74" width="316" height="30" rx="5" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="36" y="94" font-size="12.5" fill="#1f2328"><tspan font-family="ui-monospace, Consolas, monospace">0  user</tspan>   your question</text>
+  <text x="360" y="94" font-size="12" fill="#b91c1c">no · a user message, and the summary is a user too</text>
+
+  <!-- 1 -->
+  <rect x="24" y="110" width="316" height="30" rx="5" fill="#f0fdf4" stroke="#15803d"/>
+  <text x="36" y="130" font-size="12.5" fill="#14532d"><tspan font-family="ui-monospace, Consolas, monospace">1  assistant</tspan>   text + two tool_calls</text>
+  <text x="360" y="130" font-size="12" fill="#15803d">yes</text>
+
+  <!-- 2 -->
+  <rect x="24" y="146" width="316" height="30" rx="5" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="36" y="166" font-size="12.5" fill="#1f2328"><tspan font-family="ui-monospace, Consolas, monospace">2  user</tspan>   two tool_results</text>
+  <text x="360" y="166" font-size="12" fill="#b91c1c">no · their calls are in message 1, which is being cut</text>
+
+  <!-- 3 -->
+  <rect x="24" y="182" width="316" height="30" rx="5" fill="#f0fdf4" stroke="#15803d"/>
+  <text x="36" y="202" font-size="12.5" fill="#14532d"><tspan font-family="ui-monospace, Consolas, monospace">3  assistant</tspan>   text + one tool_call</text>
+  <text x="360" y="202" font-size="12" fill="#15803d">yes</text>
+
+  <!-- 4 -->
+  <rect x="24" y="218" width="316" height="30" rx="5" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="36" y="238" font-size="12.5" fill="#1f2328"><tspan font-family="ui-monospace, Consolas, monospace">4  user</tspan>   one tool_result</text>
+  <text x="360" y="238" font-size="12" fill="#b91c1c">no · same again; cutting leaves an orphan result</text>
+
+  <!-- 5 -->
+  <rect x="24" y="254" width="316" height="30" rx="5" fill="#eff6ff" stroke="#2563eb" stroke-width="1.8"/>
+  <text x="36" y="274" font-size="12.5" fill="#1e3a8a" font-weight="600"><tspan font-family="ui-monospace, Consolas, monospace">5  assistant</tspan>   text</text>
+  <text x="360" y="274" font-size="12" fill="#2563eb" font-weight="600">yes · the cut — the first one safeCut finds going forward</text>
+
+  <!-- 6 -->
+  <rect x="24" y="290" width="316" height="30" rx="5" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="36" y="310" font-size="12.5" fill="#1f2328"><tspan font-family="ui-monospace, Consolas, monospace">6  user</tspan>   the next question</text>
+  <text x="360" y="310" font-size="12" fill="#b91c1c">no · a user message</text>
+
+  <path d="M24 336 L736 336" stroke="#d0d7de" stroke-width="1"/>
+
+  <!-- result -->
+  <text x="24" y="362" font-size="12" fill="#57606a">Cut before 5 and the array becomes — everything earlier replaced by one tagged user message:</text>
+
+  <rect x="24" y="374" width="230" height="42" rx="5" fill="#eff6ff" stroke="#2563eb" stroke-width="1.5"/>
+  <text x="139" y="391" font-size="12" fill="#1e3a8a" text-anchor="middle" font-weight="600">user</text>
+  <text x="139" y="408" font-size="11" fill="#1e40af" text-anchor="middle" font-family="ui-monospace, Consolas, monospace">&lt;session-summary&gt;…</text>
+
+  <path d="M258 395 L288 395" stroke="#2563eb" stroke-width="1.5" marker-end="url(#c-a)"/>
+
+  <rect x="292" y="374" width="120" height="42" rx="5" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="352" y="391" font-size="12" fill="#1f2328" text-anchor="middle">5 assistant</text>
+  <text x="352" y="408" font-size="11" fill="#57606a" text-anchor="middle">kept as-is</text>
+
+  <rect x="420" y="374" width="120" height="42" rx="5" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="480" y="391" font-size="12" fill="#1f2328" text-anchor="middle">6 user</text>
+  <text x="480" y="408" font-size="11" fill="#57606a" text-anchor="middle">kept as-is</text>
+
+  <rect x="548" y="374" width="120" height="42" rx="5" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="608" y="391" font-size="12" fill="#1f2328" text-anchor="middle">7 …</text>
+  <text x="608" y="408" font-size="11" fill="#57606a" text-anchor="middle">kept as-is</text>
+
+  <text x="684" y="399" font-size="12" fill="#57606a">→</text>
+
+  <text x="24" y="446" font-size="11.5" fill="#57606a">The summary enters as a user message, so the message after it must be an assistant one.</text>
+  <text x="24" y="466" font-size="11.5" fill="#57606a">Two refusals, two protocol rules, checked separately: role implies the other today, but not tomorrow.</text>
+  <text x="24" y="486" font-size="11.5" fill="#b91c1c">Cutting wrongly does not fail now: it fails two turns later, server-side, naming the request builder.</text>
+</svg>
